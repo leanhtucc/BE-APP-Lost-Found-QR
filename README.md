@@ -1,85 +1,204 @@
-# 🚀 Setup Backend Basic (Node.js + Prisma + PostgreSQL + Docker)
+# 🚀 Backend Basic - Lost & Found API
 
-## 0️⃣ Yêu cầu
+API backend cho ứng dụng Lost & Found với TypeScript, Express, Prisma và PostgreSQL.
 
-- Node.js >= 18
-- Docker & Docker Compose
-- npm
+## 📁 Cấu trúc Project
 
-## 1️⃣ Khởi động Database bằng Docker
-
-### Chạy database
-
-```bash
-docker compose up -d
+```
+backend-basic/
+├── prisma/
+│   ├── migrations/          # Database migrations
+│   └── schema.prisma        # Database schema
+├── src/
+│   ├── config/              # App configuration
+│   │   ├── env.ts          # Environment variables
+│   │   ├── database.ts     # Database config
+│   │   └── index.ts
+│   ├── libs/                # Shared libraries
+│   │   ├── prisma.ts       # Prisma client
+│   │   ├── jwt.ts          # JWT utilities
+│   │   ├── logger.ts       # Logger
+│   │   └── redis.ts        # Redis client (TODO)
+│   ├── middlewares/         # Express middlewares
+│   │   ├── auth.middleware.ts
+│   │   ├── error.middleware.ts
+│   │   ├── validate.middleware.ts
+│   │   └── rate-limit.middleware.ts
+│   ├── modules/             # Domain modules
+│   │   ├── auth/
+│   │   ├── items/
+│   │   │   ├── items.controller.ts
+│   │   │   ├── items.service.ts
+│   │   │   ├── items.repository.ts
+│   │   │   ├── items.routes.ts
+│   │   │   ├── items.schema.ts
+│   │   │   └── items.types.ts
+│   │   └── index.ts
+│   ├── utils/               # Utility functions
+│   │   ├── response.ts     # API response helpers
+│   │   ├── hash.ts         # Password hashing
+│   │   ├── date.ts         # Date utilities
+│   │   └── constants.ts    # App constants
+│   ├── types/               # TypeScript types
+│   │   └── express.d.ts    # Express type extensions
+│   ├── app.ts              # Express app setup
+│   └── server.ts           # Entry point
+├── .env.example
+├── package.json
+├── tsconfig.json
+├── docker-compose.yml
+└── Dockerfile
 ```
 
-### Kiểm tra container
+## 🎯 Kiến trúc
 
-```bash
-docker ps
+### Layered Architecture
+
+```
+Request → Routes → Middleware → Controller → Service → Repository → Database
 ```
 
-## 2️⃣ Cài dependency
+### Vai trò từng layer:
 
+- **Routes**: Định nghĩa endpoints và áp dụng middleware
+- **Controller**: Xử lý HTTP request/response
+- **Service**: Business logic
+- **Repository**: Data access layer
+- **Types**: TypeScript interfaces và types
+- **Schema**: Validation schemas (Zod)
+
+## 🚀 Cài đặt
+
+### 1. Clone và install dependencies:
 ```bash
 npm install
 ```
 
-## 3️⃣ Cài & khởi tạo Prisma
-
+### 2. Khởi động Database với Docker:
 ```bash
-npx prisma init
+docker compose up -d
 ```
 
-👉 Lệnh này sẽ tạo:
-
-```
-prisma/
-└─ schema.prisma
-```
-
-👉 Đồng thời sinh file `.env`
-
-### Sửa .env cho đúng PostgreSQL (QUAN TRỌNG)
-
-```env
-DATABASE_URL="postgresql://todolist_user:todolist_pass@localhost:5432/todolist_db"
+### 3. Setup environment:
+```bash
+cp .env.example .env
+# Chỉnh sửa .env với thông tin của bạn
 ```
 
-⚠️ KHÔNG dùng mysql URL vì project đang chạy Postgres bằng Docker.
+### 4. Setup database:
+```bash
+# Tạo migration
+npm run prisma:migrate
 
-## 4️⃣ Tạo schema Todo (QUAN TRỌNG)
+# Generate Prisma Client
+npm run prisma:generate
 
-### Mở file: `prisma/schema.prisma`
+# Mở Prisma Studio để xem database
+npm run prisma:studio
+```
 
-Ví dụ:
+### 5. Chạy server:
+```bash
+# Development mode với hot reload
+npm run dev
 
-```prisma
-model Todo {
-    id        Int      @id @default(autoincrement())
-    title     String
-    completed Boolean  @default(false)
-    createdAt DateTime @default(now())
-    updatedAt DateTime @updatedAt
+# Build cho production
+npm run build
+
+# Chạy production
+npm start
+```
+
+## 📚 API Documentation
+
+### Items Module
+
+#### Tạo món đồ
+```http
+POST /api/items
+Authorization: Bearer {token}
+Content-Type: application/json
+
+{
+  "name": "Ví da đen",
+  "category": "wallet",
+  "description": "Ví da màu đen",
+  "lostMessage": "Mình làm rơi ở sảnh A"
 }
 ```
 
-## 5️⃣ Migrate database & generate Prisma Client
-
-```bash
-npx prisma migrate dev --name init
-npx prisma generate
+#### Quét QR (Lấy thông tin món đồ)
+```http
+GET /api/items/{itemId}?token={securityToken}
 ```
 
-👉 Kết quả:
+#### Cập nhật trạng thái
+```http
+PATCH /api/items/{itemId}/status
+Authorization: Bearer {token}
 
-- Database tạo bảng Todo
-- Prisma Client sẵn sàng dùng trong code
+{
+  "status": "lost",
+  "lostMessage": "Làm rơi ở..."
+}
+```
 
-## 6️⃣ Kiểm tra database (tuỳ chọn)
+#### Lấy danh sách món đồ của user
+```http
+GET /api/items
+Authorization: Bearer {token}
+```
+
+#### Xóa món đồ
+```http
+DELETE /api/items/{itemId}
+Authorization: Bearer {token}
+```
+
+## 🛠️ Tech Stack
+
+- **Runtime**: Node.js
+- **Language**: TypeScript
+- **Framework**: Express.js
+- **Database**: PostgreSQL
+- **ORM**: Prisma
+- **Validation**: Zod
+- **Authentication**: JWT
+- **Security**: Helmet
+
+## 📝 Scripts
 
 ```bash
+npm run dev              # Chạy development server
+npm run build            # Build cho production
+npm start                # Chạy production server
+npm run prisma:migrate   # Tạo và apply migration
+npm run prisma:generate  # Generate Prisma Client
+npm run prisma:studio    # Mở Prisma Studio
+```
+
+## 🔒 Security Features
+
+- Helmet.js cho security headers
+- Rate limiting
+- JWT authentication
+- Request validation với Zod
+- Error handling middleware
+- Security token cho QR codes
+
+## 📖 Tài liệu thêm
+
+- [GUIDE.md](GUIDE.md) - Hướng dẫn chi tiết cách code API
+- [Prisma Docs](https://www.prisma.io/docs)
+- [Express Docs](https://expressjs.com/)
+
+## 🤝 Contributing
+
+Contributions are welcome! Vui lòng tạo issue hoặc pull request.
+
+## 📄 License
+
+MIT
 npx prisma studio
 ```
 

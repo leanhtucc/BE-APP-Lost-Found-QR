@@ -1,0 +1,281 @@
+<!DOCTYPE html>
+<html lang="vi">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Xác thực tài khoản</title>
+    <style>
+      * {
+        margin: 0;
+        padding: 0;
+        box-sizing: border-box;
+      }
+      body {
+        font-family: "Segoe UI", Tahoma, Geneva, Verdana, sans-serif;
+        line-height: 1.6;
+        color: #333;
+        background: #f4f7fa;
+        padding: 20px;
+      }
+      .email-wrapper {
+        max-width: 600px;
+        margin: 0 auto;
+        background: white;
+        border-radius: 16px;
+        overflow: hidden;
+        box-shadow: 0 4px 20px rgba(0, 0, 0, 0.08);
+      }
+      .header {
+        background: linear-gradient(135deg, #1e88e5 0%, #1565c0 100%);
+        color: white;
+        padding: 40px 30px;
+        text-align: center;
+      }
+      .logo-container {
+        margin-bottom: 20px;
+      }
+      .logo {
+        width: 80px;
+        height: 80px;
+        background: white;
+        border-radius: 50%;
+        display: inline-flex;
+        align-items: center;
+        justify-content: center;
+        font-size: 40px;
+        box-shadow: 0 4px 12px rgba(0, 0, 0, 0.15);
+      }
+      .header h1 {
+        font-size: 28px;
+        font-weight: 600;
+        margin: 0;
+      }
+      .header p {
+        margin-top: 8px;
+        opacity: 0.95;
+        font-size: 14px;
+      }
+      .content {
+        padding: 40px 30px;
+        background: white;
+      }
+      .greeting {
+        font-size: 18px;
+        color: #1e88e5;
+        font-weight: 600;
+        margin-bottom: 20px;
+      }
+      .message {
+        color: #555;
+        font-size: 15px;
+        margin-bottom: 30px;
+        line-height: 1.8;
+      }
+      .code-section {
+        background: linear-gradient(135deg, #e3f2fd 0%, #bbdefb 100%);
+        padding: 30px;
+        text-align: center;
+        border-radius: 12px;
+        margin: 30px 0;
+        border: 2px solid #1e88e5;
+      }
+      .code-label {
+        font-size: 13px;
+        color: #1565c0;
+        font-weight: 600;
+        text-transform: uppercase;
+        letter-spacing: 1px;
+        margin-bottom: 15px;
+      }
+      .code {
+        font-size: 42px;
+        font-weight: bold;
+        color: #1565c0;
+        letter-spacing: 12px;
+        font-family: "Courier New", monospace;
+        text-shadow: 0 2px 4px rgba(0, 0, 0, 0.1);
+      }
+      .code-hint {
+        margin-top: 15px;
+        font-size: 12px;
+        color: #666;
+      }
+      .info-box {
+        background: #fff3e0;
+        border-left: 4px solid #ff9800;
+        padding: 20px;
+        border-radius: 8px;
+        margin: 25px 0;
+      }
+      .info-box h3 {
+        color: #e65100;
+        font-size: 15px;
+        margin-bottom: 12px;
+        display: flex;
+        align-items: center;
+        gap: 8px;
+      }
+      .info-box ul {
+        list-style: none;
+        margin: 0;
+        padding: 0;
+      }
+      .info-box li {
+        padding: 6px 0;
+        color: #666;
+        font-size: 14px;
+        display: flex;
+        align-items: flex-start;
+        gap: 10px;
+      }
+      .info-box li:before {
+        content: "•";
+        color: #ff9800;
+        font-weight: bold;
+        font-size: 18px;
+        line-height: 1;
+      }
+      .cta-button {
+        display: inline-block;
+        padding: 14px 40px;
+        background: linear-gradient(135deg, #1e88e5 0%, #1565c0 100%);
+        color: white;
+        text-decoration: none;
+        border-radius: 8px;
+        font-weight: 600;
+        margin: 20px 0;
+        box-shadow: 0 4px 12px rgba(30, 136, 229, 0.3);
+        transition: transform 0.2s;
+      }
+      .signature {
+        margin-top: 40px;
+        padding-top: 30px;
+        border-top: 2px solid #e3f2fd;
+        color: #666;
+        font-size: 14px;
+      }
+      .signature strong {
+        color: #1e88e5;
+      }
+      .footer {
+        text-align: center;
+        padding: 30px;
+        background: #f8f9fa;
+        color: #999;
+        font-size: 12px;
+        line-height: 1.8;
+      }
+      .footer a {
+        color: #1e88e5;
+        text-decoration: none;
+      }
+      .divider {
+        height: 1px;
+        background: linear-gradient(
+          to right,
+          transparent,
+          #e0e0e0,
+          transparent
+        );
+        margin: 30px 0;
+      }
+      @media only screen and (max-width: 600px) {
+        .email-wrapper {
+          border-radius: 0;
+        }
+        .header,
+        .content {
+          padding: 30px 20px;
+        }
+        .code {
+          font-size: 36px;
+          letter-spacing: 8px;
+        }
+      }
+    </style>
+  </head>
+  <body>
+    <div class="email-wrapper">
+      <div class="header">
+        <div class="logo-container">
+          <div class="logo">
+            <img
+              src="{{logoUrl}}"
+              alt="Lost & Found"
+              style="width: 100%; height: 100%; object-fit: contain"
+            />
+          </div>
+        </div>
+        <h1>Xác thực tài khoản</h1>
+        <p>Hoàn tất bước cuối để bắt đầu sử dụng Lost & Found</p>
+      </div>
+
+      <div class="content">
+        <div class="greeting">Xin chào {{displayName}}! 👋</div>
+
+        <div class="message">
+          Cảm ơn bạn đã đăng ký tài khoản <strong>Lost & Found</strong>. Chúng
+          tôi rất vui khi có bạn tham gia cộng đồng bảo vệ tài sản thông minh!
+        </div>
+
+        <div class="message">
+          Để hoàn tất quá trình đăng ký, vui lòng nhập mã xác thực bên dưới vào
+          ứng dụng:
+        </div>
+
+        <div class="code-section">
+          <div class="code-label">Mã xác thực của bạn</div>
+          <div class="code">{{code}}</div>
+          <div class="code-hint">Sao chép và dán mã này vào ứng dụng</div>
+        </div>
+
+        <div class="info-box">
+          <h3>⚠️ Lưu ý quan trọng</h3>
+          <ul>
+            <li>
+              Mã xác thực có hiệu lực trong <strong>15 phút</strong> kể từ khi
+              nhận email này
+            </li>
+            <li>Không chia sẻ mã này với bất kỳ ai, kể cả nhân viên hỗ trợ</li>
+            <li>
+              Nếu bạn không thực hiện đăng ký này, vui lòng bỏ qua email hoặc
+              liên hệ với chúng tôi ngay
+            </li>
+            <li>Mã chỉ được sử dụng <strong>một lần duy nhất</strong></li>
+          </ul>
+        </div>
+
+        <div class="divider"></div>
+
+        <div
+          class="message"
+          style="text-align: center; color: #999; font-size: 13px"
+        >
+          Bạn chưa nhận được mã? Kiểm tra hộp thư spam hoặc yêu cầu gửi lại mã
+          mới trong ứng dụng.
+        </div>
+
+        <div class="signature">
+          <p>Trân trọng,</p>
+          <p><strong>Lost & Found Team</strong></p>
+          <p style="font-size: 13px; color: #999; margin-top: 8px">
+            Bảo vệ tài sản - Kết nối cộng đồng
+          </p>
+        </div>
+      </div>
+
+      <div class="footer">
+        <p>
+          <strong>Lost & Found</strong> - Hệ thống quản lý tài sản thông minh
+        </p>
+        <p>Email: support@lostandfound.com | Hotline: 1900-xxxx</p>
+        <p>© {{year}} Lost & Found. All rights reserved.</p>
+        <p style="margin-top: 15px">
+          <a href="#">Chính sách bảo mật</a> •
+          <a href="#">Điều khoản sử dụng</a> •
+          <a href="#">Trợ giúp</a>
+        </p>
+      </div>
+    </div>
+  </body>
+</html>

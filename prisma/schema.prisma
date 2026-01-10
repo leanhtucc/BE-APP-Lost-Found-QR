@@ -13,10 +13,96 @@ generator client {
   provider = "prisma-client-js"
 }
 
-model Todo {
-    id        Int      @id @default(autoincrement())
-    title     String
-    completed Boolean  @default(false)
-    createdAt DateTime @default(now())
-    updatedAt DateTime @updatedAt
+// Collection: Users (Quản lý người dùng)
+model User {
+  id                     String    @id @default(cuid())
+  uid                    String    @unique // ID từ Firebase Auth
+  displayName            String
+  email                  String    @unique
+  password               String // Hashed password
+  photoURL               String?
+  pushToken              String?
+  totalReturned          Int       @default(0) // Số lần đã trả lại đồ
+  isVerified             Boolean   @default(false) // Email đã xác thực chưa
+  verificationCode       String? // Mã xác thực email
+  verificationCodeExpiry DateTime? // Thời gian hết hạn mã xác thực
+  createdAt              DateTime  @default(now())
+  updatedAt              DateTime  @updatedAt
+
+  // Relations
+  ownedItems  Item[]    @relation("ItemOwner")
+  ownedChats  Chat[]    @relation("ChatOwner")
+  finderChats Chat[]    @relation("ChatFinder")
+  messages    Message[]
+
+  @@index([uid])
+  @@index([email])
+}
+
+// Collection: Items (Quản lý đồ vật)
+model Item {
+  id            String   @id @default(cuid())
+  itemId        String   @unique // ID ngẫu nhiên để dùng trong QR code
+  ownerId       String
+  name          String
+  category      String // wallet, laptop, pet, etc.
+  description   String?
+  status        String   @default("safe") // safe hoặc lost
+  lostMessage   String? // Lời nhắn khi bị mất
+  qrCodeUrl     String? // Link QR code
+  securityToken String   @unique // Token bảo mật cho QR code
+  createdAt     DateTime @default(now())
+  updatedAt     DateTime @updatedAt
+
+  // Relations
+  owner User   @relation("ItemOwner", fields: [ownerId], references: [id], onDelete: Cascade)
+  chats Chat[]
+
+  @@index([itemId])
+  @@index([ownerId])
+  @@index([status])
+}
+
+// Collection: Chats (Quản lý cuộc hội thoại)
+model Chat {
+  id          String   @id @default(cuid())
+  chatId      String   @unique
+  itemId      String
+  ownerId     String
+  finderId    String // ID người nhặt
+  lastMessage String?
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  // Relations
+  item     Item      @relation(fields: [itemId], references: [id], onDelete: Cascade)
+  owner    User      @relation("ChatOwner", fields: [ownerId], references: [id], onDelete: Cascade)
+  finder   User      @relation("ChatFinder", fields: [finderId], references: [id], onDelete: Cascade)
+  messages Message[]
+
+  @@index([chatId])
+  @@index([itemId])
+  @@index([ownerId])
+  @@index([finderId])
+}
+
+// Sub-collection: Messages (Chi tiết từng tin nhắn)
+model Message {
+  id        String   @id @default(cuid())
+  messageId String   @unique
+  chatId    String
+  senderId  String
+  text      String?
+  image     String? // URL ảnh nếu gửi ảnh
+  location  String? // JSON string chứa lat/lng: {"lat": 10.123, "lng": 106.456}
+  createdAt DateTime @default(now())
+
+  // Relations
+  chat   Chat @relation(fields: [chatId], references: [id], onDelete: Cascade)
+  sender User @relation(fields: [senderId], references: [id], onDelete: Cascade)
+
+  @@index([messageId])
+  @@index([chatId])
+  @@index([senderId])
+  @@index([createdAt])
 }
