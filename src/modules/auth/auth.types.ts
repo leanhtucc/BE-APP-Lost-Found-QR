@@ -9,9 +9,19 @@ export interface RegisterDTO {
   photoURL?: string;
 }
 
+export interface RegisterResponse {
+  message: string;
+  email: string;
+}
+
 export interface LoginDTO {
   email: string;
   password: string;
+}
+
+export interface LoginResponse {
+  accessToken: string;
+  refreshToken: string;
 }
 
 export interface AuthResponse {
@@ -43,6 +53,10 @@ export interface UpdateProfileDTO {
 export interface VerifyEmailDTO {
   email: string;
   code: string;
+}
+
+export interface VerifyEmailResponse extends AuthResponse {
+  message: string;
 }
 
 export interface ResendVerificationDTO {

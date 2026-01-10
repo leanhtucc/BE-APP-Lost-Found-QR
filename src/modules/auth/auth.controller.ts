@@ -22,7 +22,7 @@ export class AuthController {
         photoURL,
       });
 
-      return ResponseUtil.created(res, result, "Registration successful");
+      return ResponseUtil.created(res, result, result.message);
     } catch (error) {
       next(error);
     }

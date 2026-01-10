@@ -4,25 +4,61 @@ import { z } from "zod";
  * Auth Module Validation Schemas
  */
 
+// Custom validators
+const passwordRegex = /^(?=.*[a-z])(?=.*[A-Z])(?=.*\d).+$/;
+
 export const registerSchema = z.object({
   body: z.object({
-    email: z.string().email("Invalid email format"),
+    email: z
+      .string({
+        required_error: "Email is required",
+      })
+      .email("Invalid email format")
+      .toLowerCase()
+      .trim(),
+
     password: z
-      .string()
-      .min(6, "Password must be at least 6 characters")
-      .max(100, "Password is too long"),
+      .string({
+        required_error: "Password is required",
+      })
+      .min(8, "Password must be at least 8 characters")
+      .max(100, "Password is too long")
+      .regex(
+        passwordRegex,
+        "Password must contain at least one uppercase letter, one lowercase letter, and one number"
+      ),
+
     displayName: z
-      .string()
+      .string({
+        required_error: "Display name is required",
+      })
       .min(2, "Display name must be at least 2 characters")
-      .max(50, "Display name is too long"),
-    photoURL: z.string().url("Invalid URL").optional(),
+      .max(50, "Display name is too long")
+      .trim()
+      .regex(
+        /^[a-zA-Z0-9\s\u00C0-\u1EF9]+$/,
+        "Display name can only contain letters, numbers, and spaces"
+      ),
+
+    photoURL: z.string().url("Invalid URL format").optional().or(z.literal("")),
   }),
 });
 
 export const loginSchema = z.object({
   body: z.object({
-    email: z.string().email("Invalid email format"),
-    password: z.string().min(1, "Password is required"),
+    email: z
+      .string({
+        required_error: "Email is required",
+      })
+      .email("Invalid email format")
+      .toLowerCase()
+      .trim(),
+
+    password: z
+      .string({
+        required_error: "Password is required",
+      })
+      .min(1, "Password is required"),
   }),
 });
 
@@ -35,24 +71,49 @@ export const refreshTokenSchema = z.object({
 export const updateProfileSchema = z.object({
   body: z.object({
     displayName: z
-      .string()
+      .string({
+        required_error: "Display name is required",
+      })
       .min(2, "Display name must be at least 2 characters")
       .max(50, "Display name is too long")
+      .trim()
+      .regex(
+        /^[a-zA-Z0-9\s\u00C0-\u1EF9]+$/,
+        "Display name can only contain letters, numbers, and spaces"
+      )
       .optional(),
-    photoURL: z.string().url("Invalid URL").optional(),
-    pushToken: z.string().optional(),
+
+    photoURL: z.string().url("Invalid URL format").optional().or(z.literal("")),
   }),
 });
 
 export const verifyEmailSchema = z.object({
   body: z.object({
-    email: z.string().email("Invalid email format"),
-    code: z.string().length(6, "Verification code must be 6 digits"),
+    email: z
+      .string({
+        required_error: "Email is required",
+      })
+      .email("Invalid email format")
+      .toLowerCase()
+      .trim(),
+
+    code: z
+      .string({
+        required_error: "Verification code is required",
+      })
+      .length(6, "Verification code must be 6 digits")
+      .regex(/^\d{6}$/, "Verification code must contain only numbers"),
   }),
 });
 
 export const resendVerificationSchema = z.object({
   body: z.object({
-    email: z.string().email("Invalid email format"),
+    email: z
+      .string({
+        required_error: "Email is required",
+      })
+      .email("Invalid email format")
+      .toLowerCase()
+      .trim(),
   }),
 });

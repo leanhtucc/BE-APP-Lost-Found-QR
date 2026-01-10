@@ -3,10 +3,7 @@ import cors from "cors";
 import helmet from "helmet";
 import { logger } from "./libs/logger";
 import routes from "./routes";
-import {
-  errorHandler,
-  notFoundHandler,
-} from "./middlewares/error.middleware";
+import { errorHandler, notFoundHandler } from "./middlewares/error.middleware";
 import { rateLimit } from "./middlewares/rate-limit.middleware";
 
 /**

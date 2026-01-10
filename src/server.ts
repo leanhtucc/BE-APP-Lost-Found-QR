@@ -22,7 +22,7 @@ async function startServer() {
     // Graceful shutdown
     const shutdown = async () => {
       logger.warn("⚠️  Shutting down gracefully...");
-      
+
       server.close(async () => {
         await disconnectDatabase();
         logger.info("👋 Server closed");
@@ -38,7 +38,6 @@ async function startServer() {
 
     process.on("SIGTERM", shutdown);
     process.on("SIGINT", shutdown);
-
   } catch (error) {
     logger.error("❌ Failed to start server:", error);
     process.exit(1);

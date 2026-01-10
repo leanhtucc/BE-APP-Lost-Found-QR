@@ -29,10 +29,10 @@ export class TemplateUtil {
       );
 
       const template = fs.readFileSync(templatePath, "utf-8");
-      
+
       // Cache the template for better performance
       this.templateCache.set(templateName, template);
-      
+
       return template;
     } catch (error) {
       throw new Error(`Failed to load email template: ${templateName}`);

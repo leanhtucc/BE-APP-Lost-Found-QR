@@ -1,6 +1,10 @@
 import { nanoid } from "nanoid";
 import { ItemsRepository } from "./items.repository";
-import { CreateItemDTO, UpdateItemStatusDTO, ItemResponse } from "./items.types";
+import {
+  CreateItemDTO,
+  UpdateItemStatusDTO,
+  ItemResponse,
+} from "./items.types";
 import { AppError } from "../../middlewares/error.middleware";
 
 /**
@@ -31,7 +35,10 @@ export class ItemsService {
     return item;
   }
 
-  async getItemByItemId(itemId: string, securityToken?: string): Promise<ItemResponse> {
+  async getItemByItemId(
+    itemId: string,
+    securityToken?: string
+  ): Promise<ItemResponse> {
     const item = await itemsRepository.findByItemId(itemId);
 
     if (!item) {
@@ -53,20 +60,6 @@ export class ItemsService {
     };
   }
 
-  // Cập nhật trạng thái món đồ
-  async updateItemStatus(
-    itemId: string,
-    ownerId: string,
-    status: "safe" | "lost",
-    lostMessage?: string
-  ) {
-    // Kiểm tra quyền sở hữu
-    const item = await prisma.item.findUnique({
-      where: { itemId },
-    });
-
-    if (!item) {
-      throw new Error("Item not found");
   async updateItemStatus(
     itemId: string,
     ownerId: string,
@@ -84,8 +77,16 @@ export class ItemsService {
 
     const updated = await itemsRepository.update(itemId, {
       status: data.status,
-      lostMessage: data.status === "lost" ? data.lostMessage : null
-async getItemsByOwner(ownerId: string) {
+      lostMessage: data.status === "lost" ? data.lostMessage : null,
+    });
+
+    return updated;
+  }
+
+  async getItemsByOwner(ownerId: string) {
+    return await itemsRepository.findByOwnerId(ownerId);
+  }
+
   async deleteItem(itemId: string, ownerId: string) {
     const item = await itemsRepository.findByItemId(itemId);
 
@@ -98,3 +99,5 @@ async getItemsByOwner(ownerId: string) {
     }
 
     await itemsRepository.delete(itemId);
+  }
+}

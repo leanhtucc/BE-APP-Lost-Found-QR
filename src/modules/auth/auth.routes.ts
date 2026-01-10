@@ -19,17 +19,9 @@ const router = Router();
 const authController = new AuthController();
 
 // Public routes
-router.post(
-  "/register",
-  validate(registerSchema),
-  authController.register
-);
+router.post("/register", validate(registerSchema), authController.register);
 
-router.post(
-  "/login",
-  validate(loginSchema),
-  authController.login
-);
+router.post("/login", validate(loginSchema), authController.login);
 
 router.post(
   "/refresh",
@@ -50,11 +42,7 @@ router.post(
 );
 
 // Protected routes (cần authentication)
-router.get(
-  "/profile",
-  authMiddleware,
-  authController.getProfile
-);
+router.get("/profile", authMiddleware, authController.getProfile);
 
 router.patch(
   "/profile",
@@ -63,16 +51,8 @@ router.patch(
   authController.updateProfile
 );
 
-router.delete(
-  "/account",
-  authMiddleware,
-  authController.deleteAccount
-);
+router.delete("/account", authMiddleware, authController.deleteAccount);
 
-router.post(
-  "/logout",
-  authMiddleware,
-  authController.logout
-);
+router.post("/logout", authMiddleware, authController.logout);
 
 export default router;

@@ -34,10 +34,7 @@ export class ItemsController {
       const { itemId } = req.params;
       const { token } = req.query;
 
-      const item = await itemsService.getItemByItemId(
-        itemId,
-        token as string
-      );
+      const item = await itemsService.getItemByItemId(itemId, token as string);
 
       return ResponseUtil.success(res, item);
     } catch (error) {
@@ -97,4 +94,9 @@ export class ItemsController {
 
       return ResponseUtil.success(res, null, "Item deleted successfully");
     } catch (error) {
-      next(error
+      next(error);
+    }
+  }
+}
+
+export const itemsController = new ItemsController();

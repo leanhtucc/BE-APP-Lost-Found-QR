@@ -1,0 +1,45 @@
+import { Request, Response, NextFunction } from "express";
+import { UploadService } from "./upload.service";
+import { ResponseUtil } from "../../utils/response";
+import { AppError } from "../../middlewares/error.middleware";
+
+/**
+ * Upload Controller
+ * Handle file upload requests
+ */
+
+const uploadService = new UploadService();
+
+export class UploadController {
+  async uploadImage(req: Request, res: Response, next: NextFunction) {
+    try {
+      if (!req.file) {
+        throw new AppError("No file uploaded", 400);
+      }
+
+      const userId = req.user!.id;
+      const file = req.file;
+
+      const result = await uploadService.uploadImage(file, userId);
+
+      return ResponseUtil.success(res, result, "Image uploaded successfully");
+    } catch (error) {
+      next(error);
+    }
+  }
+
+  async deleteImage(req: Request, res: Response, next: NextFunction) {
+    try {
+      const { filename } = req.params;
+      const userId = req.user!.id;
+
+      await uploadService.deleteFile(filename, userId);
+
+      return ResponseUtil.success(res, null, "Image deleted successfully");
+    } catch (error) {
+      next(error);
+    }
+  }
+}
+
+export const uploadController = new UploadController();

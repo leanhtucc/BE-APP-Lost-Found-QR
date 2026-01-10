@@ -2,11 +2,14 @@ import { nanoid } from "nanoid";
 import { AuthRepository } from "./auth.repository";
 import {
   RegisterDTO,
+  RegisterResponse,
   LoginDTO,
+  LoginResponse,
   AuthResponse,
   UserResponse,
   UpdateProfileDTO,
   VerifyEmailDTO,
+  VerifyEmailResponse,
   ResendVerificationDTO,
 } from "./auth.types";
 import { hashPassword, comparePassword } from "../../utils/hash";
@@ -49,7 +52,17 @@ export class AuthService {
     return expiry;
   }
 
-  asyncGenerate verification code
+  async register(data: RegisterDTO): Promise<RegisterResponse> {
+    // Check if email exists
+    const existingUser = await authRepository.findByEmail(data.email);
+    if (existingUser) {
+      throw new AppError("Email already registered", 400);
+    }
+
+    // Hash password
+    const hashedPassword = await hashPassword(data.password);
+
+    // Generate verification code
     const verificationCode = this.generateVerificationCode();
     const verificationCodeExpiry = this.getCodeExpiry();
 
@@ -76,40 +89,20 @@ export class AuthService {
       logger.info(`Verification email sent to ${user.email}`);
     } catch (error) {
       logger.error("Failed to send verification email:", error);
-      // Không throw error, cho phép user đăng ký thành công
+      throw new AppError(
+        "Failed to send verification email. Please try again.",
+        500
+      );
     }
 
-    // Generate tokens (user chưa verified vẫn có thể login nhưng bị giới hạn chức năng)h unique uid
-    const uid = `user_${nanoid(16)}`;
-    const user = await authRepository.createUser({
-      uid,
-      email: data.email,
-      password: hashedPassword,
-      displayName: data.displayName,
-      photoURL: data.photoURL,
-    });
-
-    // Generate tokens
-    const accessToken = generateAccessToken({
-      id: user.id,
-      uid: user.uid,
-      email: user.email,
-    });
-
-    const refreshToken = generateRefreshToken({
-      id: user.id,
-      uid: user.uid,
-      email: user.email,
-    });
-
     return {
-      accessToken,
-      refreshToken,
-      user: this.formatUserResponse(user),
+      message:
+        "Registration successful! Please check your email for verification code.",
+      email: user.email,
     };
   }
 
-  async login(data: LoginDTO): Promise<AuthResponse> {
+  async login(data: LoginDTO): Promise<LoginResponse> {
     // Find user by email
     const user = await authRepository.findByEmail(data.email);
     if (!user) {
@@ -117,12 +110,17 @@ export class AuthService {
     }
 
     // Verify password
-    const isValidPassword = await comparePassword(
-      data.password,
-      user.password
-    );
+    const isValidPassword = await comparePassword(data.password, user.password);
     if (!isValidPassword) {
       throw new AppError("Invalid email or password", 401);
+    }
+
+    // Check if email is verified
+    if (!user.isVerified) {
+      throw new AppError(
+        "Please verify your email before logging in. Check your inbox for the verification code.",
+        403
+      );
     }
 
     // Generate tokens
@@ -141,11 +139,10 @@ export class AuthService {
     return {
       accessToken,
       refreshToken,
-      user: this.formatUserResponse(user),
     };
   }
 
-  async refreshToken(refreshToken: string): Promise<AuthResponse> {
+  async refreshToken(refreshToken: string): Promise<LoginResponse> {
     try {
       // Verify refresh token
       const decoded = verifyRefreshToken(refreshToken);
@@ -172,7 +169,6 @@ export class AuthService {
       return {
         accessToken: newAccessToken,
         refreshToken: newRefreshToken,
-        user: this.formatUserResponse(user),
       };
     } catch (error) {
       throw new AppError("Invalid refresh token", 401);
@@ -188,9 +184,7 @@ export class AuthService {
     return this.formatUserResponse(user);
   }
 
-  async updateProfile(
-
-  async verifyEmail(data: VerifyEmailDTO): Promise<{ message: string }> {
+  async verifyEmail(data: VerifyEmailDTO): Promise<VerifyEmailResponse> {
     const user = await authRepository.findByEmail(data.email);
     if (!user) {
       throw new AppError("User not found", 404);
@@ -206,7 +200,10 @@ export class AuthService {
 
     // Check if code expired
     if (new Date() > user.verificationCodeExpiry) {
-      throw new AppError("Verification code expired", 400);
+      throw new AppError(
+        "Verification code expired. Please request a new code.",
+        400
+      );
     }
 
     // Verify code
@@ -228,7 +225,28 @@ export class AuthService {
       logger.error("Failed to send welcome email:", error);
     }
 
-    return { message: "Email verified successfully" };
+    // Generate tokens after successful verification
+    const accessToken = generateAccessToken({
+      id: user.id,
+      uid: user.uid,
+      email: user.email,
+    });
+
+    const refreshToken = generateRefreshToken({
+      id: user.id,
+      uid: user.uid,
+      email: user.email,
+    });
+
+    return {
+      message: "Email verified successfully! You can now use the app.",
+      accessToken,
+      refreshToken,
+      user: this.formatUserResponse({
+        ...user,
+        isVerified: true,
+      }),
+    };
   }
 
   async resendVerificationCode(
@@ -268,6 +286,8 @@ export class AuthService {
 
     return { message: "Verification code sent successfully" };
   }
+
+  async updateProfile(
     userId: string,
     data: UpdateProfileDTO
   ): Promise<UserResponse> {
@@ -289,3 +309,5 @@ export class AuthService {
     await authRepository.deleteUser(userId);
   }
 }
+
+export const authService = new AuthService();

@@ -40,11 +40,7 @@ export async function authMiddleware(
   }
 }
 
-export function optionalAuth(
-  req: Request,
-  res: Response,
-  next: NextFunction
-) {
+export function optionalAuth(req: Request, res: Response, next: NextFunction) {
   try {
     const authHeader = req.headers.authorization;
 

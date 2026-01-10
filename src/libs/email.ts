@@ -67,7 +67,9 @@ class EmailService {
         html: options.html,
       });
 
-      logger.info(`Email sent successfully to ${options.to}: ${info.messageId}`);
+      logger.info(
+        `Email sent successfully to ${options.to}: ${info.messageId}`
+      );
       return true;
     } catch (error) {
       logger.error("Failed to send email:", error);
@@ -81,15 +83,19 @@ class EmailService {
     code: string
   ): Promise<boolean> {
     const subject = "Xác thực tài khoản - Lost & Found";
-    
+
     // Load and render template with variables
-    const html = TemplateUtil.loadAndRender("verification", {
-      displayName,
-      code,
-      year: new Date().getFullYear(),
-    }, {
-      useBase64Images: true // Embed logo as base64 trong email
-    });
+    const html = TemplateUtil.loadAndRender(
+      "verification",
+      {
+        displayName,
+        code,
+        year: new Date().getFullYear(),
+      },
+      {
+        useBase64Images: true, // Embed logo as base64 trong email
+      }
+    );
 
     const text = `
       Xin chào ${displayName},
@@ -116,14 +122,18 @@ class EmailService {
 
   async sendWelcomeEmail(email: string, displayName: string): Promise<boolean> {
     const subject = "Chào mừng đến với Lost & Found! 🎉";
-    
+
     // Load and render template with variables
-    const html = TemplateUtil.loadAndRender("welcome", {
-      displayName,
-      year: new Date().getFullYear(),
-    }, {
-      useBase64Images: true // Embed logo as base64 trong email
-    });
+    const html = TemplateUtil.loadAndRender(
+      "welcome",
+      {
+        displayName,
+        year: new Date().getFullYear(),
+      },
+      {
+        useBase64Images: true, // Embed logo as base64 trong email
+      }
+    );
 
     return this.sendEmail({
       to: email,
