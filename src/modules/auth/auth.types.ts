@@ -12,6 +12,8 @@ export interface RegisterDTO {
 export interface RegisterResponse {
   message: string;
   email: string;
+  accessToken?: string; // Available in dev mode
+  refreshToken?: string; // Available in dev mode
 }
 
 export interface LoginDTO {
@@ -55,8 +57,10 @@ export interface VerifyEmailDTO {
   code: string;
 }
 
-export interface VerifyEmailResponse extends AuthResponse {
+export interface VerifyEmailResponse {
   message: string;
+  accessToken: string;
+  refreshToken: string;
 }
 
 export interface ResendVerificationDTO {

@@ -1,26 +1,25 @@
 import { nanoid } from "nanoid";
-import { AuthRepository } from "./auth.repository";
-import {
-  RegisterDTO,
-  RegisterResponse,
-  LoginDTO,
-  LoginResponse,
-  AuthResponse,
-  UserResponse,
-  UpdateProfileDTO,
-  VerifyEmailDTO,
-  VerifyEmailResponse,
-  ResendVerificationDTO,
-} from "./auth.types";
-import { hashPassword, comparePassword } from "../../utils/hash";
+import { emailService } from "../../libs/email";
 import {
   generateAccessToken,
   generateRefreshToken,
   verifyRefreshToken,
 } from "../../libs/jwt";
-import { AppError } from "../../middlewares/error.middleware";
-import { emailService } from "../../libs/email";
 import { logger } from "../../libs/logger";
+import { AppError } from "../../middlewares/error.middleware";
+import { comparePassword, hashPassword } from "../../utils/hash";
+import { AuthRepository } from "./auth.repository";
+import {
+  LoginDTO,
+  LoginResponse,
+  RegisterDTO,
+  RegisterResponse,
+  ResendVerificationDTO,
+  UpdateProfileDTO,
+  UserResponse,
+  VerifyEmailDTO,
+  VerifyEmailResponse,
+} from "./auth.types";
 
 /**
  * Auth Service
@@ -62,9 +61,16 @@ export class AuthService {
     // Hash password
     const hashedPassword = await hashPassword(data.password);
 
-    // Generate verification code
-    const verificationCode = this.generateVerificationCode();
-    const verificationCodeExpiry = this.getCodeExpiry();
+    // Check if skip email verification (dev mode)
+    const skipVerification = ENV.SKIP_EMAIL_VERIFICATION;
+
+    // Generate verification code (only if not skipping)
+    const verificationCode = skipVerification
+      ? null
+      : this.generateVerificationCode();
+    const verificationCodeExpiry = skipVerification
+      ? null
+      : this.getCodeExpiry();
 
     // Create user with unique uid
     const uid = `user_${nanoid(16)}`;
@@ -76,15 +82,41 @@ export class AuthService {
       photoURL: data.photoURL,
       verificationCode,
       verificationCodeExpiry,
-      isVerified: false,
+      isVerified: skipVerification, // Auto-verify in dev mode
     });
 
-    // Send verification email
+    // Skip email in dev mode
+    if (skipVerification) {
+      logger.info(`[DEV MODE] Email verification skipped for ${user.email}`);
+
+      // Generate tokens immediately
+      const accessToken = generateAccessToken({
+        id: user.id,
+        uid: user.uid,
+        email: user.email,
+      });
+
+      const refreshToken = generateRefreshToken({
+        id: user.id,
+        uid: user.uid,
+        email: user.email,
+      });
+
+      return {
+        message:
+          "Registration successful! (Dev mode - email verification skipped)",
+        email: user.email,
+        accessToken,
+        refreshToken,
+      };
+    }
+
+    // Send verification email (production mode)
     try {
       await emailService.sendVerificationEmail(
         user.email,
         user.displayName,
-        verificationCode
+        verificationCode!
       );
       logger.info(`Verification email sent to ${user.email}`);
     } catch (error) {
@@ -242,10 +274,6 @@ export class AuthService {
       message: "Email verified successfully! You can now use the app.",
       accessToken,
       refreshToken,
-      user: this.formatUserResponse({
-        ...user,
-        isVerified: true,
-      }),
     };
   }
 

@@ -8,7 +8,7 @@ import { z } from "zod";
 const passwordRegex = /^(?=.*[a-z])(?=.*[A-Z])(?=.*\d).+$/;
 
 export const registerSchema = z.object({
-  body: z.object({
+  query: z.object({
     email: z
       .string({
         required_error: "Email is required",
@@ -40,12 +40,14 @@ export const registerSchema = z.object({
         "Display name can only contain letters, numbers, and spaces"
       ),
 
-    photoURL: z.string().url("Invalid URL format").optional().or(z.literal("")),
+    photoURL: z
+      .union([z.string().url("Invalid URL format"), z.literal("")])
+      .optional(),
   }),
 });
 
 export const loginSchema = z.object({
-  body: z.object({
+  query: z.object({
     email: z
       .string({
         required_error: "Email is required",
@@ -63,13 +65,13 @@ export const loginSchema = z.object({
 });
 
 export const refreshTokenSchema = z.object({
-  body: z.object({
+  query: z.object({
     refreshToken: z.string().min(1, "Refresh token is required"),
   }),
 });
 
 export const updateProfileSchema = z.object({
-  body: z.object({
+  query: z.object({
     displayName: z
       .string({
         required_error: "Display name is required",
@@ -83,12 +85,14 @@ export const updateProfileSchema = z.object({
       )
       .optional(),
 
-    photoURL: z.string().url("Invalid URL format").optional().or(z.literal("")),
+    photoURL: z
+      .union([z.string().url("Invalid URL format"), z.literal("")])
+      .optional(),
   }),
 });
 
 export const verifyEmailSchema = z.object({
-  body: z.object({
+  query: z.object({
     email: z
       .string({
         required_error: "Email is required",
@@ -107,7 +111,7 @@ export const verifyEmailSchema = z.object({
 });
 
 export const resendVerificationSchema = z.object({
-  body: z.object({
+  query: z.object({
     email: z
       .string({
         required_error: "Email is required",

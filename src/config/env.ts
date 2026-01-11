@@ -28,6 +28,11 @@ export const ENV = {
   SMTP_USER: process.env.SMTP_USER || "",
   SMTP_PASS: process.env.SMTP_PASS || "",
   SMTP_FROM_EMAIL: process.env.SMTP_FROM_EMAIL || "noreply@lostfound.com",
+
+  // Development Mode
+  SKIP_EMAIL_VERIFICATION:
+    process.env.SKIP_EMAIL_VERIFICATION === "true" ||
+    process.env.NODE_ENV === "development",
   SMTP_FROM_NAME: process.env.SMTP_FROM_NAME || "Lost & Found",
 } as const;
 
