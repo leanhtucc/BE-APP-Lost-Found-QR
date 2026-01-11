@@ -1,5 +1,6 @@
 import { nanoid } from "nanoid";
 import { emailService } from "../../libs/email";
+import { googleOAuthService } from "../../libs/google-oauth";
 import {
   generateAccessToken,
   generateRefreshToken,
@@ -10,6 +11,7 @@ import { AppError } from "../../middlewares/error.middleware";
 import { comparePassword, hashPassword } from "../../utils/hash";
 import { AuthRepository } from "./auth.repository";
 import {
+  GoogleAuthResponse,
   LoginDTO,
   LoginResponse,
   RegisterDTO,
@@ -335,6 +337,79 @@ export class AuthService {
     }
 
     await authRepository.deleteUser(userId);
+  }
+
+  async getGoogleAuthUrl(): Promise<string> {
+    return googleOAuthService.getAuthUrl();
+  }
+
+  async googleAuth(code: string): Promise<GoogleAuthResponse> {
+    try {
+      // Verify Google token and get user info
+      const googleUser = await googleOAuthService.verifyToken(code);
+
+      if (!googleUser.verified_email) {
+        throw new AppError("Google email not verified", 400);
+      }
+
+      // Check if user exists with Google ID
+      let user = await authRepository.findByGoogleId(googleUser.id);
+      let isNewUser = false;
+
+      if (!user) {
+        // Check if user exists with same email
+        user = await authRepository.findByEmail(googleUser.email);
+
+        if (user) {
+          // Link Google account to existing user
+          user = await authRepository.updateUser(user.id, {
+            googleId: googleUser.id,
+            photoURL: googleUser.picture || user.photoURL,
+            isVerified: true, // Auto-verify Google users
+          });
+          logger.info(`Google account linked to existing user: ${user.email}`);
+        } else {
+          // Create new user with Google account
+          const uid = `user_${nanoid(16)}`;
+          user = await authRepository.createUser({
+            uid,
+            email: googleUser.email,
+            password: null, // No password for OAuth users
+            displayName: googleUser.name,
+            photoURL: googleUser.picture,
+            googleId: googleUser.id,
+            isVerified: true, // Auto-verify Google users
+            verificationCode: null,
+            verificationCodeExpiry: null,
+          });
+          isNewUser = true;
+          logger.info(`New user created via Google OAuth: ${user.email}`);
+        }
+      }
+
+      // Generate tokens
+      const accessToken = generateAccessToken({
+        id: user.id,
+        uid: user.uid,
+        email: user.email,
+      });
+
+      const refreshToken = generateRefreshToken({
+        id: user.id,
+        uid: user.uid,
+        email: user.email,
+      });
+
+      return {
+        accessToken,
+        refreshToken,
+        user: this.formatUserResponse(user),
+        isNewUser,
+      };
+    } catch (error) {
+      logger.error("Google OAuth error:", error);
+      throw new AppError("Google authentication failed", 500);
+    }
   }
 }
 

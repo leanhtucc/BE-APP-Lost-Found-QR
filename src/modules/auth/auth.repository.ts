@@ -1,5 +1,5 @@
-import { prisma } from "../../libs/prisma";
 import { User } from "@prisma/client";
+import { prisma } from "../../libs/prisma";
 
 /**
  * Auth Repository
@@ -36,6 +36,12 @@ export class AuthRepository {
   async findByEmail(email: string) {
     return prisma.user.findUnique({
       where: { email },
+    });
+  }
+
+  async findByGoogleId(googleId: string) {
+    return prisma.user.findUnique({
+      where: { googleId },
     });
   }
 

@@ -1,6 +1,6 @@
 import { Router } from "express";
-import itemsRoutes from "./items/items.routes";
 import authRoutes from "./auth/auth.routes";
+import itemRoutes from "./item/item.routes";
 import uploadRoutes from "./upload/upload.routes";
 
 /**
@@ -9,8 +9,10 @@ import uploadRoutes from "./upload/upload.routes";
 
 const router = Router();
 
-router.use("/items", itemsRoutes);
 router.use("/auth", authRoutes);
 router.use("/upload", uploadRoutes);
+
+// Item routes (bao gồm cả /items và /scan)
+router.use(itemRoutes);
 
 export default router;

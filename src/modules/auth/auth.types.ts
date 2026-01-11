@@ -66,3 +66,14 @@ export interface VerifyEmailResponse {
 export interface ResendVerificationDTO {
   email: string;
 }
+
+export interface GoogleAuthDTO {
+  code: string;
+}
+
+export interface GoogleAuthResponse {
+  accessToken: string;
+  refreshToken: string;
+  user: UserResponse;
+  isNewUser: boolean;
+}

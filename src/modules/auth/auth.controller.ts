@@ -138,4 +138,35 @@ export class AuthController {
       next(error);
     }
   }
+
+  // GET /api/auth/google - Chuyển hướng đến Google OAuth
+  async googleLogin(req: Request, res: Response, next: NextFunction) {
+    try {
+      const authUrl = await authService.getGoogleAuthUrl();
+      return res.redirect(authUrl);
+    } catch (error) {
+      next(error);
+    }
+  }
+
+  // GET /api/auth/google/callback - Xử lý callback từ Google
+  async googleCallback(req: Request, res: Response, next: NextFunction) {
+    try {
+      const { code } = req.query as any;
+
+      if (!code) {
+        return ResponseUtil.error(res, "Authorization code is required", 400);
+      }
+
+      const result = await authService.googleAuth(code);
+
+      return ResponseUtil.success(
+        res,
+        result,
+        result.isNewUser ? "Account created successfully" : "Login successful"
+      );
+    } catch (error) {
+      next(error);
+    }
+  }
 }

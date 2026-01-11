@@ -10,7 +10,8 @@
     "format:check": "prettier --check \"src/**/*.{ts,js,json}\"",
     "prisma:studio": "prisma studio",
     "prisma:migrate": "prisma migrate dev --name init",
-    "prisma:generate": "prisma generate"
+    "prisma:generate": "prisma generate",
+    "seed": "ts-node prisma/seed.ts"
   },
   "keywords": [],
   "author": "",
@@ -25,6 +26,7 @@
     "@types/nodemailer": "^6.4.14",
     "@types/prettier": "^2.7.3",
     "prettier": "^3.7.4",
+    "ts-node": "^10.9.2",
     "ts-node-dev": "^2.0.0",
     "typescript": "^5.9.3"
   },
@@ -35,6 +37,7 @@
     "cors": "^2.8.5",
     "dotenv": "^17.2.3",
     "express": "^5.2.1",
+    "googleapis": "^170.0.0",
     "helmet": "^8.0.0",
     "jsonwebtoken": "^9.0.3",
     "multer": "^2.0.2",

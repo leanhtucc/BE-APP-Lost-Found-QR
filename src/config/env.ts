@@ -34,6 +34,16 @@ export const ENV = {
     process.env.SKIP_EMAIL_VERIFICATION === "true" ||
     process.env.NODE_ENV === "development",
   SMTP_FROM_NAME: process.env.SMTP_FROM_NAME || "Lost & Found",
+
+  // Google OAuth
+  GOOGLE_CLIENT_ID: process.env.GOOGLE_CLIENT_ID || "",
+  GOOGLE_CLIENT_SECRET: process.env.GOOGLE_CLIENT_SECRET || "",
+  GOOGLE_CALLBACK_URL:
+    process.env.GOOGLE_CALLBACK_URL ||
+    "http://localhost:3000/api/auth/google/callback",
+
+  // Item/QR Code Config
+  APP_BASE_URL: process.env.APP_BASE_URL || "http://localhost:3000",
 } as const;
 
 export const isDevelopment = ENV.NODE_ENV === "development";

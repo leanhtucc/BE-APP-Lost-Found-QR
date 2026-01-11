@@ -19,13 +19,14 @@ model User {
   uid                    String    @unique // ID từ Firebase Auth
   displayName            String
   email                  String    @unique
-  password               String // Hashed password
+  password               String? // Hashed password (optional for OAuth users)
   photoURL               String?
   pushToken              String?
   totalReturned          Int       @default(0) // Số lần đã trả lại đồ
   isVerified             Boolean   @default(false) // Email đã xác thực chưa
   verificationCode       String? // Mã xác thực email
   verificationCodeExpiry DateTime? // Thời gian hết hạn mã xác thực
+  googleId               String?   @unique // Google OAuth ID
   createdAt              DateTime  @default(now())
   updatedAt              DateTime  @updatedAt
 
@@ -37,22 +38,26 @@ model User {
 
   @@index([uid])
   @@index([email])
+  @@index([googleId])
 }
 
 // Collection: Items (Quản lý đồ vật)
 model Item {
-  id            String   @id @default(cuid())
-  itemId        String   @unique // ID ngẫu nhiên để dùng trong QR code
-  ownerId       String
-  name          String
-  category      String // wallet, laptop, pet, etc.
-  description   String?
-  status        String   @default("safe") // safe hoặc lost
-  lostMessage   String? // Lời nhắn khi bị mất
-  qrCodeUrl     String? // Link QR code
-  securityToken String   @unique // Token bảo mật cho QR code
-  createdAt     DateTime @default(now())
-  updatedAt     DateTime @updatedAt
+  id               String   @id @default(cuid())
+  itemId           String   @unique // ID ngẫu nhiên để dùng trong QR code
+  ownerId          String
+  name             String
+  category         String // tech, pets, wallet, audio, etc.
+  description      String?
+  status           String   @default("safe") // safe hoặc lost
+  lostMessage      String? // Lời nhắn khi bị mất
+  qrCodeUrl        String? // Link QR code đầy đủ
+  imagePublicUrl   String? // Link ảnh thật của món đồ
+  lastSeenLocation String? // JSON string chứa lat/lng: {"lat": 10.123, "lng": 106.456}
+  securityPin      String? // Mã PIN 4 số để xác nhận trả đồ
+  securityToken    String   @unique // Token bảo mật cho QR code
+  createdAt        DateTime @default(now())
+  updatedAt        DateTime @updatedAt
 
   // Relations
   owner User   @relation("ItemOwner", fields: [ownerId], references: [id], onDelete: Cascade)

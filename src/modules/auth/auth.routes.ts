@@ -1,14 +1,14 @@
 import { Router } from "express";
-import { AuthController } from "./auth.controller";
 import { authMiddleware } from "../../middlewares/auth.middleware";
 import { validate } from "../../middlewares/validate.middleware";
+import { AuthController } from "./auth.controller";
 import {
-  registerSchema,
   loginSchema,
   refreshTokenSchema,
+  registerSchema,
+  resendVerificationSchema,
   updateProfileSchema,
   verifyEmailSchema,
-  resendVerificationSchema,
 } from "./auth.schema";
 
 /**
@@ -40,6 +40,11 @@ router.post(
   validate(resendVerificationSchema),
   authController.resendVerification
 );
+
+// Google OAuth routes
+router.get("/google", authController.googleLogin);
+
+router.get("/google/callback", authController.googleCallback);
 
 // Protected routes (cần authentication)
 router.get("/profile", authMiddleware, authController.getProfile);
