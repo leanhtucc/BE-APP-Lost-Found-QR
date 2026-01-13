@@ -61,8 +61,8 @@ export class ItemController {
       const result = await itemService.listItems(userId, {
         status,
         category,
-        page,
-        limit,
+        page: page ? parseInt(page, 10) : 1,
+        limit: limit ? parseInt(limit, 10) : 10,
       });
 
       return ResponseUtil.success(res, result);

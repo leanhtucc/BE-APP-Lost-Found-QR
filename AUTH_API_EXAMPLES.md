@@ -3,6 +3,7 @@
 ## ⚠️ Flow Đăng ký mới (Updated)
 
 **Bước 1: Đăng ký tài khoản**
+
 ```bash
 POST http://localhost:3000/api/auth/register
 ```
@@ -10,6 +11,7 @@ POST http://localhost:3000/api/auth/register
 **Bước 2: Nhận mã code qua email (kiểm tra hộp thư)**
 
 **Bước 3: Xác thực email với mã code**
+
 ```bash
 POST http://localhost:3000/api/auth/verify-email
 ```
@@ -33,18 +35,20 @@ Content-Type: application/json
 ```
 
 **Validation Rules:**
+
 - ✅ **email**: Bắt buộc, phải đúng format email
-- ✅ **password**: 
+- ✅ **password**:
   - Tối thiểu 8 ký tự
   - Phải có ít nhất 1 chữ HOA
   - Phải có ít nhất 1 chữ thường
   - Phải có ít nhất 1 số
-- ✅ **displayName**: 
+- ✅ **displayName**:
   - Tối thiểu 2 ký tự, tối đa 50 ký tự
   - Chỉ chứa chữ cái, số, khoảng trắng (hỗ trợ tiếng Việt)
 - ✅ **photoURL**: Optional, nếu có phải là URL hợp lệ
 
 **Response (Không có token):**
+
 ```json
 {
   "success": true,
@@ -56,7 +60,8 @@ Content-Type: application/json
 }
 ```
 
-**⚠️ Lưu ý:** 
+**⚠️ Lưu ý:**
+
 - Không trả về token ngay
 - User cần check email để lấy mã 6 chữ số
 - Mã có hiệu lực 15 phút
@@ -76,6 +81,7 @@ Content-Type: application/json
 ```
 
 **Response (Có token):**
+
 ```json
 {
   "success": true,
@@ -98,6 +104,7 @@ Content-Type: application/json
 ```
 
 **✅ Sau bước này:**
+
 - User đã có token để sử dụng app
 - Có thể gọi các API protected
 - Welcome email được gửi tự động
@@ -118,6 +125,7 @@ Content-Type: application/json
 ```
 
 **Response:**
+
 ```json
 {
   "success": true,
@@ -145,6 +153,7 @@ Content-Type: application/json
 ```
 
 **Response (Chỉ có token):**
+
 ```json
 {
   "success": true,
@@ -157,6 +166,7 @@ Content-Type: application/json
 ```
 
 **💡 Để lấy thông tin user:**
+
 ```bash
 GET http://localhost:3000/api/auth/profile
 Authorization: Bearer eyJhbGciOiJIUzI1NiIs...
@@ -176,6 +186,7 @@ Content-Type: application/json
 ```
 
 **Response (Chỉ có token):**
+
 ```json
 {
   "success": true,
@@ -199,6 +210,7 @@ Authorization: Bearer eyJhbGciOiJIUzI1NiIs...
 ```
 
 **Response:**
+
 ```json
 {
   "success": true,
@@ -231,6 +243,7 @@ Content-Type: application/json
 ```
 
 **Response:**
+
 ```json
 {
   "success": true,
@@ -257,6 +270,7 @@ Authorization: Bearer eyJhbGciOiJIUzI1NiIs...
 ```
 
 **Response:**
+
 ```json
 {
   "success": true,
@@ -277,6 +291,7 @@ Authorization: Bearer eyJhbGciOiJIUzI1NiIs...
 ```
 
 **Response:**
+
 ```json
 {
   "success": true,
@@ -290,6 +305,7 @@ Authorization: Bearer eyJhbGciOiJIUzI1NiIs...
 ## Error Responses
 
 ### Email chưa verify (403) - Khi login
+
 ```json
 {
   "success": false,
@@ -299,6 +315,7 @@ Authorization: Bearer eyJhbGciOiJIUzI1NiIs...
 ```
 
 ### Mã xác thực hết hạn (400)
+
 ```json
 {
   "success": false,
@@ -308,6 +325,7 @@ Authorization: Bearer eyJhbGciOiJIUzI1NiIs...
 ```
 
 ### Mã xác thực sai (400)
+
 ```json
 {
   "success": false,
@@ -317,6 +335,7 @@ Authorization: Bearer eyJhbGciOiJIUzI1NiIs...
 ```
 
 ### Validation Error - Password yếu (400)
+
 ```json
 {
   "success": false,
@@ -327,6 +346,7 @@ Authorization: Bearer eyJhbGciOiJIUzI1NiIs...
 ```
 
 ### Validation Error - Display name không hợp lệ (400)
+
 ```json
 {
   "success": false,
@@ -337,6 +357,7 @@ Authorization: Bearer eyJhbGciOiJIUzI1NiIs...
 ```
 
 ### Validation Error - Email format (400)
+
 ```json
 {
   "success": false,
@@ -347,6 +368,7 @@ Authorization: Bearer eyJhbGciOiJIUzI1NiIs...
 ```
 
 ### Email đã tồn tại (400)
+
 ```json
 {
   "success": false,
@@ -356,6 +378,7 @@ Authorization: Bearer eyJhbGciOiJIUzI1NiIs...
 ```
 
 ### Sai email/password (401)
+
 ```json
 {
   "success": false,
@@ -365,6 +388,7 @@ Authorization: Bearer eyJhbGciOiJIUzI1NiIs...
 ```
 
 ### Token không hợp lệ (401)
+
 ```json
 {
   "success": false,
@@ -374,6 +398,7 @@ Authorization: Bearer eyJhbGciOiJIUzI1NiIs...
 ```
 
 ### Validation Error (400)
+
 ```json
 {
   "success": false,
