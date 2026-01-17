@@ -31,10 +31,7 @@ model User {
   updatedAt              DateTime  @updatedAt
 
   // Relations
-  ownedItems  Item[]    @relation("ItemOwner")
-  ownedChats  Chat[]    @relation("ChatOwner")
-  finderChats Chat[]    @relation("ChatFinder")
-  messages    Message[]
+  ownedItems Item[] @relation("ItemOwner")
 
   @@index([uid])
   @@index([email])
@@ -60,54 +57,9 @@ model Item {
   updatedAt        DateTime @updatedAt
 
   // Relations
-  owner User   @relation("ItemOwner", fields: [ownerId], references: [id], onDelete: Cascade)
-  chats Chat[]
+  owner User @relation("ItemOwner", fields: [ownerId], references: [id], onDelete: Cascade)
 
   @@index([itemId])
   @@index([ownerId])
   @@index([status])
-}
-
-// Collection: Chats (Quản lý cuộc hội thoại)
-model Chat {
-  id          String   @id @default(cuid())
-  chatId      String   @unique
-  itemId      String
-  ownerId     String
-  finderId    String // ID người nhặt
-  lastMessage String?
-  createdAt   DateTime @default(now())
-  updatedAt   DateTime @updatedAt
-
-  // Relations
-  item     Item      @relation(fields: [itemId], references: [id], onDelete: Cascade)
-  owner    User      @relation("ChatOwner", fields: [ownerId], references: [id], onDelete: Cascade)
-  finder   User      @relation("ChatFinder", fields: [finderId], references: [id], onDelete: Cascade)
-  messages Message[]
-
-  @@index([chatId])
-  @@index([itemId])
-  @@index([ownerId])
-  @@index([finderId])
-}
-
-// Sub-collection: Messages (Chi tiết từng tin nhắn)
-model Message {
-  id        String   @id @default(cuid())
-  messageId String   @unique
-  chatId    String
-  senderId  String
-  text      String?
-  image     String? // URL ảnh nếu gửi ảnh
-  location  String? // JSON string chứa lat/lng: {"lat": 10.123, "lng": 106.456}
-  createdAt DateTime @default(now())
-
-  // Relations
-  chat   Chat @relation(fields: [chatId], references: [id], onDelete: Cascade)
-  sender User @relation(fields: [senderId], references: [id], onDelete: Cascade)
-
-  @@index([messageId])
-  @@index([chatId])
-  @@index([senderId])
-  @@index([createdAt])
 }

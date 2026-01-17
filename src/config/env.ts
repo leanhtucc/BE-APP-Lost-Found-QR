@@ -42,6 +42,10 @@ export const ENV = {
     process.env.GOOGLE_CALLBACK_URL ||
     "http://localhost:3000/api/auth/google/callback",
 
+  // Stream Chat
+  STREAM_API_KEY: process.env.STREAM_API_KEY || "",
+  STREAM_API_SECRET: process.env.STREAM_API_SECRET || "",
+
   // Item/QR Code Config
   APP_BASE_URL: process.env.APP_BASE_URL || "http://localhost:3000",
 } as const;

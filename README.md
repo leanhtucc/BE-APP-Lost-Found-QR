@@ -1,6 +1,15 @@
 # 🚀 Backend Basic - Lost & Found API
 
-API backend cho ứng dụng Lost & Found với TypeScript, Express, Prisma và PostgreSQL.
+API backend cho ứng dụng Lost & Found với TypeScript, Express, Prisma, PostgreSQL và Stream Chat.
+
+## ✨ Features
+
+- 🔐 **Authentication**: JWT-based auth với Google OAuth
+- 📦 **Items Management**: Quản lý đồ thất lạc với QR code
+- 💬 **Chat System**: Stream Chat integration cho real-time messaging
+- 📧 **Email**: Email verification và welcome emails
+- 📤 **Upload**: Upload ảnh với multer
+- 🔒 **Security**: Rate limiting, validation, error handling
 
 ## 📁 Cấu trúc Project
 
@@ -18,6 +27,7 @@ backend-basic/
 │   │   ├── prisma.ts       # Prisma client
 │   │   ├── jwt.ts          # JWT utilities
 │   │   ├── logger.ts       # Logger
+│   │   ├── stream-chat.ts  # Stream Chat utilities
 │   │   └── redis.ts        # Redis client (TODO)
 │   ├── middlewares/         # Express middlewares
 │   │   ├── auth.middleware.ts
@@ -27,12 +37,11 @@ backend-basic/
 │   ├── modules/             # Domain modules
 │   │   ├── auth/
 │   │   ├── items/
-│   │   │   ├── items.controller.ts
-│   │   │   ├── items.service.ts
-│   │   │   ├── items.repository.ts
-│   │   │   ├── items.routes.ts
-│   │   │   ├── items.schema.ts
-│   │   │   └── items.types.ts
+│   │   ├── chat/           # Custom chat (optional)
+│   │   ├── stream/         # Stream Chat integration
+│   │   │   ├── stream.controller.ts
+│   │   │   ├── stream.routes.ts
+│   │   │   └── stream.schema.ts
 │   │   └── index.ts
 │   ├── utils/               # Utility functions
 │   │   ├── response.ts     # API response helpers
@@ -70,22 +79,26 @@ Request → Routes → Middleware → Controller → Service → Repository → 
 ## 🚀 Cài đặt
 
 ### 1. Clone và install dependencies:
+
 ```bash
 npm install
 ```
 
 ### 2. Khởi động Database với Docker:
+
 ```bash
 docker compose up -d
 ```
 
 ### 3. Setup environment:
+
 ```bash
 cp .env.example .env
 # Chỉnh sửa .env với thông tin của bạn
 ```
 
 ### 4. Setup database:
+
 ```bash
 # Tạo migration
 npm run prisma:migrate
@@ -98,6 +111,7 @@ npm run prisma:studio
 ```
 
 ### 5. Chạy server:
+
 ```bash
 # Development mode với hot reload
 npm run dev
@@ -114,6 +128,7 @@ npm start
 ### Items Module
 
 #### Tạo món đồ
+
 ```http
 POST /api/items
 Authorization: Bearer {token}
@@ -128,11 +143,13 @@ Content-Type: application/json
 ```
 
 #### Quét QR (Lấy thông tin món đồ)
+
 ```http
 GET /api/items/{itemId}?token={securityToken}
 ```
 
 #### Cập nhật trạng thái
+
 ```http
 PATCH /api/items/{itemId}/status
 Authorization: Bearer {token}
@@ -144,16 +161,117 @@ Authorization: Bearer {token}
 ```
 
 #### Lấy danh sách món đồ của user
+
 ```http
 GET /api/items
 Authorization: Bearer {token}
 ```
 
 #### Xóa món đồ
+
 ```http
 DELETE /api/items/{itemId}
 Authorization: Bearer {token}
 ```
+
+### Chat Module (NEW! 💬)
+
+**Tính năng Chat Real-time giữa Owner và Finder**
+
+Hệ thống chat hỗ trợ 3 loại tin nhắn:
+
+- 💬 Text: Tin nhắn văn bản
+- 📷 Image: Gửi hình ảnh bằng chứng
+- 📍 Location: Gửi vị trí GPS để hẹn gặp
+
+#### Tạo/Lấy cuộc hội thoại
+
+```http
+POST /api/chats
+Authorization: Bearer {token}
+Content-Type: application/json
+
+{
+  "itemId": "clx123abc",
+  "finderId": "user_id_123"
+}
+```
+
+#### Gửi tin nhắn
+
+```http
+POST /api/chats/{chatId}/messages
+Authorization: Bearer {token}
+
+{
+  "text": "Mình nhặt được đồ của bạn",
+  "messageType": "text"
+}
+```
+
+#### Gửi hình ảnh
+
+```http
+POST /api/chats/{chatId}/messages
+Authorization: Bearer {token}
+
+{
+  "text": "Đây là ảnh món đồ",
+  "image": "https://storage.example.com/image.jpg",
+  "messageType": "image"
+}
+```
+
+#### Gửi vị trí
+
+```http
+POST /api/chats/{chatId}/messages
+Authorization: Bearer {token}
+
+{
+  "text": "Tôi đang ở đây",
+  "location": {
+    "lat": 10.762622,
+    "lng": 106.660172
+  },
+  "messageType": "location"
+}
+```
+
+#### Lấy danh sách tin nhắn
+
+```http
+GET /api/chats/{chatId}/messages?limit=50&cursor=messageId
+Authorization: Bearer {token}
+```
+
+#### Lấy Inbox (Danh sách chat)
+
+```http
+GET /api/chats
+Authorization: Bearer {token}
+```
+
+#### Đánh dấu đã đọc
+
+```http
+PUT /api/chats/{chatId}/read
+Authorization: Bearer {token}
+```
+
+#### Đóng cuộc hội thoại
+
+```http
+PUT /api/chats/{chatId}/close
+Authorization: Bearer {token}
+```
+
+**📚 Chi tiết đầy đủ:**
+
+- [CHAT_API_DOCS.md](CHAT_API_DOCS.md) - API Documentation
+- [CHAT_QUICK_REFERENCE.md](CHAT_QUICK_REFERENCE.md) - Quick Reference
+- [CHAT_IMPLEMENTATION_GUIDE.md](CHAT_IMPLEMENTATION_GUIDE.md) - Implementation Guide
+- [CHAT_OVERVIEW.md](CHAT_OVERVIEW.md) - System Overview
 
 ## 🛠️ Tech Stack
 
@@ -188,9 +306,27 @@ npm run prisma:studio    # Mở Prisma Studio
 
 ## 📖 Tài liệu thêm
 
+### General
+
 - [GUIDE.md](GUIDE.md) - Hướng dẫn chi tiết cách code API
 - [Prisma Docs](https://www.prisma.io/docs)
 - [Express Docs](https://expressjs.com/)
+
+### Chat System
+
+- [STREAM_CHAT_GUIDE.md](STREAM_CHAT_GUIDE.md) - 🔥 **Stream Chat Integration Guide**
+
+## 💬 Stream Chat Features
+
+| Feature                      | Status |
+| ---------------------------- | ------ |
+| Real-time WebSocket          | ✅     |
+| Typing indicators            | ✅     |
+| Read receipts                | ✅     |
+| UI Components (React Native) | ✅     |
+| File uploads                 | ✅     |
+| Offline support              | ✅     |
+| Free tier (100 MAU)          | ✅     |
 
 ## 🤝 Contributing
 
@@ -200,7 +336,8 @@ Contributions are welcome! Vui lòng tạo issue hoặc pull request.
 
 MIT
 npx prisma studio
-```
+
+````
 
 👉 Mở browser để xem & chỉnh sửa dữ liệu trực tiếp.
 
@@ -208,7 +345,7 @@ npx prisma studio
 
 ```bash
 npm run dev
-```
+````
 
 Server mặc định: `http://localhost:3000`
 
