@@ -121,3 +121,36 @@ export const resendVerificationSchema = z.object({
       .trim(),
   }),
 });
+
+// Forgot Password Schema
+export const forgotPasswordSchema = z.object({
+  body: z.object({
+    email: z
+      .string({
+        required_error: "Email is required",
+      })
+      .email("Invalid email format")
+      .toLowerCase()
+      .trim(),
+  }),
+});
+
+// Reset Password Schema
+export const resetPasswordSchema = z.object({
+  body: z.object({
+    token: z
+      .string({
+        required_error: "Reset token is required",
+      })
+      .min(1, "Reset token is required"),
+    newPassword: z
+      .string({
+        required_error: "New password is required",
+      })
+      .min(6, "Password must be at least 6 characters")
+      .regex(
+        /^(?=.*[a-z])(?=.*[A-Z])(?=.*\d)/,
+        "Password must contain at least one uppercase letter, one lowercase letter, and one number"
+      ),
+  }),
+});

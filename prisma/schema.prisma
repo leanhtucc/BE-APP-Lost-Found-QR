@@ -26,6 +26,8 @@ model User {
   isVerified             Boolean   @default(false) // Email đã xác thực chưa
   verificationCode       String? // Mã xác thực email
   verificationCodeExpiry DateTime? // Thời gian hết hạn mã xác thực
+  resetPasswordToken     String? // Token để reset mật khẩu
+  resetPasswordExpiry    DateTime? // Thời gian hết hạn token reset
   googleId               String?   @unique // Google OAuth ID
   createdAt              DateTime  @default(now())
   updatedAt              DateTime  @updatedAt
@@ -36,6 +38,7 @@ model User {
   @@index([uid])
   @@index([email])
   @@index([googleId])
+  @@index([resetPasswordToken])
 }
 
 // Collection: Items (Quản lý đồ vật)

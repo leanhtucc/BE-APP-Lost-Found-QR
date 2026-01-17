@@ -1,0 +1,58 @@
+# Files to ignore when deploying to Render
+
+# Development
+
+.env.local
+.env.development
+.env.test
+
+# Testing
+
+_.test.ts
+_.spec.ts
+**tests**/
+test/
+
+# Documentation (optional - remove if you want docs on server)
+
+\*.md
+docs/
+
+# Development tools
+
+.vscode/
+.idea/
+
+# Logs
+
+\*.log
+logs/
+
+# OS
+
+.DS_Store
+Thumbs.db
+
+# Dependencies (will be installed during build)
+
+node_modules/
+
+# Build output (will be generated during build)
+
+dist/
+
+# Uploads (use cloud storage instead)
+
+uploads/
+public/uploads/
+
+# Docker (not needed on Render)
+
+docker-compose\*.yml
+Dockerfile
+.dockerignore
+
+# Git
+
+.git/
+.gitignore

@@ -169,4 +169,26 @@ export class AuthController {
       next(error);
     }
   }
+
+  // POST /api/auth/forgot-password - Request password reset
+  async forgotPassword(req: Request, res: Response, next: NextFunction) {
+    try {
+      const data = req.body;
+      const result = await authService.requestPasswordReset(data);
+      return ResponseUtil.success(res, result, result.message);
+    } catch (error) {
+      next(error);
+    }
+  }
+
+  // POST /api/auth/reset-password - Reset password with token
+  async resetPassword(req: Request, res: Response, next: NextFunction) {
+    try {
+      const data = req.body;
+      const result = await authService.resetPassword(data);
+      return ResponseUtil.success(res, result, result.message);
+    } catch (error) {
+      next(error);
+    }
+  }
 }

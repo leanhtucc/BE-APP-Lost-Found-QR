@@ -255,13 +255,14 @@ export class StreamChatController {
   ): Promise<void> => {
     try {
       const { channelId, targetUserId } = req.params;
-      const { timeout } = req.body; // timeout in minutes
+      const timeout = req.query.timeout as string | undefined;
+      const timeoutNum = timeout ? parseInt(timeout) : undefined;
 
       const result = await muteUserInChannel(
         "messaging",
         channelId,
         targetUserId,
-        timeout
+        timeoutNum
       );
 
       ResponseUtil.success(res, result, "User muted successfully");
@@ -306,13 +307,14 @@ export class StreamChatController {
     try {
       const { channelId, targetUserId } = req.params;
       const { reason, timeout } = req.body;
+      const timeoutNum = timeout ? parseInt(timeout) : undefined;
 
       const result = await banUserFromChannel(
         "messaging",
         channelId,
         targetUserId,
         reason,
-        timeout
+        timeoutNum
       );
 
       ResponseUtil.success(res, result, "User banned successfully");
@@ -397,10 +399,7 @@ export class StreamChatController {
         {
           notifications,
           total: notifications.length,
-          unreadTotal: notifications.reduce(
-            (sum, n) => sum + n.unreadCount,
-            0
-          ),
+          unreadTotal: notifications.reduce((sum, n) => sum + n.unreadCount, 0),
         },
         "Notifications retrieved successfully"
       );
@@ -440,20 +439,16 @@ export class StreamChatController {
   ): Promise<void> => {
     try {
       const userId = req.user!.id;
-      const { activityType, metadata } = req.body;
+      const { activityType } = req.params;
+      const metadata = req.query; // metadata từ query params
 
-      const result = await logActivity(userId, activityType, metadata);
+      const result = await logActivity(
+        userId,
+        activityType as any,
+        metadata as any
+      );
 
       ResponseUtil.success(res, result, "Activity logged successfully");
-    } catch (error) {
-      next(error);
-    }
-  };
-}
-
-      await closeItemChannel(channelId);
-
-      ResponseUtil.success(res, {}, "Channel closed successfully");
     } catch (error) {
       next(error);
     }

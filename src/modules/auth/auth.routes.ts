@@ -3,10 +3,12 @@ import { authMiddleware } from "../../middlewares/auth.middleware";
 import { validate } from "../../middlewares/validate.middleware";
 import { AuthController } from "./auth.controller";
 import {
+  forgotPasswordSchema,
   loginSchema,
   refreshTokenSchema,
   registerSchema,
   resendVerificationSchema,
+  resetPasswordSchema,
   updateProfileSchema,
   verifyEmailSchema,
 } from "./auth.schema";
@@ -45,6 +47,19 @@ router.post(
 router.get("/google", authController.googleLogin);
 
 router.get("/google/callback", authController.googleCallback);
+
+// Password reset routes
+router.post(
+  "/forgot-password",
+  validate(forgotPasswordSchema),
+  authController.forgotPassword
+);
+
+router.post(
+  "/reset-password",
+  validate(resetPasswordSchema),
+  authController.resetPassword
+);
 
 // Protected routes (cần authentication)
 router.get("/profile", authMiddleware, authController.getProfile);

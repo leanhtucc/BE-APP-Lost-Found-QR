@@ -2,7 +2,15 @@ import { Router } from "express";
 import { authMiddleware } from "../../middlewares/auth.middleware";
 import { validate } from "../../middlewares/validate.middleware";
 import { StreamChatController } from "./stream.controller";
-import { closeChannelSchema, createChannelSchema } from "./stream.schema";
+import {
+  activitySchema,
+  banUserSchema,
+  channelUserSchema,
+  closeChannelSchema,
+  createChannelSchema,
+  messageIdSchema,
+  muteUserSchema,
+} from "./stream.schema";
 
 const router = Router();
 const streamController = new StreamChatController();
@@ -60,6 +68,7 @@ router.put(
 router.post(
   "/messages/:messageId/flag",
   authMiddleware,
+  validate(messageIdSchema),
   streamController.flagMessageEndpoint
 );
 
@@ -71,17 +80,21 @@ router.post(
 router.delete(
   "/messages/:messageId/flag",
   authMiddleware,
+  validate(messageIdSchema),
   streamController.unflagMessageEndpoint
 );
 
 /**
  * @route   POST /api/stream/channels/:channelId/mute/:targetUserId
- * @desc    Mute một user trong channel
+ * @desc    Mute một user trong channel (timeout optional in minutes via query param)
  * @access  Protected
+ * @params  channelId, targetUserId
+ * @query   timeout (optional, in minutes)
  */
 router.post(
   "/channels/:channelId/mute/:targetUserId",
   authMiddleware,
+  validate(muteUserSchema),
   streamController.muteUser
 );
 
@@ -93,17 +106,21 @@ router.post(
 router.delete(
   "/channels/:channelId/mute/:targetUserId",
   authMiddleware,
+  validate(channelUserSchema),
   streamController.unmuteUser
 );
 
 /**
  * @route   POST /api/stream/channels/:channelId/ban/:targetUserId
- * @desc    Ban một user khỏi channel
+ * @desc    Ban một user khỏi channel (timeout & reason optional via body)
  * @access  Protected
+ * @params  channelId, targetUserId
+ * @body    reason (optional), timeout (optional, in minutes)
  */
 router.post(
   "/channels/:channelId/ban/:targetUserId",
   authMiddleware,
+  validate(banUserSchema),
   streamController.banUser
 );
 
@@ -115,6 +132,7 @@ router.post(
 router.delete(
   "/channels/:channelId/ban/:targetUserId",
   authMiddleware,
+  validate(channelUserSchema),
   streamController.unbanUser
 );
 
@@ -154,10 +172,17 @@ router.post(
 );
 
 /**
- * @route   POST /api/stream/activity
- * @desc    Log user activity
+ * @route   POST /api/stream/activity/:activityType
+ * @desc    Log user activity (query params for metadata)
  * @access  Protected
+ * @params  activityType (new_message, new_channel, item_found, item_returned)
+ * @query   metadata as query params
  */
-router.post("/activity", authMiddleware, streamController.logActivityEndpoint);
+router.post(
+  "/activity/:activityType",
+  authMiddleware,
+  validate(activitySchema),
+  streamController.logActivityEndpoint
+);
 
 export default router;

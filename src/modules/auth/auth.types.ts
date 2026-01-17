@@ -77,3 +77,20 @@ export interface GoogleAuthResponse {
   user: UserResponse;
   isNewUser: boolean;
 }
+
+export interface ForgotPasswordDTO {
+  email: string;
+}
+
+export interface ForgotPasswordResponse {
+  message: string;
+}
+
+export interface ResetPasswordDTO {
+  token: string;
+  newPassword: string;
+}
+
+export interface ResetPasswordResponse {
+  message: string;
+}

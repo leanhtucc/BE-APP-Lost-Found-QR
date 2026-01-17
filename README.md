@@ -4,12 +4,20 @@ API backend cho ứng dụng Lost & Found với TypeScript, Express, Prisma, Pos
 
 ## ✨ Features
 
-- 🔐 **Authentication**: JWT-based auth với Google OAuth
+- 🔐 **Authentication**: JWT-based auth với Google OAuth, Email Verification, Password Reset
 - 📦 **Items Management**: Quản lý đồ thất lạc với QR code
 - 💬 **Chat System**: Stream Chat integration cho real-time messaging
-- 📧 **Email**: Email verification và welcome emails
+- 📧 **Email**: Email verification, welcome emails, password reset emails
 - 📤 **Upload**: Upload ảnh với multer
 - 🔒 **Security**: Rate limiting, validation, error handling
+
+## 🚀 Quick Deploy
+
+**Deploy lên Render.com miễn phí trong 10 phút:**
+
+- 📖 [RENDER_DEPLOY_GUIDE.md](RENDER_DEPLOY_GUIDE.md) - Hướng dẫn chi tiết
+- ✅ [RENDER_CHECKLIST.md](RENDER_CHECKLIST.md) - Checklist đầy đủ
+- 🧪 Test deployment: `.\test-render-deployment.ps1 https://your-app.onrender.com`
 
 ## 📁 Cấu trúc Project
 
@@ -311,6 +319,13 @@ npm run prisma:studio    # Mở Prisma Studio
 - [GUIDE.md](GUIDE.md) - Hướng dẫn chi tiết cách code API
 - [Prisma Docs](https://www.prisma.io/docs)
 - [Express Docs](https://expressjs.com/)
+
+### Authentication
+
+- [AUTH_API_EXAMPLES.md](AUTH_API_EXAMPLES.md) - Auth API Examples
+- [EMAIL_VERIFICATION.md](EMAIL_VERIFICATION.md) - Email Verification Guide
+- [PASSWORD_RESET_API.md](PASSWORD_RESET_API.md) - 🔐 **Password Reset API Guide**
+- [GOOGLE_AUTH.md](docs/GOOGLE_AUTH.md) - Google OAuth Setup
 
 ### Chat System
 

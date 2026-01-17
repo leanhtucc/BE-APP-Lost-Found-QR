@@ -1,6 +1,6 @@
 import app from "./app";
-import { ENV } from "./config/env";
 import { connectDatabase, disconnectDatabase } from "./config/database";
+import { ENV } from "./config/env";
 import { logger } from "./libs/logger";
 
 /**
@@ -13,7 +13,7 @@ async function startServer() {
     await connectDatabase();
 
     // Start server
-    const server = app.listen(ENV.PORT, () => {
+    const server = app.listen(ENV.PORT, "0.0.0.0", () => {
       logger.success(`🚀 Server is running on port ${ENV.PORT}`);
       logger.info(`📍 http://localhost:${ENV.PORT}`);
       logger.info(`🌍 Environment: ${ENV.NODE_ENV}`);

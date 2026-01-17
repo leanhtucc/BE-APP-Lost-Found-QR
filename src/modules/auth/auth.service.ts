@@ -1,5 +1,4 @@
 import { nanoid } from "nanoid";
-import { ENV } from "../../config/env";
 import { emailService } from "../../libs/email";
 import { googleOAuthService } from "../../libs/google-oauth";
 import {
@@ -12,12 +11,16 @@ import { AppError } from "../../middlewares/error.middleware";
 import { comparePassword, hashPassword } from "../../utils/hash";
 import { AuthRepository } from "./auth.repository";
 import {
+  ForgotPasswordDTO,
+  ForgotPasswordResponse,
   GoogleAuthResponse,
   LoginDTO,
   LoginResponse,
   RegisterDTO,
   RegisterResponse,
   ResendVerificationDTO,
+  ResetPasswordDTO,
+  ResetPasswordResponse,
   UpdateProfileDTO,
   UserResponse,
   VerifyEmailDTO,
@@ -64,16 +67,9 @@ export class AuthService {
     // Hash password
     const hashedPassword = await hashPassword(data.password);
 
-    // Check if skip email verification (dev mode)
-    const skipVerification = ENV.SKIP_EMAIL_VERIFICATION;
-
-    // Generate verification code (only if not skipping)
-    const verificationCode = skipVerification
-      ? null
-      : this.generateVerificationCode();
-    const verificationCodeExpiry = skipVerification
-      ? null
-      : this.getCodeExpiry();
+    // Generate verification code
+    const verificationCode = this.generateVerificationCode();
+    const verificationCodeExpiry = this.getCodeExpiry();
 
     // Create user with unique uid
     const uid = `user_${nanoid(16)}`;
@@ -85,36 +81,10 @@ export class AuthService {
       photoURL: data.photoURL,
       verificationCode,
       verificationCodeExpiry,
-      isVerified: skipVerification, // Auto-verify in dev mode
+      isVerified: false,
     });
 
-    // Skip email in dev mode
-    if (skipVerification) {
-      logger.info(`[DEV MODE] Email verification skipped for ${user.email}`);
-
-      // Generate tokens immediately
-      const accessToken = generateAccessToken({
-        id: user.id,
-        uid: user.uid,
-        email: user.email,
-      });
-
-      const refreshToken = generateRefreshToken({
-        id: user.id,
-        uid: user.uid,
-        email: user.email,
-      });
-
-      return {
-        message:
-          "Registration successful! (Dev mode - email verification skipped)",
-        email: user.email,
-        accessToken,
-        refreshToken,
-      };
-    }
-
-    // Send verification email (production mode)
+    // Send verification email
     try {
       await emailService.sendVerificationEmail(
         user.email,
@@ -411,6 +381,83 @@ export class AuthService {
       logger.error("Google OAuth error:", error);
       throw new AppError("Google authentication failed", 500);
     }
+  }
+
+  async requestPasswordReset(
+    data: ForgotPasswordDTO
+  ): Promise<ForgotPasswordResponse> {
+    // Find user by email
+    const user = await authRepository.findByEmail(data.email);
+    if (!user) {
+      // Don't reveal if email exists - security best practice
+      return {
+        message:
+          "If an account with that email exists, a password reset link has been sent.",
+      };
+    }
+
+    // Generate reset token (random string)
+    const resetToken = nanoid(64); // 64 characters random string
+    const resetExpiry = new Date();
+    resetExpiry.setMinutes(resetExpiry.getMinutes() + 30); // 30 minutes expiry
+
+    // Save reset token and expiry to database
+    await authRepository.updateUser(user.id, {
+      resetPasswordToken: resetToken,
+      resetPasswordExpiry: resetExpiry,
+    });
+
+    // Send password reset email
+    try {
+      await emailService.sendPasswordResetEmail(
+        user.email,
+        user.displayName,
+        resetToken
+      );
+      logger.info(`Password reset email sent to ${user.email}`);
+    } catch (error) {
+      logger.error("Failed to send password reset email:", error);
+      throw new AppError(
+        "Failed to send password reset email. Please try again.",
+        500
+      );
+    }
+
+    return {
+      message:
+        "If an account with that email exists, a password reset link has been sent.",
+    };
+  }
+
+  async resetPassword(data: ResetPasswordDTO): Promise<ResetPasswordResponse> {
+    // Find user by reset token
+    const user = await authRepository.findByResetToken(data.token);
+    if (!user) {
+      throw new AppError(
+        "Invalid or expired reset token. Please request a new password reset.",
+        400
+      );
+    }
+
+    // Check if token is expired (extra validation)
+    if (user.resetPasswordExpiry && user.resetPasswordExpiry < new Date()) {
+      throw new AppError(
+        "Reset token has expired. Please request a new password reset.",
+        400
+      );
+    }
+
+    // Hash new password
+    const hashedPassword = await hashPassword(data.newPassword);
+
+    // Update password and clear reset token
+    await authRepository.updatePassword(user.id, hashedPassword);
+
+    logger.info(`Password reset successful for user: ${user.email}`);
+
+    return {
+      message: "Password has been reset successfully. You can now login.",
+    };
   }
 }
 

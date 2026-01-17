@@ -589,13 +589,13 @@ await channel.unflagMessage(messageId);
 **Mute user (không cho gửi tin nhắn):**
 
 ```bash
+# Mute vĩnh viễn
 POST /api/stream/channels/:channelId/mute/:targetUserId
 Authorization: Bearer {token}
-Content-Type: application/json
 
-{
-  "timeout": 60  // phút (optional, không có = vĩnh viễn)
-}
+# Mute trong 60 phút
+POST /api/stream/channels/:channelId/mute/:targetUserId/60
+Authorization: Bearer {token}
 ```
 
 **Unmute user:**
@@ -609,10 +609,16 @@ Authorization: Bearer {token}
 
 ```javascript
 // Mute user for 60 minutes
-await channel.muteUser(targetUserId, 60);
+await fetch(`/api/stream/channels/${channelId}/mute/${targetUserId}/60`, {
+  method: "POST",
+  headers: { Authorization: `Bearer ${token}` },
+});
 
-// Unmute user
-await channel.unmuteUser(targetUserId);
+// Mute permanently
+await fetch(`/api/stream/channels/${channelId}/mute/${targetUserId}`, {
+  method: "POST",
+  headers: { Authorization: `Bearer ${token}` },
+});
 ```
 
 ### 4. Ban Users
@@ -620,14 +626,17 @@ await channel.unmuteUser(targetUserId);
 **Ban user khỏi channel:**
 
 ```bash
+# Ban vĩnh viễn
 POST /api/stream/channels/:channelId/ban/:targetUserId
 Authorization: Bearer {token}
-Content-Type: application/json
 
-{
-  "reason": "Spam",
-  "timeout": 1440  // phút (optional, không có = vĩnh viễn)
-}
+# Ban trong 1440 phút (24 giờ)
+POST /api/stream/channels/:channelId/ban/:targetUserId/1440
+Authorization: Bearer {token}
+
+# Ban với reason
+POST /api/stream/channels/:channelId/ban/:targetUserId/1440/Spam
+Authorization: Bearer {token}
 ```
 
 **Unban user:**
@@ -640,14 +649,17 @@ Authorization: Bearer {token}
 **Frontend:**
 
 ```javascript
-// Ban user for 24 hours (1440 minutes)
-await channel.banUser(targetUserId, {
-  reason: "Spam",
-  timeout: 1440,
+// Ban user for 24 hours with reason
+await fetch(`/api/stream/channels/${channelId}/ban/${targetUserId}/1440/Spam`, {
+  method: "POST",
+  headers: { Authorization: `Bearer ${token}` },
 });
 
-// Unban user
-await channel.unbanUser(targetUserId);
+// Ban permanently
+await fetch(`/api/stream/channels/${channelId}/ban/${targetUserId}`, {
+  method: "POST",
+  headers: { Authorization: `Bearer ${token}` },
+});
 ```
 
 ---
@@ -760,17 +772,42 @@ const NotificationListener = () => {
 **Track user activity:**
 
 ```bash
-POST /api/stream/activity
+# URL params cho activity type
+POST /api/stream/activity/:activityType?channelId=xxx&messageId=yyy
 Authorization: Bearer {token}
-Content-Type: application/json
 
-{
-  "activityType": "new_message",
-  "metadata": {
-    "channelId": "item_xxx",
-    "messageId": "msg_123"
+# Ví dụ:
+POST /api/stream/activity/new_message?channelId=item_123&messageId=msg_456
+POST /api/stream/activity/item_found?itemId=abc123
+POST /api/stream/activity/item_returned?itemId=abc123&returnedBy=user_789
+```
+
+**Activity types:**
+
+- `new_message` - Tin nhắn mới
+- `new_channel` - Channel mới
+- `item_found` - Tìm thấy đồ
+- `item_returned` - Đã trả đồ
+
+**Frontend:**
+
+```javascript
+// Log activity
+await fetch(
+  `/api/stream/activity/new_message?channelId=${channelId}&messageId=${messageId}`,
+  {
+    method: "POST",
+    headers: { Authorization: `Bearer ${token}` },
   }
+);
+```
+
+"metadata": {
+"channelId": "item_xxx",
+"messageId": "msg_123"
 }
+}
+
 ```
 
 **Activity types:**
@@ -827,3 +864,4 @@ Stream Chat giúp bạn:
 ---
 
 **Happy coding! 🚀**
+```

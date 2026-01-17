@@ -48,6 +48,9 @@ export const ENV = {
 
   // Item/QR Code Config
   APP_BASE_URL: process.env.APP_BASE_URL || "http://localhost:3000",
+
+  // Frontend URL (for password reset links)
+  FRONTEND_URL: process.env.FRONTEND_URL || "http://localhost:19006", // Default Expo URL
 } as const;
 
 export const isDevelopment = ENV.NODE_ENV === "development";

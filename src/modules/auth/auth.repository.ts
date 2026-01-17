@@ -95,4 +95,26 @@ export class AuthRepository {
       where: { email },
     });
   }
+
+  async findByResetToken(token: string) {
+    return prisma.user.findFirst({
+      where: {
+        resetPasswordToken: token,
+        resetPasswordExpiry: {
+          gt: new Date(), // Token chưa hết hạn
+        },
+      },
+    });
+  }
+
+  async updatePassword(id: string, hashedPassword: string) {
+    return prisma.user.update({
+      where: { id },
+      data: {
+        password: hashedPassword,
+        resetPasswordToken: null, // Xóa token sau khi đặt lại mật khẩu
+        resetPasswordExpiry: null,
+      },
+    });
+  }
 }
