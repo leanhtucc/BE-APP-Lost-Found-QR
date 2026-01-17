@@ -1,9 +1,18 @@
 node_modules
 
+# Build output
+dist/
+*.d.ts
+*.d.ts.map
+*.js
+*.js.map
+!.eslintrc.js
+
 # Environment variables (NEVER commit .env with real credentials)
 .env
 .env.local
 .env.*.local
+.env.render.generated
 
 # Keep .env.example for reference
 !.env.example
