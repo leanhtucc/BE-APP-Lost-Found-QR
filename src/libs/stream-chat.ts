@@ -69,7 +69,6 @@ export const createItemChannel = async (
 
   const channelId = `item_${itemId}_${finderId}`;
   const channel = client.channel("messaging", channelId, {
-    name: `Lost Item: ${itemName}`,
     members: [ownerId, finderId],
     created_by_id: finderId,
     item_id: itemId,
@@ -77,7 +76,7 @@ export const createItemChannel = async (
     // Bật auto-moderation
     automod: "AI",
     automod_behavior: "flag", // flag messages thay vì xóa
-  });
+  } as any);
 
   await channel.create();
 
@@ -120,7 +119,7 @@ export const getUserChannels = async (userId: string) => {
 
   return channels.map((channel) => ({
     id: channel.id,
-    name: channel.data?.name,
+    name: (channel.data as any)?.name || "Unknown",
     lastMessage: channel.state.messages[channel.state.messages.length - 1],
     members: channel.state.members,
     unreadCount: channel.countUnread(),
@@ -171,7 +170,11 @@ export const muteUserInChannel = async (
   const client = getStreamClient();
   const channel = client.channel(channelType, channelId);
 
-  await channel.muteUser(targetUserId, timeout);
+  const muteOptions: any = { user_id: targetUserId };
+  if (timeout) {
+    muteOptions.expiration = timeout * 60 * 1000; // convert minutes to milliseconds
+  }
+  await channel.mute(muteOptions);
 
   return {
     success: true,
@@ -190,7 +193,7 @@ export const unmuteUserInChannel = async (
   const client = getStreamClient();
   const channel = client.channel(channelType, channelId);
 
-  await channel.unmuteUser(targetUserId);
+  await channel.unmute({ user_id: targetUserId });
 
   return { success: true, message: "User unmuted successfully" };
 };
@@ -208,10 +211,11 @@ export const banUserFromChannel = async (
   const client = getStreamClient();
   const channel = client.channel(channelType, channelId);
 
-  await channel.banUser(targetUserId, {
-    reason,
-    timeout,
-  });
+  const options: Record<string, any> = {};
+  if (reason !== undefined) options.reason = reason;
+  if (timeout !== undefined) options.timeout = timeout;
+
+  await channel.banUser(targetUserId, options);
 
   return {
     success: true,
@@ -304,7 +308,7 @@ export const getUserNotifications = async (userId: string) => {
     .filter((channel) => channel.countUnread() > 0)
     .map((channel) => ({
       channelId: channel.id,
-      channelName: channel.data?.name,
+      channelName: (channel.data as any)?.name,
       unreadCount: channel.countUnread(),
       lastMessage: channel.state.messages[channel.state.messages.length - 1],
       timestamp: channel.state.last_message_at,

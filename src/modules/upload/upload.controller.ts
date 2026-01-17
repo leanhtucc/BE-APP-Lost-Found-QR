@@ -1,7 +1,7 @@
-import { Request, Response, NextFunction } from "express";
-import { UploadService } from "./upload.service";
-import { ResponseUtil } from "../../utils/response";
+import { NextFunction, Request, Response } from "express";
 import { AppError } from "../../middlewares/error.middleware";
+import { ResponseUtil } from "../../utils/response";
+import { UploadService } from "./upload.service";
 
 /**
  * Upload Controller
@@ -32,6 +32,10 @@ export class UploadController {
     try {
       const { filename } = req.params;
       const userId = req.user!.id;
+
+      if (!filename) {
+        return ResponseUtil.badRequest(res, "Filename is required");
+      }
 
       await uploadService.deleteFile(filename, userId);
 

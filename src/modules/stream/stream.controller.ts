@@ -37,8 +37,7 @@ export class StreamChatController {
       // Đồng bộ user info lên Stream Chat
       await upsertStreamUser({
         id: userId,
-        name: user.displayName,
-        image: user.photoURL || undefined,
+        name: user.displayName || "User",
         email: user.email,
       });
 
@@ -73,8 +72,8 @@ export class StreamChatController {
       const { itemId, finderId } = req.params;
 
       // Lấy thông tin item và owner bằng itemId (từ QR code)
-      const item = await prisma.item.findUnique({
-        where: { itemId: itemId },
+      const item = await prisma.item.findFirst({
+        where: { itemId: itemId || "" },
         select: {
           id: true,
           itemId: true,
@@ -97,8 +96,8 @@ export class StreamChatController {
       }
 
       // Lấy thông tin finder
-      const finder = await prisma.user.findUnique({
-        where: { id: finderId },
+      const finder = await prisma.user.findFirst({
+        where: { id: finderId || "" },
         select: {
           id: true,
           displayName: true,
@@ -117,7 +116,7 @@ export class StreamChatController {
         id: item.owner.id,
         name: item.owner.displayName,
         email: item.owner.email,
-        image: item.owner.photoURL || undefined,
+        image: item.owner.photoURL || "",
       });
 
       // Upsert finder lên Stream Chat
@@ -125,10 +124,15 @@ export class StreamChatController {
         id: finder.id,
         name: finder.displayName,
         email: finder.email,
-        image: finder.photoURL || undefined,
+        image: finder.photoURL || "",
       });
 
       // Tạo channel trên Stream (dùng item.id là primary key)
+      if (!finderId) {
+        ResponseUtil.badRequest(res, "Finder ID is required");
+        return;
+      }
+
       const channel = await createItemChannel(
         item.id,
         item.name,
@@ -188,6 +192,11 @@ export class StreamChatController {
     try {
       const { channelId } = req.params;
 
+      if (!channelId) {
+        ResponseUtil.badRequest(res, "Channel ID is required");
+        return;
+      }
+
       await closeItemChannel(channelId);
 
       ResponseUtil.success(res, {}, "Channel closed successfully");
@@ -215,6 +224,11 @@ export class StreamChatController {
       const { messageId } = req.params;
       const userId = req.user!.id;
 
+      if (!messageId) {
+        ResponseUtil.badRequest(res, "Message ID is required");
+        return;
+      }
+
       const result = await flagMessage(messageId, userId);
 
       ResponseUtil.success(res, result, "Message flagged successfully");
@@ -235,6 +249,11 @@ export class StreamChatController {
     try {
       const { messageId } = req.params;
       const userId = req.user!.id;
+
+      if (!messageId) {
+        ResponseUtil.badRequest(res, "Message ID is required");
+        return;
+      }
 
       const result = await unflagMessage(messageId, userId);
 
@@ -257,6 +276,14 @@ export class StreamChatController {
       const { channelId, targetUserId } = req.params;
       const timeout = req.query.timeout as string | undefined;
       const timeoutNum = timeout ? parseInt(timeout) : undefined;
+
+      if (!channelId || !targetUserId) {
+        ResponseUtil.badRequest(
+          res,
+          "Channel ID and Target User ID are required"
+        );
+        return;
+      }
 
       const result = await muteUserInChannel(
         "messaging",
@@ -282,6 +309,14 @@ export class StreamChatController {
   ): Promise<void> => {
     try {
       const { channelId, targetUserId } = req.params;
+
+      if (!channelId || !targetUserId) {
+        ResponseUtil.badRequest(
+          res,
+          "Channel ID and Target User ID are required"
+        );
+        return;
+      }
 
       const result = await unmuteUserInChannel(
         "messaging",
@@ -309,6 +344,14 @@ export class StreamChatController {
       const { reason, timeout } = req.body;
       const timeoutNum = timeout ? parseInt(timeout) : undefined;
 
+      if (!channelId || !targetUserId) {
+        ResponseUtil.badRequest(
+          res,
+          "Channel ID and Target User ID are required"
+        );
+        return;
+      }
+
       const result = await banUserFromChannel(
         "messaging",
         channelId,
@@ -335,6 +378,14 @@ export class StreamChatController {
     try {
       const { channelId, targetUserId } = req.params;
 
+      if (!channelId || !targetUserId) {
+        ResponseUtil.badRequest(
+          res,
+          "Channel ID and Target User ID are required"
+        );
+        return;
+      }
+
       const result = await unbanUserFromChannel(
         "messaging",
         channelId,
@@ -358,6 +409,11 @@ export class StreamChatController {
   ): Promise<void> => {
     try {
       const { channelId } = req.params;
+
+      if (!channelId) {
+        ResponseUtil.badRequest(res, "Channel ID is required");
+        return;
+      }
 
       const messages = await getFlaggedMessages("messaging", channelId);
 

@@ -44,6 +44,10 @@ export class ItemController {
       const userId = (req as any).user.id;
       const { id } = req.params;
 
+      if (!id) {
+        return ResponseUtil.badRequest(res, "Item ID is required");
+      }
+
       const result = await itemService.getItem(id, userId);
 
       return ResponseUtil.success(res, result);
@@ -87,6 +91,10 @@ export class ItemController {
         securityPin,
       } = req.query as any;
 
+      if (!id) {
+        return ResponseUtil.badRequest(res, "Item ID is required");
+      }
+
       const result = await itemService.updateItem(id, userId, {
         name,
         category,
@@ -110,6 +118,10 @@ export class ItemController {
       const userId = (req as any).user.id;
       const { id } = req.params;
 
+      if (!id) {
+        return ResponseUtil.badRequest(res, "Item ID is required");
+      }
+
       await itemService.deleteItem(id, userId);
 
       return ResponseUtil.success(res, null, "Item deleted successfully");
@@ -124,6 +136,10 @@ export class ItemController {
       const userId = (req as any).user.id;
       const { id } = req.params;
       const { status, lostMessage } = req.query as any;
+
+      if (!id) {
+        return ResponseUtil.badRequest(res, "Item ID is required");
+      }
 
       const result = await itemService.updateStatus(
         id,
@@ -142,6 +158,10 @@ export class ItemController {
   async scanQRCode(req: Request, res: Response, next: NextFunction) {
     try {
       const { itemId } = req.params;
+
+      if (!itemId) {
+        return ResponseUtil.badRequest(res, "Item ID is required");
+      }
 
       const result = await itemService.scanQRCode(itemId);
 

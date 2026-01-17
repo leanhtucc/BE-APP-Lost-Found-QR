@@ -112,9 +112,9 @@ export class ItemService {
       throw new AppError("Item not found", 404);
     }
 
-    const ownerInfo = {
+    const ownerInfo: any = {
       display_name: item.owner.displayName,
-      avatar: item.owner.photoURL || undefined,
+      avatar: item.owner.photoURL || "",
       joined_date: new Date(item.owner.createdAt).getFullYear().toString(),
     };
 
@@ -161,8 +161,8 @@ export class ItemService {
     const skip = (page - 1) * limit;
 
     const { items, total } = await itemRepository.findByOwnerId(userId, {
-      status: query.status,
-      category: query.category,
+      status: query.status || undefined,
+      category: query.category || undefined,
       skip,
       take: limit,
     });

@@ -1,4 +1,5 @@
 import { nanoid } from "nanoid";
+import { User } from "@prisma/client";
 import { emailService } from "../../libs/email";
 import { googleOAuthService } from "../../libs/google-oauth";
 import {
@@ -78,7 +79,7 @@ export class AuthService {
       email: data.email,
       password: hashedPassword,
       displayName: data.displayName,
-      photoURL: data.photoURL,
+      photoURL: data.photoURL || undefined,
       verificationCode,
       verificationCodeExpiry,
       isVerified: false,
@@ -115,6 +116,9 @@ export class AuthService {
     }
 
     // Verify password
+    if (!user.password) {
+      throw new AppError("Invalid email or password", 401);
+    }
     const isValidPassword = await comparePassword(data.password, user.password);
     if (!isValidPassword) {
       throw new AppError("Invalid email or password", 401);
@@ -324,7 +328,7 @@ export class AuthService {
       }
 
       // Check if user exists with Google ID
-      let user = await authRepository.findByGoogleId(googleUser.id);
+      let user: User | null = await authRepository.findByGoogleId(googleUser.id);
       let isNewUser = false;
 
       if (!user) {
@@ -333,32 +337,37 @@ export class AuthService {
 
         if (user) {
           // Link Google account to existing user
-          user = await authRepository.updateUser(user.id, {
+          await authRepository.updateUser(user.id, {
             googleId: googleUser.id,
             photoURL: googleUser.picture || user.photoURL,
             isVerified: true, // Auto-verify Google users
           });
-          logger.info(`Google account linked to existing user: ${user.email}`);
+          user = await authRepository.findByEmail(user.email);
+          logger.info(`Google account linked to existing user: ${user!.email}`);
         } else {
           // Create new user with Google account
           const uid = `user_${nanoid(16)}`;
-          user = await authRepository.createUser({
+          await authRepository.createUser({
             uid,
             email: googleUser.email,
-            password: null, // No password for OAuth users
+            password: "", // Empty string for OAuth users
             displayName: googleUser.name,
-            photoURL: googleUser.picture,
-            googleId: googleUser.id,
+            photoURL: googleUser.picture || undefined,
             isVerified: true, // Auto-verify Google users
-            verificationCode: null,
-            verificationCodeExpiry: null,
+            verificationCode: undefined,
+            verificationCodeExpiry: undefined,
           });
+          user = await authRepository.findByEmail(googleUser.email);
           isNewUser = true;
-          logger.info(`New user created via Google OAuth: ${user.email}`);
+          logger.info(`New user created via Google OAuth: ${user!.email}`);
         }
       }
 
-      // Generate tokens
+      // Generate tokens (user cannot be null here)
+      if (!user) {
+        throw new AppError("Failed to create or find user", 500);
+      }
+      
       const accessToken = generateAccessToken({
         id: user.id,
         uid: user.uid,

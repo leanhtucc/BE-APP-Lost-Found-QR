@@ -41,7 +41,7 @@ export class ResponseUtil {
     const response: ApiResponse = {
       success: false,
       message,
-      error,
+      ...(error && { error }),
       timestamp: new Date().toISOString(),
     };
     return res.status(statusCode).json(response);
