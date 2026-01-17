@@ -2,8 +2,9 @@
   // Visit https://aka.ms/tsconfig to read more about this file
   "compilerOptions": {
     // File Layout
-    // "rootDir": "./src",
-    // "outDir": "./dist",
+    "rootDir": "./src",
+    "outDir": "./dist",
+    "typeRoots": ["./node_modules/@types", "./src/types"],
 
     // Environment Settings
     // See also https://aka.ms/tsconfig/module
@@ -41,5 +42,7 @@
     "moduleDetection": "force",
     "skipLibCheck": true,
     "esModuleInterop": true
-  }
+  },
+  "include": ["src/**/*"],
+  "exclude": ["node_modules", "dist", "prisma"]
 }

@@ -3,7 +3,6 @@ services:
   - type: web
     name: backend-api
     runtime: node
-    env: node
     region: oregon # or singapore for closer to Vietnam
     plan: free
     buildCommand: npm install && npx prisma generate && npm run build
@@ -28,7 +27,7 @@ services:
       - key: API_PREFIX
         value: /api
       - key: SKIP_EMAIL_VERIFICATION
-        value: false
+        value: "false"
       # Add other environment variables manually in Render dashboard
 
   # PostgreSQL Database

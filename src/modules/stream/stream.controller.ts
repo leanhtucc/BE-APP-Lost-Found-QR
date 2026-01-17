@@ -37,7 +37,7 @@ export class StreamChatController {
       // Đồng bộ user info lên Stream Chat
       await upsertStreamUser({
         id: userId,
-        name: user.displayName || "User",
+        name: user.email.split('@')[0] || "User",
         email: user.email,
       });
 

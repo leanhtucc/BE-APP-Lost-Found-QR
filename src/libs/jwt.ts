@@ -5,7 +5,7 @@ import { ENV } from "../config/env";
  * JWT Utility Library
  */
 
-interface TokenPayload {
+export interface TokenPayload {
   id: string;
   uid: string;
   email: string;
