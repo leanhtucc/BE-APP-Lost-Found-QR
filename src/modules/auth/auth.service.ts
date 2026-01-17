@@ -1,5 +1,5 @@
-import { nanoid } from "nanoid";
 import { User } from "@prisma/client";
+import { nanoid } from "nanoid";
 import { emailService } from "../../libs/email";
 import { googleOAuthService } from "../../libs/google-oauth";
 import {
@@ -328,7 +328,9 @@ export class AuthService {
       }
 
       // Check if user exists with Google ID
-      let user: User | null = await authRepository.findByGoogleId(googleUser.id);
+      let user: User | null = await authRepository.findByGoogleId(
+        googleUser.id
+      );
       let isNewUser = false;
 
       if (!user) {
@@ -367,7 +369,7 @@ export class AuthService {
       if (!user) {
         throw new AppError("Failed to create or find user", 500);
       }
-      
+
       const accessToken = generateAccessToken({
         id: user.id,
         uid: user.uid,

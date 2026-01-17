@@ -13,9 +13,13 @@ export function generateToken(payload: {
   uid: string;
   email: string;
 }): string {
-  return jwt.sign(payload, JWT_SECRET as jwt.Secret, {
-    expiresIn: JWT_EXPIRES_IN,
-  } as jwt.SignOptions);
+  return jwt.sign(
+    payload,
+    JWT_SECRET as jwt.Secret,
+    {
+      expiresIn: JWT_EXPIRES_IN,
+    } as jwt.SignOptions
+  );
 }
 
 export function verifyToken(token: string) {

@@ -12,15 +12,23 @@ interface TokenPayload {
 }
 
 export function generateAccessToken(payload: TokenPayload): string {
-  return jwt.sign(payload, ENV.JWT_SECRET as jwt.Secret, {
-    expiresIn: ENV.JWT_EXPIRES_IN,
-  } as jwt.SignOptions);
+  return jwt.sign(
+    payload,
+    ENV.JWT_SECRET as jwt.Secret,
+    {
+      expiresIn: ENV.JWT_EXPIRES_IN,
+    } as jwt.SignOptions
+  );
 }
 
 export function generateRefreshToken(payload: TokenPayload): string {
-  return jwt.sign(payload, ENV.JWT_REFRESH_SECRET as jwt.Secret, {
-    expiresIn: ENV.JWT_REFRESH_EXPIRES_IN,
-  } as jwt.SignOptions);
+  return jwt.sign(
+    payload,
+    ENV.JWT_REFRESH_SECRET as jwt.Secret,
+    {
+      expiresIn: ENV.JWT_REFRESH_EXPIRES_IN,
+    } as jwt.SignOptions
+  );
 }
 
 export function verifyAccessToken(token: string): TokenPayload {
