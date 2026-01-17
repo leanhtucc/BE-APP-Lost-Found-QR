@@ -20,21 +20,20 @@
   "license": "ISC",
   "description": "",
   "devDependencies": {
+    "@types/prettier": "^2.7.3",
+    "prettier": "^3.7.4",
+    "ts-node": "^10.9.2",
+    "ts-node-dev": "^2.0.0"
+  },
+  "dependencies": {
+    "@prisma/client": "^6.19.0",
     "@types/bcrypt": "^6.0.0",
     "@types/cors": "^2.8.19",
     "@types/express": "^5.0.6",
     "@types/jsonwebtoken": "^9.0.10",
+    "@types/multer": "^2.0.0",
     "@types/node": "^22.10.5",
     "@types/nodemailer": "^6.4.14",
-    "@types/prettier": "^2.7.3",
-    "prettier": "^3.7.4",
-    "ts-node": "^10.9.2",
-    "ts-node-dev": "^2.0.0",
-    "typescript": "^5.9.3"
-  },
-  "dependencies": {
-    "@prisma/client": "^6.19.0",
-    "@types/multer": "^2.0.0",
     "@types/uuid": "^10.0.0",
     "bcrypt": "^6.0.0",
     "cors": "^2.8.5",
@@ -48,6 +47,7 @@
     "nodemailer": "^6.9.8",
     "prisma": "^6.19.0",
     "stream-chat": "^9.28.0",
+    "typescript": "^5.9.3",
     "uuid": "^13.0.0",
     "zod": "^3.23.8"
   }
