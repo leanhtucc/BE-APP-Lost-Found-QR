@@ -94,7 +94,14 @@ export class AuthService {
       );
       logger.info(`Verification email sent to ${user.email}`);
     } catch (error) {
+      // Rollback: Delete the user if email sending fails
       logger.error("Failed to send verification email:", error);
+      try {
+        await authRepository.deleteUser(user.id);
+        logger.info(`Rolled back user creation for ${user.email}`);
+      } catch (deleteError) {
+        logger.error("Failed to rollback user creation:", deleteError);
+      }
       throw new AppError(
         "Failed to send verification email. Please try again.",
         500
