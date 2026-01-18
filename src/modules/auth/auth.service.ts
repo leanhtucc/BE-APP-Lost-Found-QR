@@ -8,6 +8,7 @@ import {
   verifyRefreshToken,
 } from "../../libs/jwt";
 import { logger } from "../../libs/logger";
+import { tempStorage } from "../../libs/temp-storage";
 import { AppError } from "../../middlewares/error.middleware";
 import { comparePassword, hashPassword } from "../../utils/hash";
 import { AuthRepository } from "./auth.repository";
@@ -59,10 +60,18 @@ export class AuthService {
   }
 
   async register(data: RegisterDTO): Promise<RegisterResponse> {
-    // Check if email exists
+    // Check if email exists in database
     const existingUser = await authRepository.findByEmail(data.email);
     if (existingUser) {
       throw new AppError("Email already registered", 400);
+    }
+
+    // Check if email has pending registration
+    if (tempStorage.has(data.email)) {
+      throw new AppError(
+        "Verification code already sent. Please check your email or wait 15 minutes to resend.",
+        400
+      );
     }
 
     // Hash password
@@ -70,38 +79,32 @@ export class AuthService {
 
     // Generate verification code
     const verificationCode = this.generateVerificationCode();
-    const verificationCodeExpiry = this.getCodeExpiry();
+    const expiresAt = this.getCodeExpiry();
 
-    // Create user with unique uid
-    const uid = `user_${nanoid(16)}`;
-    const user = await authRepository.createUser({
-      uid,
+    // Save to temporary storage (NOT database yet)
+    tempStorage.set(data.email, {
       email: data.email,
       password: hashedPassword,
       displayName: data.displayName,
-      photoURL: data.photoURL || undefined,
+      photoURL: data.photoURL,
       verificationCode,
-      verificationCodeExpiry,
-      isVerified: false,
+      expiresAt,
     });
 
     // Send verification email
     try {
       await emailService.sendVerificationEmail(
-        user.email,
-        user.displayName,
-        verificationCode!
+        data.email,
+        data.displayName,
+        verificationCode
       );
-      logger.info(`Verification email sent to ${user.email}`);
+      logger.info(
+        `Verification code sent to ${data.email}. User will be created after verification.`
+      );
     } catch (error) {
-      // Rollback: Delete the user if email sending fails
+      // Remove from temp storage if email fails
+      tempStorage.delete(data.email);
       logger.error("Failed to send verification email:", error);
-      try {
-        await authRepository.deleteUser(user.id);
-        logger.info(`Rolled back user creation for ${user.email}`);
-      } catch (deleteError) {
-        logger.error("Failed to rollback user creation:", deleteError);
-      }
       throw new AppError(
         "Failed to send verification email. Please try again.",
         500
@@ -110,8 +113,8 @@ export class AuthService {
 
     return {
       message:
-        "Registration successful! Please check your email for verification code.",
-      email: user.email,
+        "Verification code sent! Please check your email and verify to complete registration.",
+      email: data.email,
     };
   }
 
@@ -201,38 +204,48 @@ export class AuthService {
   }
 
   async verifyEmail(data: VerifyEmailDTO): Promise<VerifyEmailResponse> {
-    const user = await authRepository.findByEmail(data.email);
-    if (!user) {
-      throw new AppError("User not found", 404);
-    }
-
-    if (user.isVerified) {
-      throw new AppError("Email already verified", 400);
-    }
-
-    if (!user.verificationCode || !user.verificationCodeExpiry) {
-      throw new AppError("Verification code not found", 400);
-    }
-
-    // Check if code expired
-    if (new Date() > user.verificationCodeExpiry) {
+    // Check temp storage for pending registration
+    const pendingReg = tempStorage.get(data.email);
+    if (!pendingReg) {
       throw new AppError(
-        "Verification code expired. Please request a new code.",
-        400
+        "No pending registration found. Please register first or request a new verification code.",
+        404
       );
     }
 
     // Verify code
-    if (user.verificationCode !== data.code) {
+    if (pendingReg.verificationCode !== data.code) {
       throw new AppError("Invalid verification code", 400);
     }
 
-    // Update user as verified
-    await authRepository.updateUser(user.id, {
-      isVerified: true,
-      verificationCode: null,
-      verificationCodeExpiry: null,
+    // Check if code expired
+    if (new Date() > pendingReg.expiresAt) {
+      tempStorage.delete(data.email);
+      throw new AppError(
+        "Verification code expired. Please register again.",
+        400
+      );
+    }
+
+    // Create user in database NOW (after verification)
+    const uid = `user_${nanoid(16)}`;
+    const user = await authRepository.createUser({
+      uid,
+      email: pendingReg.email,
+      password: pendingReg.password,
+      displayName: pendingReg.displayName,
+      photoURL: pendingReg.photoURL || undefined,
+      isVerified: true, // Already verified
+      verificationCode: undefined,
+      verificationCodeExpiry: undefined,
     });
+
+    // Remove from temp storage
+    tempStorage.delete(data.email);
+
+    logger.info(
+      `User ${user.email} created successfully after email verification`
+    );
 
     // Send welcome email
     try {
@@ -241,7 +254,7 @@ export class AuthService {
       logger.error("Failed to send welcome email:", error);
     }
 
-    // Generate tokens after successful verification
+    // Generate tokens
     const accessToken = generateAccessToken({
       id: user.id,
       uid: user.uid,
@@ -255,7 +268,7 @@ export class AuthService {
     });
 
     return {
-      message: "Email verified successfully! You can now use the app.",
+      message: "Email verified successfully! Account created.",
       accessToken,
       refreshToken,
     };
@@ -264,33 +277,46 @@ export class AuthService {
   async resendVerificationCode(
     data: ResendVerificationDTO
   ): Promise<{ message: string }> {
-    const user = await authRepository.findByEmail(data.email);
-    if (!user) {
-      throw new AppError("User not found", 404);
+    // Check if user already exists in database
+    const existingUser = await authRepository.findByEmail(data.email);
+    if (existingUser) {
+      if (existingUser.isVerified) {
+        throw new AppError("Email already verified", 400);
+      }
+      throw new AppError(
+        "User already exists. Please use login instead.",
+        400
+      );
     }
 
-    if (user.isVerified) {
-      throw new AppError("Email already verified", 400);
+    // Check temp storage
+    const pendingReg = tempStorage.get(data.email);
+    if (!pendingReg) {
+      throw new AppError(
+        "No pending registration found. Please register first.",
+        404
+      );
     }
 
     // Generate new code
     const verificationCode = this.generateVerificationCode();
-    const verificationCodeExpiry = this.getCodeExpiry();
+    const expiresAt = this.getCodeExpiry();
 
-    // Update user with new code
-    await authRepository.updateUser(user.id, {
+    // Update temp storage with new code
+    tempStorage.set(data.email, {
+      ...pendingReg,
       verificationCode,
-      verificationCodeExpiry,
+      expiresAt,
     });
 
     // Send verification email
     try {
       await emailService.sendVerificationEmail(
-        user.email,
-        user.displayName,
+        data.email,
+        pendingReg.displayName,
         verificationCode
       );
-      logger.info(`Verification code resent to ${user.email}`);
+      logger.info(`Verification code resent to ${data.email}`);
     } catch (error) {
       logger.error("Failed to resend verification email:", error);
       throw new AppError("Failed to send verification email", 500);
