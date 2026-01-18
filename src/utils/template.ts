@@ -20,22 +20,62 @@ export class TemplateUtil {
     }
 
     try {
-      const templatePath = path.join(
-        __dirname,
-        "..",
-        "templates",
-        "emails",
-        `${templateName}.html`
-      );
+      // Try multiple paths for better compatibility
+      const possiblePaths = [
+        // Production path (compiled)
+        path.join(
+          __dirname,
+          "..",
+          "templates",
+          "emails",
+          `${templateName}.html`
+        ),
+        // Alternative production path
+        path.join(
+          process.cwd(),
+          "dist",
+          "templates",
+          "emails",
+          `${templateName}.html`
+        ),
+        // Development path
+        path.join(
+          process.cwd(),
+          "src",
+          "templates",
+          "emails",
+          `${templateName}.html`
+        ),
+      ];
 
-      const template = fs.readFileSync(templatePath, "utf-8");
+      let template: string | null = null;
+      let lastError: any = null;
+
+      for (const templatePath of possiblePaths) {
+        try {
+          if (fs.existsSync(templatePath)) {
+            template = fs.readFileSync(templatePath, "utf-8");
+            break;
+          }
+        } catch (error) {
+          lastError = error;
+        }
+      }
+
+      if (!template) {
+        throw new Error(
+          `Failed to load email template: ${templateName}. Tried paths: ${possiblePaths.join(", ")}`
+        );
+      }
 
       // Cache the template for better performance
       this.templateCache.set(templateName, template);
 
       return template;
     } catch (error) {
-      throw new Error(`Failed to load email template: ${templateName}`);
+      throw new Error(
+        `Failed to load email template: ${templateName}. Error: ${error instanceof Error ? error.message : String(error)}`
+      );
     }
   }
 
