@@ -91,7 +91,7 @@ class EmailService {
         year: new Date().getFullYear(),
       },
       {
-        useBase64Images: true, // Embed logo as base64 trong email
+        useBase64Images: false, // Tắt base64 để giảm dung lượng
       }
     );
 
@@ -129,7 +129,7 @@ class EmailService {
         year: new Date().getFullYear(),
       },
       {
-        useBase64Images: true, // Embed logo as base64 trong email
+        useBase64Images: false, // Tắt base64 để giảm dung lượng
       }
     );
 
