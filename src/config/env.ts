@@ -21,10 +21,15 @@ export const ENV = {
   // App
   API_PREFIX: process.env.API_PREFIX || "/api",
 
-  // Email (Resend API - works on Render)
-  RESEND_API_KEY: process.env.RESEND_API_KEY || "",
-  EMAIL_FROM_ADDRESS: process.env.EMAIL_FROM_ADDRESS || "onboarding@resend.dev",
-  EMAIL_FROM_NAME: process.env.EMAIL_FROM_NAME || "Lost & Found",
+  // Email (Gmail SMTP)
+  SMTP_HOST: process.env.SMTP_HOST || "smtp.gmail.com",
+  SMTP_PORT: parseInt(process.env.SMTP_PORT || "465", 10),
+  SMTP_SECURE:
+    process.env.SMTP_SECURE === "true" || process.env.SMTP_PORT === "465",
+  SMTP_USER: process.env.SMTP_USER || "",
+  SMTP_PASS: process.env.SMTP_PASS || "",
+  SMTP_FROM_EMAIL: process.env.SMTP_FROM_EMAIL || "",
+  SMTP_FROM_NAME: process.env.SMTP_FROM_NAME || "Lost & Found",
 
   // Development Mode
   SKIP_EMAIL_VERIFICATION:

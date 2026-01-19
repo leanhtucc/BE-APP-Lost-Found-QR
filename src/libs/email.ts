@@ -1,11 +1,11 @@
-import { Resend } from "resend";
+import nodemailer from "nodemailer";
 import { ENV } from "../config/env";
 import { TemplateUtil } from "../utils/template";
 import { logger } from "./logger";
 
 /**
  * Email Service
- * Gửi email thông qua Resend API (HTTP-based, không bị Render block)
+ * Gửi email thông qua Gmail SMTP
  */
 
 interface SendEmailOptions {
@@ -16,7 +16,7 @@ interface SendEmailOptions {
 }
 
 class EmailService {
-  private resend: Resend | null = null;
+  private transporter: nodemailer.Transporter | null = null;
 
   constructor() {
     this.initialize();
@@ -24,24 +24,37 @@ class EmailService {
 
   private initialize() {
     try {
-      // Kiểm tra nếu có Resend API key
-      if (!ENV.RESEND_API_KEY) {
-        logger.warn(
-          "Resend API key not configured. Email sending will be disabled."
-        );
+      // Kiểm tra cấu hình SMTP
+      if (!ENV.SMTP_HOST || !ENV.SMTP_PORT) {
+        logger.warn("SMTP not configured. Email sending will be disabled.");
         return;
       }
 
-      this.resend = new Resend(ENV.RESEND_API_KEY);
-      logger.info("Email service initialized successfully with Resend");
+      this.transporter = nodemailer.createTransport({
+        host: ENV.SMTP_HOST,
+        port: ENV.SMTP_PORT,
+        secure: ENV.SMTP_SECURE, // true for 465, false for 587
+        auth: {
+          user: ENV.SMTP_USER,
+          pass: ENV.SMTP_PASS,
+        },
+        connectionTimeout: 10000,
+        greetingTimeout: 10000,
+        socketTimeout: 10000,
+        tls: {
+          rejectUnauthorized: true,
+          minVersion: "TLSv1.2",
+        },
+      });
+      logger.info("Email service initialized successfully with Gmail SMTP");
     } catch (error) {
       logger.error("Failed to initialize email service:", error);
     }
   }
 
   async sendEmail(options: SendEmailOptions): Promise<boolean> {
-    if (!this.resend) {
-      logger.warn("Resend client not initialized. Skipping email send.");
+    if (!this.transporter) {
+      logger.warn("SMTP transporter not initialized. Skipping email send.");
       // Log email content cho development
       logger.info("Email would be sent:", {
         to: options.to,
@@ -52,21 +65,16 @@ class EmailService {
     }
 
     try {
-      const { data, error } = await this.resend.emails.send({
-        from: `${ENV.EMAIL_FROM_NAME} <${ENV.EMAIL_FROM_ADDRESS}>`,
+      const info = await this.transporter.sendMail({
+        from: `"${ENV.SMTP_FROM_NAME}" <${ENV.SMTP_FROM_EMAIL}>`,
         to: options.to,
         subject: options.subject,
         html: options.html,
         text: options.text,
       });
 
-      if (error) {
-        logger.error("Failed to send email via Resend:", error);
-        return false;
-      }
-
       logger.info(
-        `Email sent successfully to ${options.to}: ${data?.id || "no-id"}`
+        `Email sent successfully to ${options.to}: ${info.messageId}`
       );
       return true;
     } catch (error) {
