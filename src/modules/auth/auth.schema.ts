@@ -12,7 +12,7 @@ const emailRegex =
   /^[a-zA-Z0-9.!#$%&'*+\/=?^_`{|}~-]+@[a-zA-Z0-9](?:[a-zA-Z0-9-]{0,61}[a-zA-Z0-9])?(?:\.[a-zA-Z0-9](?:[a-zA-Z0-9-]{0,61}[a-zA-Z0-9])?)*$/;
 
 export const registerSchema = z.object({
-  query: z.object({
+  body: z.object({
     email: z
       .string({
         required_error: "Email is required",
@@ -52,7 +52,7 @@ export const registerSchema = z.object({
 });
 
 export const loginSchema = z.object({
-  query: z.object({
+  body: z.object({
     email: z
       .string({
         required_error: "Email is required",
@@ -71,13 +71,13 @@ export const loginSchema = z.object({
 });
 
 export const refreshTokenSchema = z.object({
-  query: z.object({
+  body: z.object({
     refreshToken: z.string().min(1, "Refresh token is required"),
   }),
 });
 
 export const updateProfileSchema = z.object({
-  query: z.object({
+  body: z.object({
     displayName: z
       .string({
         required_error: "Display name is required",
@@ -98,7 +98,7 @@ export const updateProfileSchema = z.object({
 });
 
 export const verifyEmailSchema = z.object({
-  query: z.object({
+  body: z.object({
     email: z
       .string({
         required_error: "Email is required",
@@ -118,7 +118,7 @@ export const verifyEmailSchema = z.object({
 });
 
 export const resendVerificationSchema = z.object({
-  query: z.object({
+  body: z.object({
     email: z
       .string({
         required_error: "Email is required",

@@ -12,25 +12,6 @@ import uploadRoutes from "./modules/upload/upload.routes";
 
 const router = Router();
 
-// Health check routes
-router.get("/", (req: Request, res: Response) => {
-  res.json({
-    success: true,
-    message: "Lost & Found API is running 🚀",
-    version: "1.0.0",
-    timestamp: new Date().toISOString(),
-  });
-});
-
-router.get("/health", (req: Request, res: Response) => {
-  res.json({
-    success: true,
-    status: "healthy",
-    uptime: process.uptime(),
-    environment: ENV.NODE_ENV,
-  });
-});
-
 // API Routes - Đăng ký trực tiếp tất cả module routes
 router.use(`${ENV.API_PREFIX}/auth`, authRoutes);
 router.use(`${ENV.API_PREFIX}/upload`, uploadRoutes);

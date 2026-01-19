@@ -13,9 +13,9 @@ export class AuthController {
   // POST /api/auth/register - Đăng ký tài khoản mới
   async register(req: Request, res: Response, next: NextFunction) {
     try {
-      console.log("[AUTH CONTROLLER] Register request received:", req.query);
+      console.log("[AUTH CONTROLLER] Register request received:", req.body);
 
-      const { email, password, displayName, photoURL } = req.query as any;
+      const { email, password, displayName, photoURL } = req.body as any;
 
       const result = await authService.register({
         email,
@@ -35,7 +35,7 @@ export class AuthController {
   // POST /api/auth/login - Đăng nhập
   async login(req: Request, res: Response, next: NextFunction) {
     try {
-      const { email, password } = req.query as any;
+      const { email, password } = req.body as any;
 
       const result = await authService.login({ email, password });
 
@@ -48,7 +48,7 @@ export class AuthController {
   // POST /api/auth/refresh - Làm mới access token
   async refreshToken(req: Request, res: Response, next: NextFunction) {
     try {
-      const { refreshToken } = req.query as any;
+      const { refreshToken } = req.body as any;
 
       const result = await authService.refreshToken(refreshToken);
 
@@ -75,7 +75,7 @@ export class AuthController {
   async updateProfile(req: Request, res: Response, next: NextFunction) {
     try {
       const userId = req.user!.id;
-      const { displayName, photoURL, pushToken } = req.query as any;
+      const { displayName, photoURL, pushToken } = req.body as any;
 
       const user = await authService.updateProfile(userId, {
         displayName,
@@ -116,7 +116,7 @@ export class AuthController {
   // POST /api/auth/verify-email - Xác thực email với mã
   async verifyEmail(req: Request, res: Response, next: NextFunction) {
     try {
-      const { email, code } = req.query as any;
+      const { email, code } = req.body as any;
 
       const result = await authService.verifyEmail({ email, code });
 
@@ -129,7 +129,7 @@ export class AuthController {
   // POST /api/auth/resend-verification - Gửi lại mã xác thực
   async resendVerification(req: Request, res: Response, next: NextFunction) {
     try {
-      const { email } = req.query as any;
+      const { email } = req.body as any;
 
       const result = await authService.resendVerificationCode({ email });
 
