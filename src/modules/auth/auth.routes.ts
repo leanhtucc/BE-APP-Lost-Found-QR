@@ -1,5 +1,6 @@
 import { Router } from "express";
 import { authMiddleware } from "../../middlewares/auth.middleware";
+import { queryToBody } from "../../middlewares/query-to-body.middleware";
 import { validate } from "../../middlewares/validate.middleware";
 import { AuthController } from "./auth.controller";
 import {
@@ -21,24 +22,32 @@ const router = Router();
 const authController = new AuthController();
 
 // Public routes
-router.post("/register", validate(registerSchema), authController.register);
+router.post(
+  "/register",
+  queryToBody,
+  validate(registerSchema),
+  authController.register
+);
 
-router.post("/login", validate(loginSchema), authController.login);
+router.post("/login", queryToBody, validate(loginSchema), authController.login);
 
 router.post(
   "/refresh",
+  queryToBody,
   validate(refreshTokenSchema),
   authController.refreshToken
 );
 
 router.post(
   "/verify-email",
+  queryToBody,
   validate(verifyEmailSchema),
   authController.verifyEmail
 );
 
 router.post(
   "/resend-verification",
+  queryToBody,
   validate(resendVerificationSchema),
   authController.resendVerification
 );
