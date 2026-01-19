@@ -38,6 +38,13 @@ class EmailService {
           user: ENV.SMTP_USER,
           pass: ENV.SMTP_PASS,
         },
+        connectionTimeout: 10000, // 10 seconds timeout
+        greetingTimeout: 10000,
+        socketTimeout: 10000,
+        tls: {
+          rejectUnauthorized: true,
+          minVersion: "TLSv1.2",
+        },
       });
 
       logger.info("Email service initialized successfully");

@@ -19,9 +19,12 @@ class TempStorage {
 
   constructor() {
     // Auto cleanup expired entries every 5 minutes
-    this.cleanupInterval = setInterval(() => {
-      this.cleanup();
-    }, 5 * 60 * 1000);
+    this.cleanupInterval = setInterval(
+      () => {
+        this.cleanup();
+      },
+      5 * 60 * 1000
+    );
   }
 
   /**

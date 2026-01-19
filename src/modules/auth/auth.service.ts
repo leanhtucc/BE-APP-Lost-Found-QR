@@ -283,10 +283,7 @@ export class AuthService {
       if (existingUser.isVerified) {
         throw new AppError("Email already verified", 400);
       }
-      throw new AppError(
-        "User already exists. Please use login instead.",
-        400
-      );
+      throw new AppError("User already exists. Please use login instead.", 400);
     }
 
     // Check temp storage
