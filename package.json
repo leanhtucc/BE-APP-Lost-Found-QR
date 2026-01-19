@@ -47,6 +47,7 @@
     "nanoid": "^3.3.7",
     "nodemailer": "^6.9.8",
     "prisma": "^6.19.0",
+    "resend": "^6.7.0",
     "stream-chat": "^9.28.0",
     "typescript": "^5.9.3",
     "uuid": "^13.0.0",

@@ -21,19 +21,15 @@ export const ENV = {
   // App
   API_PREFIX: process.env.API_PREFIX || "/api",
 
-  // Email (SMTP)
-  SMTP_HOST: process.env.SMTP_HOST || "",
-  SMTP_PORT: parseInt(process.env.SMTP_PORT || "587", 10),
-  SMTP_SECURE: process.env.SMTP_SECURE === "true",
-  SMTP_USER: process.env.SMTP_USER || "",
-  SMTP_PASS: process.env.SMTP_PASS || "",
-  SMTP_FROM_EMAIL: process.env.SMTP_FROM_EMAIL || "noreply@lostfound.com",
+  // Email (Resend API - works on Render)
+  RESEND_API_KEY: process.env.RESEND_API_KEY || "",
+  EMAIL_FROM_ADDRESS: process.env.EMAIL_FROM_ADDRESS || "onboarding@resend.dev",
+  EMAIL_FROM_NAME: process.env.EMAIL_FROM_NAME || "Lost & Found",
 
   // Development Mode
   SKIP_EMAIL_VERIFICATION:
     process.env.SKIP_EMAIL_VERIFICATION === "true" ||
     process.env.NODE_ENV === "development",
-  SMTP_FROM_NAME: process.env.SMTP_FROM_NAME || "Lost & Found",
 
   // Google OAuth
   GOOGLE_CLIENT_ID: process.env.GOOGLE_CLIENT_ID || "",

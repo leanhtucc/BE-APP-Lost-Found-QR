@@ -1,11 +1,11 @@
-import nodemailer from "nodemailer";
+import { Resend } from "resend";
 import { ENV } from "../config/env";
 import { TemplateUtil } from "../utils/template";
 import { logger } from "./logger";
 
 /**
  * Email Service
- * Gửi email thông qua SMTP
+ * Gửi email thông qua Resend API (HTTP-based, không bị Render block)
  */
 
 interface SendEmailOptions {
@@ -16,7 +16,7 @@ interface SendEmailOptions {
 }
 
 class EmailService {
-  private transporter: nodemailer.Transporter | null = null;
+  private resend: Resend | null = null;
 
   constructor() {
     this.initialize();
@@ -24,38 +24,24 @@ class EmailService {
 
   private initialize() {
     try {
-      // Kiểm tra nếu có cấu hình email
-      if (!ENV.SMTP_HOST || !ENV.SMTP_PORT) {
-        logger.warn("SMTP not configured. Email sending will be disabled.");
+      // Kiểm tra nếu có Resend API key
+      if (!ENV.RESEND_API_KEY) {
+        logger.warn(
+          "Resend API key not configured. Email sending will be disabled."
+        );
         return;
       }
 
-      this.transporter = nodemailer.createTransport({
-        host: ENV.SMTP_HOST,
-        port: ENV.SMTP_PORT,
-        secure: ENV.SMTP_SECURE, // true for 465, false for other ports
-        auth: {
-          user: ENV.SMTP_USER,
-          pass: ENV.SMTP_PASS,
-        },
-        connectionTimeout: 10000, // 10 seconds timeout
-        greetingTimeout: 10000,
-        socketTimeout: 10000,
-        tls: {
-          rejectUnauthorized: true,
-          minVersion: "TLSv1.2",
-        },
-      });
-
-      logger.info("Email service initialized successfully");
+      this.resend = new Resend(ENV.RESEND_API_KEY);
+      logger.info("Email service initialized successfully with Resend");
     } catch (error) {
       logger.error("Failed to initialize email service:", error);
     }
   }
 
   async sendEmail(options: SendEmailOptions): Promise<boolean> {
-    if (!this.transporter) {
-      logger.warn("Email transporter not initialized. Skipping email send.");
+    if (!this.resend) {
+      logger.warn("Resend client not initialized. Skipping email send.");
       // Log email content cho development
       logger.info("Email would be sent:", {
         to: options.to,
@@ -66,16 +52,21 @@ class EmailService {
     }
 
     try {
-      const info = await this.transporter.sendMail({
-        from: `"${ENV.SMTP_FROM_NAME}" <${ENV.SMTP_FROM_EMAIL}>`,
+      const { data, error } = await this.resend.emails.send({
+        from: `${ENV.EMAIL_FROM_NAME} <${ENV.EMAIL_FROM_ADDRESS}>`,
         to: options.to,
         subject: options.subject,
-        text: options.text,
         html: options.html,
+        text: options.text,
       });
 
+      if (error) {
+        logger.error("Failed to send email via Resend:", error);
+        return false;
+      }
+
       logger.info(
-        `Email sent successfully to ${options.to}: ${info.messageId}`
+        `Email sent successfully to ${options.to}: ${data?.id || "no-id"}`
       );
       return true;
     } catch (error) {
