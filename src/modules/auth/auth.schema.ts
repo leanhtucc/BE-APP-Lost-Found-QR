@@ -7,6 +7,9 @@ import { z } from "zod";
 // Custom validators
 const passwordRegex = /^(?=.*[a-z])(?=.*[A-Z])(?=.*\d).+$/;
 
+// Email regex hỗ trợ plus addressing (+) và các ký tự đặc biệt hợp lệ
+const emailRegex = /^[a-zA-Z0-9.!#$%&'*+\/=?^_`{|}~-]+@[a-zA-Z0-9](?:[a-zA-Z0-9-]{0,61}[a-zA-Z0-9])?(?:\.[a-zA-Z0-9](?:[a-zA-Z0-9-]{0,61}[a-zA-Z0-9])?)*$/;
+
 export const registerSchema = z.object({
   query: z.object({
     email: z
@@ -14,6 +17,7 @@ export const registerSchema = z.object({
         required_error: "Email is required",
       })
       .email("Invalid email format")
+      .regex(emailRegex, "Invalid email format")
       .toLowerCase()
       .trim(),
 
@@ -53,6 +57,7 @@ export const loginSchema = z.object({
         required_error: "Email is required",
       })
       .email("Invalid email format")
+      .regex(emailRegex, "Invalid email format")
       .toLowerCase()
       .trim(),
 
@@ -98,6 +103,7 @@ export const verifyEmailSchema = z.object({
         required_error: "Email is required",
       })
       .email("Invalid email format")
+      .regex(emailRegex, "Invalid email format")
       .toLowerCase()
       .trim(),
 
@@ -117,6 +123,7 @@ export const resendVerificationSchema = z.object({
         required_error: "Email is required",
       })
       .email("Invalid email format")
+      .regex(emailRegex, "Invalid email format")
       .toLowerCase()
       .trim(),
   }),
@@ -130,6 +137,7 @@ export const forgotPasswordSchema = z.object({
         required_error: "Email is required",
       })
       .email("Invalid email format")
+      .regex(emailRegex, "Invalid email format")
       .toLowerCase()
       .trim(),
   }),
