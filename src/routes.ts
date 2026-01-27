@@ -12,6 +12,15 @@ import uploadRoutes from "./modules/upload/upload.routes";
 
 const router = Router();
 
+// Root route
+router.get("/", (req: Request, res: Response) => {
+  res.json({
+    success: true,
+    message: "API is running",
+    timestamp: new Date().toISOString(),
+  });
+});
+
 // API Routes - Đăng ký trực tiếp tất cả module routes
 router.use(`${ENV.API_PREFIX}/auth`, authRoutes);
 router.use(`${ENV.API_PREFIX}/upload`, uploadRoutes);
