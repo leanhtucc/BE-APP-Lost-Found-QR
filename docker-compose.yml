@@ -1,18 +1,55 @@
 version: "3.8"
 
 services:
+  # Backend API
+  backend:
+    build: .
+    container_name: backend-api
+    restart: unless-stopped
+    ports:
+      - "3000:3000"
+    environment:
+      NODE_ENV: production
+      PORT: 3000
+      DATABASE_URL: ${DATABASE_URL}
+      JWT_SECRET: ${JWT_SECRET}
+      JWT_EXPIRES_IN: ${JWT_EXPIRES_IN}
+      JWT_REFRESH_SECRET: ${JWT_REFRESH_SECRET}
+      JWT_REFRESH_EXPIRES_IN: ${JWT_REFRESH_EXPIRES_IN}
+      SMTP_HOST: ${SMTP_HOST}
+      SMTP_PORT: ${SMTP_PORT}
+      SMTP_SECURE: ${SMTP_SECURE}
+      SMTP_USER: ${SMTP_USER}
+      SMTP_PASS: ${SMTP_PASS}
+      SMTP_FROM_EMAIL: ${SMTP_FROM_EMAIL}
+      SMTP_FROM_NAME: ${SMTP_FROM_NAME}
+      GOOGLE_CLIENT_ID: ${GOOGLE_CLIENT_ID}
+      GOOGLE_CLIENT_SECRET: ${GOOGLE_CLIENT_SECRET}
+      GOOGLE_CALLBACK_URL: ${GOOGLE_CALLBACK_URL}
+      STREAM_API_KEY: ${STREAM_API_KEY}
+      STREAM_API_SECRET: ${STREAM_API_SECRET}
+    depends_on:
+      - db
+    command: sh -c "npx prisma migrate deploy && npm start"
+
+  # PostgreSQL Database (Local development)
   db:
-    image: postgres:15
-    container_name: todolist-db
+    image: postgres:15-alpine
+    container_name: backend-db
     restart: unless-stopped
     environment:
-      POSTGRES_USER: todolist_user
-      POSTGRES_PASSWORD: todolist_pass
-      POSTGRES_DB: todolist_db
+      POSTGRES_USER: backend_user
+      POSTGRES_PASSWORD: backend_pass
+      POSTGRES_DB: backend_db
     ports:
       - "5432:5432"
     volumes:
-      - todolist-data:/var/lib/postgresql/data
+      - backend-data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U backend_user"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
 
 volumes:
-  todolist-data:
+  backend-data:
