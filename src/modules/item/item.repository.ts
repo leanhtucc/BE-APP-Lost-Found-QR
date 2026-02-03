@@ -26,6 +26,7 @@ export class ItemRepository {
             displayName: true,
             email: true,
             photoURL: true,
+            phoneNumber: true,
             createdAt: true,
           },
         },
@@ -45,6 +46,7 @@ export class ItemRepository {
             displayName: true,
             email: true,
             photoURL: true,
+            phoneNumber: true,
             createdAt: true,
           },
         },
@@ -64,6 +66,7 @@ export class ItemRepository {
             displayName: true,
             email: true,
             photoURL: true,
+            phoneNumber: true,
             createdAt: true,
           },
         },
@@ -83,6 +86,7 @@ export class ItemRepository {
             displayName: true,
             email: true,
             photoURL: true,
+            phoneNumber: true,
             createdAt: true,
           },
         },
@@ -124,6 +128,7 @@ export class ItemRepository {
               displayName: true,
               email: true,
               photoURL: true,
+              phoneNumber: true,
             },
           },
         },
@@ -174,5 +179,101 @@ export class ItemRepository {
       select: { ownerId: true },
     });
     return item?.ownerId === ownerId;
+  }
+
+  // Tìm kiếm items theo keyword
+  async searchItems(
+    ownerId: string,
+    options: {
+      query: string;
+      status?: string;
+      category?: string;
+      skip: number;
+      take: number;
+    }
+  ) {
+    const where: any = {
+      ownerId,
+      OR: [
+        { name: { contains: options.query, mode: "insensitive" } },
+        { description: { contains: options.query, mode: "insensitive" } },
+        { category: { contains: options.query, mode: "insensitive" } },
+        { itemId: { contains: options.query, mode: "insensitive" } },
+      ],
+    };
+
+    if (options.status && options.status !== "all") {
+      where.status = options.status;
+    }
+
+    if (options.category) {
+      where.category = options.category;
+    }
+
+    const [items, total] = await Promise.all([
+      prisma.item.findMany({
+        where,
+        skip: options.skip,
+        take: options.take,
+        orderBy: { createdAt: "desc" },
+        include: {
+          owner: {
+            select: {
+              id: true,
+              uid: true,
+              displayName: true,
+              email: true,
+              photoURL: true,
+              phoneNumber: true,
+            },
+          },
+        },
+      }),
+      prisma.item.count({ where }),
+    ]);
+
+    return { items, total };
+  }
+
+  // Lấy thống kê dashboard
+  async getDashboardStats(ownerId: string) {
+    const [totalItems, safeItems, lostItems, categoryCounts, recentItems] =
+      await Promise.all([
+        prisma.item.count({ where: { ownerId } }),
+        prisma.item.count({ where: { ownerId, status: "safe" } }),
+        prisma.item.count({ where: { ownerId, status: "lost" } }),
+        prisma.item.groupBy({
+          by: ["category"],
+          where: { ownerId },
+          _count: { category: true },
+        }),
+        prisma.item.findMany({
+          where: { ownerId },
+          take: 5,
+          orderBy: { createdAt: "desc" },
+          include: {
+            owner: {
+              select: {
+                id: true,
+                uid: true,
+                displayName: true,
+                email: true,
+                photoURL: true,
+              },
+            },
+          },
+        }),
+      ]);
+
+    return {
+      totalItems,
+      safeItems,
+      lostItems,
+      categoryCounts: categoryCounts.map((c) => ({
+        category: c.category,
+        count: c._count.category,
+      })),
+      recentItems,
+    };
   }
 }

@@ -1,10 +1,10 @@
 import { Router } from "express";
-import { uploadController } from "./upload.controller";
-import { authMiddleware } from "../../middlewares/auth.middleware";
-import multer from "multer";
-import path from "path";
 import * as fs from "fs";
+import multer from "multer";
 import { nanoid } from "nanoid";
+import path from "path";
+import { authMiddleware } from "../../middlewares/auth.middleware";
+import { uploadController } from "./upload.controller";
 
 const router = Router();
 
@@ -43,14 +43,9 @@ const upload = multer({
 /**
  * @route POST /api/upload/image
  * @desc Upload single image
- * @access Private
+ * @access Public (no authentication required)
  */
-router.post(
-  "/image",
-  authMiddleware,
-  upload.single("image"),
-  uploadController.uploadImage
-);
+router.post("/image", upload.single("image"), uploadController.uploadImage);
 
 /**
  * @route DELETE /api/upload/:filename

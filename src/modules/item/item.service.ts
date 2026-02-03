@@ -5,10 +5,14 @@ import { AppError } from "../../middlewares/error.middleware";
 import { ItemRepository } from "./item.repository";
 import {
   CreateItemDTO,
+  DashboardSummary,
+  ITEM_CATEGORIES,
   ItemResponse,
   ListItemsQuery,
   ListItemsResponse,
   ScanQRResponse,
+  SearchItemsQuery,
+  SearchItemsResponse,
   UpdateItemDTO,
 } from "./item.types";
 
@@ -272,6 +276,63 @@ export class ItemService {
     );
 
     return this.formatItemResponse(updated);
+  }
+
+  // Tìm kiếm items
+  async searchItems(
+    userId: string,
+    query: SearchItemsQuery
+  ): Promise<SearchItemsResponse> {
+    const page = query.page || 1;
+    const limit = query.limit || 10;
+    const skip = (page - 1) * limit;
+
+    if (!query.q || query.q.trim().length === 0) {
+      throw new AppError("Search query is required", 400);
+    }
+
+    const searchQuery = query.q.trim();
+
+    const { items, total } = await itemRepository.searchItems(userId, {
+      query: searchQuery,
+      status: query.status || undefined,
+      category: query.category || undefined,
+      skip,
+      take: limit,
+    });
+
+    logger.info(
+      `User ${userId} searched for "${searchQuery}", found ${total} results`
+    );
+
+    return {
+      items: items.map((item) => this.formatItemResponse(item)),
+      total,
+      page,
+      limit,
+      totalPages: Math.ceil(total / limit),
+      query: searchQuery,
+    };
+  }
+
+  // Lấy thống kê Dashboard
+  async getDashboardSummary(userId: string): Promise<DashboardSummary> {
+    const stats = await itemRepository.getDashboardStats(userId);
+
+    return {
+      totalItems: stats.totalItems,
+      safeItems: stats.safeItems,
+      lostItems: stats.lostItems,
+      recentItems: stats.recentItems.map((item) =>
+        this.formatItemResponse(item)
+      ),
+      categorySummary: stats.categoryCounts,
+    };
+  }
+
+  // Lấy danh sách categories hợp lệ
+  getCategories(): string[] {
+    return [...ITEM_CATEGORIES];
   }
 }
 

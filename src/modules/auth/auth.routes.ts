@@ -5,6 +5,7 @@ import { validate } from "../../middlewares/validate.middleware";
 import { AuthController } from "./auth.controller";
 import {
   forgotPasswordSchema,
+  googleAuthSchema,
   loginSchema,
   refreshTokenSchema,
   registerSchema,
@@ -53,9 +54,16 @@ router.post(
 );
 
 // Google OAuth routes
+// For web browser flow (redirect-based)
 router.get("/google", authController.googleLogin);
-
 router.get("/google/callback", authController.googleCallback);
+
+// For mobile app flow (ID token-based)
+router.post(
+  "/google",
+  validate(googleAuthSchema),
+  authController.googleAuthWithIdToken
+);
 
 // Password reset routes
 router.post(

@@ -4,14 +4,16 @@
 
 ```bash
 POST http://localhost:3000/api/upload/image
-Authorization: Bearer eyJhbGciOiJIUzI1NiIs...
 Content-Type: multipart/form-data
 
 # Form data:
 image: [file binary]
 ```
 
+> **Note**: API upload ảnh không cần token xác thực.
+
 **Response:**
+
 ```json
 {
   "success": true,
@@ -22,12 +24,13 @@ image: [file binary]
     "size": 245678,
     "mimeType": "image/jpeg",
     "url": "/public/uploads/1736534400000-abc123xy.jpg",
-    "uploadedBy": "clx1234567890"
+    "uploadedBy": "anonymous"
   }
 }
 ```
 
 **Truy cập ảnh:**
+
 ```
 http://localhost:3000/public/uploads/1736534400000-abc123xy.jpg
 ```
@@ -42,6 +45,7 @@ Authorization: Bearer eyJhbGciOiJIUzI1NiIs...
 ```
 
 **Response:**
+
 ```json
 {
   "success": true,
@@ -54,14 +58,16 @@ Authorization: Bearer eyJhbGciOiJIUzI1NiIs...
 
 ## Validation Rules
 
-### File constraints:
+### File constraints
+
 - **Max size**: 5MB
 - **Allowed formats**: JPEG, JPG, PNG, WebP
 - **Field name**: `image` (trong form-data)
 
-### Error Responses:
+### Error Responses
 
 **No file uploaded (400)**
+
 ```json
 {
   "success": false,
@@ -71,6 +77,7 @@ Authorization: Bearer eyJhbGciOiJIUzI1NiIs...
 ```
 
 **Invalid file type (400)**
+
 ```json
 {
   "success": false,
@@ -80,6 +87,7 @@ Authorization: Bearer eyJhbGciOiJIUzI1NiIs...
 ```
 
 **File too large (400)**
+
 ```json
 {
   "success": false,
@@ -89,6 +97,7 @@ Authorization: Bearer eyJhbGciOiJIUzI1NiIs...
 ```
 
 **File not found (404)**
+
 ```json
 {
   "success": false,
@@ -101,28 +110,30 @@ Authorization: Bearer eyJhbGciOiJIUzI1NiIs...
 
 ## Test với cURL
 
-### Upload ảnh:
+### Upload ảnh
+
 ```bash
 curl -X POST http://localhost:3000/api/upload/image \
-  -H "Authorization: Bearer YOUR_TOKEN" \
   -F "image=@/path/to/image.jpg"
 ```
 
-### Test với Postman:
+### Test với Postman
+
 1. Method: **POST**
 2. URL: `http://localhost:3000/api/upload/image`
-3. Headers:
-   - `Authorization: Bearer YOUR_TOKEN`
-4. Body: 
+3. Body:
    - Chọn **form-data**
    - Key: `image` (type: File)
    - Value: Chọn file ảnh
+
+> **Note**: Không cần thêm Authorization header
 
 ---
 
 ## Use Cases
 
 ### 1. Upload avatar
+
 ```bash
 POST /api/upload/image
 # Sau đó update profile
@@ -133,6 +144,7 @@ PATCH /api/auth/profile
 ```
 
 ### 2. Upload ảnh item
+
 ```bash
 POST /api/upload/image
 # Dùng URL khi tạo item
@@ -144,6 +156,7 @@ POST /api/items
 ```
 
 ### 3. Upload ảnh trong message (chat)
+
 ```bash
 POST /api/upload/image
 # Gửi URL trong message

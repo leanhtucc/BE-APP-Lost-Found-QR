@@ -44,6 +44,7 @@ export class AuthService {
       email: user.email,
       displayName: user.displayName,
       photoURL: user.photoURL,
+      phoneNumber: user.phoneNumber,
       totalReturned: user.totalReturned,
       createdAt: user.createdAt,
     };
@@ -87,6 +88,7 @@ export class AuthService {
       password: hashedPassword,
       displayName: data.displayName,
       photoURL: data.photoURL,
+      phoneNumber: data.phoneNumber,
       verificationCode,
       expiresAt,
     });
@@ -235,6 +237,7 @@ export class AuthService {
       password: pendingReg.password,
       displayName: pendingReg.displayName,
       photoURL: pendingReg.photoURL || undefined,
+      phoneNumber: pendingReg.phoneNumber || undefined,
       isVerified: true, // Already verified
       verificationCode: undefined,
       verificationCodeExpiry: undefined,
@@ -350,78 +353,111 @@ export class AuthService {
 
   async googleAuth(code: string): Promise<GoogleAuthResponse> {
     try {
-      // Verify Google token and get user info
+      // Verify Google authorization code and get user info
       const googleUser = await googleOAuthService.verifyToken(code);
-
-      if (!googleUser.verified_email) {
-        throw new AppError("Google email not verified", 400);
-      }
-
-      // Check if user exists with Google ID
-      let user: User | null = await authRepository.findByGoogleId(
-        googleUser.id
-      );
-      let isNewUser = false;
-
-      if (!user) {
-        // Check if user exists with same email
-        user = await authRepository.findByEmail(googleUser.email);
-
-        if (user) {
-          // Link Google account to existing user
-          await authRepository.updateUser(user.id, {
-            googleId: googleUser.id,
-            photoURL: googleUser.picture || user.photoURL,
-            isVerified: true, // Auto-verify Google users
-          });
-          user = await authRepository.findByEmail(user.email);
-          logger.info(`Google account linked to existing user: ${user!.email}`);
-        } else {
-          // Create new user with Google account
-          const uid = `user_${nanoid(16)}`;
-          await authRepository.createUser({
-            uid,
-            email: googleUser.email,
-            password: "", // Empty string for OAuth users
-            displayName: googleUser.name,
-            photoURL: googleUser.picture || undefined,
-            isVerified: true, // Auto-verify Google users
-            verificationCode: undefined,
-            verificationCodeExpiry: undefined,
-          });
-          user = await authRepository.findByEmail(googleUser.email);
-          isNewUser = true;
-          logger.info(`New user created via Google OAuth: ${user!.email}`);
-        }
-      }
-
-      // Generate tokens (user cannot be null here)
-      if (!user) {
-        throw new AppError("Failed to create or find user", 500);
-      }
-
-      const accessToken = generateAccessToken({
-        id: user.id,
-        uid: user.uid,
-        email: user.email,
-      });
-
-      const refreshToken = generateRefreshToken({
-        id: user.id,
-        uid: user.uid,
-        email: user.email,
-      });
-
-      return {
-        accessToken,
-        refreshToken,
-        user: this.formatUserResponse(user),
-        isNewUser,
-      };
+      return this.processGoogleUser(googleUser);
     } catch (error) {
       logger.error("Google OAuth error:", error);
       throw new AppError("Google authentication failed", 500);
     }
+  }
+
+  /**
+   * Google Auth with ID Token (for mobile apps)
+   * Mobile apps use Google Sign-In SDK and send ID token directly
+   */
+  async googleAuthWithIdToken(idToken: string): Promise<GoogleAuthResponse> {
+    try {
+      // Verify Google ID token directly
+      const googleUser = await googleOAuthService.verifyIdToken(idToken);
+      return this.processGoogleUser(googleUser);
+    } catch (error) {
+      logger.error("Google ID token auth error:", error);
+      throw new AppError("Google authentication failed", 500);
+    }
+  }
+
+  /**
+   * Process Google user - shared logic for both web and mobile flows
+   */
+  private async processGoogleUser(googleUser: {
+    id: string;
+    email: string;
+    verified_email: boolean;
+    name: string;
+    picture: string;
+  }): Promise<GoogleAuthResponse> {
+    if (!googleUser.verified_email) {
+      throw new AppError("Google email not verified", 400);
+    }
+
+    // Check if user exists with Google ID
+    let user: User | null = await authRepository.findByGoogleId(googleUser.id);
+    let isNewUser = false;
+
+    if (!user) {
+      // Check if user exists with same email
+      user = await authRepository.findByEmail(googleUser.email);
+
+      if (user) {
+        // Link Google account to existing user
+        await authRepository.updateUser(user.id, {
+          googleId: googleUser.id,
+          photoURL: googleUser.picture || user.photoURL,
+          isVerified: true, // Auto-verify Google users
+        });
+        user = await authRepository.findByEmail(user.email);
+        logger.info(`Google account linked to existing user: ${user!.email}`);
+      } else {
+        // Create new user with Google account
+        const uid = `user_${nanoid(16)}`;
+        await authRepository.createUser({
+          uid,
+          email: googleUser.email,
+          password: "", // Empty string for OAuth users
+          displayName: googleUser.name,
+          photoURL: googleUser.picture || undefined,
+          isVerified: true, // Auto-verify Google users
+          googleId: googleUser.id,
+          verificationCode: undefined,
+          verificationCodeExpiry: undefined,
+        });
+        user = await authRepository.findByEmail(googleUser.email);
+        isNewUser = true;
+        logger.info(`New user created via Google OAuth: ${user!.email}`);
+
+        // Send welcome email for new users
+        try {
+          await emailService.sendWelcomeEmail(user!.email, user!.displayName);
+        } catch (error) {
+          logger.error("Failed to send welcome email:", error);
+        }
+      }
+    }
+
+    // Generate tokens (user cannot be null here)
+    if (!user) {
+      throw new AppError("Failed to create or find user", 500);
+    }
+
+    const accessToken = generateAccessToken({
+      id: user.id,
+      uid: user.uid,
+      email: user.email,
+    });
+
+    const refreshToken = generateRefreshToken({
+      id: user.id,
+      uid: user.uid,
+      email: user.email,
+    });
+
+    return {
+      accessToken,
+      refreshToken,
+      user: this.formatUserResponse(user),
+      isNewUser,
+    };
   }
 
   async requestPasswordReset(

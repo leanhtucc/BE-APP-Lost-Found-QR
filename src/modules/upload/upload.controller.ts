@@ -17,7 +17,7 @@ export class UploadController {
         throw new AppError("No file uploaded", 400);
       }
 
-      const userId = req.user!.id;
+      const userId = req.user?.id ?? "anonymous";
       const file = req.file;
 
       const result = await uploadService.uploadImage(file, userId);

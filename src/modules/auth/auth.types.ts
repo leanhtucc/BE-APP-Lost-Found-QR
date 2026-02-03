@@ -7,6 +7,7 @@ export interface RegisterDTO {
   password: string;
   displayName: string;
   photoURL?: string;
+  phoneNumber?: string;
 }
 
 export interface RegisterResponse {
@@ -38,6 +39,7 @@ export interface UserResponse {
   email: string;
   displayName: string;
   photoURL: string | null;
+  phoneNumber: string | null;
   totalReturned: number;
   createdAt: Date;
 }
@@ -49,6 +51,7 @@ export interface RefreshTokenDTO {
 export interface UpdateProfileDTO {
   displayName?: string;
   photoURL?: string;
+  phoneNumber?: string;
   pushToken?: string;
 }
 

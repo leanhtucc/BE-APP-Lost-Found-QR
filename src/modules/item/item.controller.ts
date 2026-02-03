@@ -170,4 +170,47 @@ export class ItemController {
       next(error);
     }
   }
+
+  // GET /api/items/search - Tìm kiếm items
+  async searchItems(req: Request, res: Response, next: NextFunction) {
+    try {
+      const userId = (req as any).user.id;
+      const { q, status, category, page, limit } = req.query as any;
+
+      const result = await itemService.searchItems(userId, {
+        q,
+        status,
+        category,
+        page: page ? parseInt(page, 10) : 1,
+        limit: limit ? parseInt(limit, 10) : 10,
+      });
+
+      return ResponseUtil.success(res, result);
+    } catch (error) {
+      next(error);
+    }
+  }
+
+  // GET /api/items/summary - Lấy thống kê dashboard
+  async getDashboardSummary(req: Request, res: Response, next: NextFunction) {
+    try {
+      const userId = (req as any).user.id;
+
+      const result = await itemService.getDashboardSummary(userId);
+
+      return ResponseUtil.success(res, result);
+    } catch (error) {
+      next(error);
+    }
+  }
+
+  // GET /api/items/categories - Lấy danh sách categories
+  async getCategories(req: Request, res: Response, next: NextFunction) {
+    try {
+      const result = itemService.getCategories();
+      return ResponseUtil.success(res, result);
+    } catch (error) {
+      next(error);
+    }
+  }
 }

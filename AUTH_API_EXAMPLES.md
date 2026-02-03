@@ -20,6 +20,129 @@ POST http://localhost:3000/api/auth/verify-email
 
 ---
 
+## 🔵 Đăng nhập bằng Google
+
+### Flow cho Mobile App (React Native / Expo)
+
+**Sử dụng thư viện:** `expo-auth-session` hoặc `@react-native-google-signin/google-signin`
+
+**Endpoint:**
+
+```bash
+POST http://localhost:3000/api/auth/google
+Content-Type: application/json
+
+{
+  "idToken": "eyJhbGciOiJSUzI1NiIsInR5cCI6IkpXVCIsImtpZCI6..."
+}
+```
+
+**Response (Success - Account mới):**
+
+```json
+{
+  "success": true,
+  "message": "Account created successfully via Google",
+  "data": {
+    "accessToken": "eyJhbGciOiJIUzI1NiIs...",
+    "refreshToken": "eyJhbGciOiJIUzI1NiIs...",
+    "user": {
+      "id": "clx1234567890",
+      "uid": "user_abc123xyz",
+      "email": "user@gmail.com",
+      "displayName": "John Doe",
+      "photoURL": "https://lh3.googleusercontent.com/...",
+      "phoneNumber": null,
+      "totalReturned": 0,
+      "createdAt": "2026-01-10T10:00:00.000Z"
+    },
+    "isNewUser": true
+  }
+}
+```
+
+**Response (Success - Account đã tồn tại):**
+
+```json
+{
+  "success": true,
+  "message": "Login successful via Google",
+  "data": {
+    "accessToken": "eyJhbGciOiJIUzI1NiIs...",
+    "refreshToken": "eyJhbGciOiJIUzI1NiIs...",
+    "user": {
+      "id": "clx1234567890",
+      "uid": "user_abc123xyz",
+      "email": "user@gmail.com",
+      "displayName": "John Doe",
+      "photoURL": "https://lh3.googleusercontent.com/...",
+      "phoneNumber": "0912345678",
+      "totalReturned": 5,
+      "createdAt": "2026-01-10T10:00:00.000Z"
+    },
+    "isNewUser": false
+  }
+}
+```
+
+### Ví dụ code React Native với expo-auth-session
+
+```typescript
+import * as Google from "expo-auth-session/providers/google";
+import * as WebBrowser from "expo-web-browser";
+
+WebBrowser.maybeCompleteAuthSession();
+
+const [request, response, promptAsync] = Google.useIdTokenAuthRequest({
+  clientId: "YOUR_WEB_CLIENT_ID.apps.googleusercontent.com",
+  iosClientId: "YOUR_IOS_CLIENT_ID.apps.googleusercontent.com",
+  androidClientId: "YOUR_ANDROID_CLIENT_ID.apps.googleusercontent.com",
+});
+
+const handleGoogleSignIn = async () => {
+  const result = await promptAsync();
+
+  if (result.type === "success") {
+    const { id_token } = result.params;
+
+    // Gửi ID Token lên server
+    const response = await fetch("http://localhost:3000/api/auth/google", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ idToken: id_token }),
+    });
+
+    const data = await response.json();
+    // Lưu token và thông tin user
+  }
+};
+```
+
+### Flow cho Web Browser
+
+**Bước 1: Chuyển hướng đến Google**
+
+```bash
+GET http://localhost:3000/api/auth/google
+```
+
+Browser sẽ được redirect đến trang đăng nhập Google.
+
+**Bước 2: Google redirect về callback**
+
+```bash
+GET http://localhost:3000/api/auth/google/callback?code=...
+```
+
+**Response:** Giống với Mobile flow ở trên.
+
+### Lưu ý quan trọng
+
+1. **User tự động được verify** khi đăng nhập bằng Google
+2. **Nếu email đã exists:** Google account sẽ được link vào account hiện tại
+3. **Welcome email** được gửi cho user mới
+4. **Không cần password** cho Google users
+
 ## 1. Đăng ký tài khoản (Bước 1)
 
 ```bash
@@ -30,7 +153,8 @@ Content-Type: application/json
   "email": "user@example.com",
   "password": "Password123",
   "displayName": "John Doe",
-  "photoURL": "https://example.com/avatar.jpg"
+  "photoURL": "https://example.com/avatar.jpg",
+  "phoneNumber": "0912345678"
 }
 ```
 
@@ -96,6 +220,7 @@ Content-Type: application/json
       "email": "user@example.com",
       "displayName": "John Doe",
       "photoURL": "https://example.com/avatar.jpg",
+      "phoneNumber": "0912345678",
       "totalReturned": 0,
       "createdAt": "2026-01-10T10:00:00.000Z"
     }
@@ -220,6 +345,7 @@ Authorization: Bearer eyJhbGciOiJIUzI1NiIs...
     "email": "user@example.com",
     "displayName": "John Doe",
     "photoURL": "https://example.com/avatar.jpg",
+    "phoneNumber": "0912345678",
     "totalReturned": 0,
     "createdAt": "2026-01-10T10:00:00.000Z"
   }
@@ -238,6 +364,7 @@ Content-Type: application/json
 {
   "displayName": "Jane Doe",
   "photoURL": "https://example.com/new-avatar.jpg",
+  "phoneNumber": "0987654321",
   "pushToken": "fcm-token-123"
 }
 ```
@@ -254,6 +381,7 @@ Content-Type: application/json
     "email": "user@example.com",
     "displayName": "Jane Doe",
     "photoURL": "https://example.com/new-avatar.jpg",
+    "phoneNumber": "0987654321",
     "totalReturned": 0,
     "createdAt": "2026-01-10T10:00:00.000Z"
   }

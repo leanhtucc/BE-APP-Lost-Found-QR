@@ -8,6 +8,7 @@ interface PendingRegistration {
   password: string; // hashed
   displayName: string;
   photoURL?: string;
+  phoneNumber?: string;
   verificationCode: string;
   expiresAt: Date;
   createdAt: Date;

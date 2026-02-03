@@ -13,9 +13,11 @@ export class AuthRepository {
     password: string;
     displayName: string;
     photoURL?: string;
+    phoneNumber?: string;
     verificationCode?: string;
     verificationCodeExpiry?: Date;
     isVerified?: boolean;
+    googleId?: string;
   }) {
     return prisma.user.create({
       data,
@@ -25,6 +27,7 @@ export class AuthRepository {
         email: true,
         displayName: true,
         photoURL: true,
+        phoneNumber: true,
         totalReturned: true,
         isVerified: true,
         createdAt: true,
@@ -60,6 +63,7 @@ export class AuthRepository {
         email: true,
         displayName: true,
         photoURL: true,
+        phoneNumber: true,
         totalReturned: true,
         createdAt: true,
         updatedAt: true,
@@ -77,6 +81,7 @@ export class AuthRepository {
         email: true,
         displayName: true,
         photoURL: true,
+        phoneNumber: true,
         totalReturned: true,
         createdAt: true,
         updatedAt: true,

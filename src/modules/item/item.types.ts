@@ -8,9 +8,22 @@ export interface Location {
   lng: number;
 }
 
+export const ITEM_CATEGORIES = [
+  "electronics",
+  "wallet",
+  "keys",
+  "bag",
+  "documents",
+  "jewelry",
+  "phone",
+  "other",
+] as const;
+
+export type ItemCategory = (typeof ITEM_CATEGORIES)[number];
+
 export interface CreateItemDTO {
   name: string;
-  category: string;
+  category: ItemCategory;
   description?: string;
   imagePublicUrl?: string;
   lastSeenLocation?: string; // JSON string của Location
@@ -19,7 +32,7 @@ export interface CreateItemDTO {
 
 export interface UpdateItemDTO {
   name?: string;
-  category?: string;
+  category?: ItemCategory;
   description?: string;
   status?: "safe" | "lost";
   lostMessage?: string;
@@ -79,4 +92,34 @@ export interface ListItemsResponse {
   page: number;
   limit: number;
   totalPages: number;
+}
+
+// Search Items
+export interface SearchItemsQuery {
+  q: string; // Search keyword
+  status?: "safe" | "lost" | "all";
+  category?: string;
+  page?: number;
+  limit?: number;
+}
+
+export interface SearchItemsResponse {
+  items: ItemResponse[];
+  total: number;
+  page: number;
+  limit: number;
+  totalPages: number;
+  query: string;
+}
+
+// Dashboard Summary
+export interface DashboardSummary {
+  totalItems: number;
+  safeItems: number;
+  lostItems: number;
+  recentItems: ItemResponse[];
+  categorySummary: {
+    category: string;
+    count: number;
+  }[];
 }

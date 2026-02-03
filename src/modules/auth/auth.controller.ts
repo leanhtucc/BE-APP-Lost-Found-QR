@@ -149,7 +149,7 @@ export class AuthController {
     }
   }
 
-  // GET /api/auth/google/callback - Xử lý callback từ Google
+  // GET /api/auth/google/callback - Xử lý callback từ Google (Web flow)
   async googleCallback(req: Request, res: Response, next: NextFunction) {
     try {
       const { code } = req.query as any;
@@ -164,6 +164,29 @@ export class AuthController {
         res,
         result,
         result.isNewUser ? "Account created successfully" : "Login successful"
+      );
+    } catch (error) {
+      next(error);
+    }
+  }
+
+  // POST /api/auth/google - Đăng nhập bằng Google ID Token (Mobile flow)
+  async googleAuthWithIdToken(req: Request, res: Response, next: NextFunction) {
+    try {
+      const { idToken } = req.body as any;
+
+      if (!idToken) {
+        return ResponseUtil.error(res, "Google ID token is required", 400);
+      }
+
+      const result = await authService.googleAuthWithIdToken(idToken);
+
+      return ResponseUtil.success(
+        res,
+        result,
+        result.isNewUser
+          ? "Account created successfully via Google"
+          : "Login successful via Google"
       );
     } catch (error) {
       next(error);

@@ -48,6 +48,10 @@ export const registerSchema = z.object({
     photoURL: z
       .union([z.string().url("Invalid URL format"), z.literal("")])
       .optional(),
+    phoneNumber: z
+      .string()
+      .regex(/^[0-9]{10,11}$/, "Invalid phone number format")
+      .optional(),
   }),
 });
 
@@ -93,6 +97,10 @@ export const updateProfileSchema = z.object({
 
     photoURL: z
       .union([z.string().url("Invalid URL format"), z.literal("")])
+      .optional(),
+    phoneNumber: z
+      .string()
+      .regex(/^[0-9]{10,11}$/, "Invalid phone number format")
       .optional(),
   }),
 });
@@ -161,5 +169,16 @@ export const resetPasswordSchema = z.object({
         /^(?=.*[a-z])(?=.*[A-Z])(?=.*\d)/,
         "Password must contain at least one uppercase letter, one lowercase letter, and one number"
       ),
+  }),
+});
+
+// Google Auth Schema (for mobile app flow)
+export const googleAuthSchema = z.object({
+  body: z.object({
+    idToken: z
+      .string({
+        required_error: "Google ID token is required",
+      })
+      .min(1, "Google ID token is required"),
   }),
 });

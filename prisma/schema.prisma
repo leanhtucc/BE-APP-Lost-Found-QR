@@ -22,6 +22,7 @@ model User {
   password               String? // Hashed password (optional for OAuth users)
   photoURL               String?
   pushToken              String?
+  phoneNumber            String?
   totalReturned          Int       @default(0) // Số lần đã trả lại đồ
   isVerified             Boolean   @default(false) // Email đã xác thực chưa
   verificationCode       String? // Mã xác thực email

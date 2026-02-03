@@ -7,6 +7,7 @@ import {
   itemIdParamSchema,
   listItemsSchema,
   scanQRSchema,
+  searchItemsSchema,
   updateItemSchema,
   updateStatusSchema,
 } from "./item.schema";
@@ -37,6 +38,24 @@ router.get(
   authMiddleware,
   validate(listItemsSchema),
   itemController.listItems
+);
+
+// GET /api/items/categories - Lấy danh sách categories
+router.get("/items/categories", authMiddleware, itemController.getCategories);
+
+// GET /api/items/search - Tìm kiếm items (PHẢI ĐẶT TRƯỚC /items/:id)
+router.get(
+  "/items/search",
+  authMiddleware,
+  validate(searchItemsSchema),
+  itemController.searchItems
+);
+
+// GET /api/items/summary - Lấy thống kê dashboard (PHẢI ĐẶT TRƯỚC /items/:id)
+router.get(
+  "/items/summary",
+  authMiddleware,
+  itemController.getDashboardSummary
 );
 
 // GET /api/items/:id - Lấy thông tin 1 item
