@@ -1,7 +1,7 @@
 FROM node:20-alpine
 
-# Install system dependencies
-RUN apk add --no-cache libc6-compat openssl
+# Install system dependencies + build tools for native modules (bcrypt)
+RUN apk add --no-cache libc6-compat openssl python3 make g++
 
 WORKDIR /app
 
