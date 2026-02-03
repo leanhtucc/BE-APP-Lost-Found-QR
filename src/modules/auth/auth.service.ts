@@ -1,5 +1,6 @@
 import { User } from "@prisma/client";
 import { nanoid } from "nanoid";
+import { ENV } from "../../config/env";
 import { emailService } from "../../libs/email";
 import { googleOAuthService } from "../../libs/google-oauth";
 import {
@@ -104,13 +105,19 @@ export class AuthService {
         `Verification code sent to ${data.email}. User will be created after verification.`
       );
     } catch (error) {
-      // Remove from temp storage if email fails
-      tempStorage.delete(data.email);
-      logger.error("Failed to send verification email:", error);
-      throw new AppError(
-        "Failed to send verification email. Please try again.",
-        500
-      );
+      if (ENV.SKIP_EMAIL_VERIFICATION) {
+        logger.warn(
+          `Failed to send verification email to ${data.email}, but skipping error due to SKIP_EMAIL_VERIFICATION=true. Code: ${verificationCode}`
+        );
+      } else {
+        // Remove from temp storage if email fails
+        tempStorage.delete(data.email);
+        logger.error("Failed to send verification email:", error);
+        throw new AppError(
+          "Failed to send verification email. Please try again.",
+          500
+        );
+      }
     }
 
     return {
@@ -318,8 +325,14 @@ export class AuthService {
       );
       logger.info(`Verification code resent to ${data.email}`);
     } catch (error) {
-      logger.error("Failed to resend verification email:", error);
-      throw new AppError("Failed to send verification email", 500);
+      if (ENV.SKIP_EMAIL_VERIFICATION) {
+        logger.warn(
+          `Failed to resend verification email to ${data.email}, but skipping error due to SKIP_EMAIL_VERIFICATION=true. Code: ${verificationCode}`
+        );
+      } else {
+        logger.error("Failed to resend verification email:", error);
+        throw new AppError("Failed to send verification email", 500);
+      }
     }
 
     return { message: "Verification code sent successfully" };
