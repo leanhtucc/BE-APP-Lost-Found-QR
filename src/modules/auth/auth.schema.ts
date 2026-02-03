@@ -45,9 +45,7 @@ export const registerSchema = z.object({
         "Display name can only contain letters, numbers, and spaces"
       ),
 
-    photoURL: z
-      .union([z.string().url("Invalid URL format"), z.literal("")])
-      .optional(),
+    photoURL: z.string().optional().or(z.literal("")),
     phoneNumber: z
       .string()
       .regex(/^[0-9]{10,11}$/, "Invalid phone number format")
@@ -95,9 +93,7 @@ export const updateProfileSchema = z.object({
       )
       .optional(),
 
-    photoURL: z
-      .union([z.string().url("Invalid URL format"), z.literal("")])
-      .optional(),
+    photoURL: z.string().optional().or(z.literal("")),
     phoneNumber: z
       .string()
       .regex(/^[0-9]{10,11}$/, "Invalid phone number format")
