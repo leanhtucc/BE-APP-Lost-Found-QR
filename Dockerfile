@@ -21,6 +21,10 @@ RUN npx prisma generate
 # Build the application
 RUN npm run build
 
+# Start command
+COPY entrypoint.sh ./
+RUN chmod +x entrypoint.sh
+
 # Change ownership to node user
 RUN chown -R node:node /app
 
@@ -30,5 +34,5 @@ USER node
 # Expose port
 EXPOSE 3000
 
-# Start command
-CMD ["npm", "start"]
+# Use Entrypoint script
+ENTRYPOINT ["./entrypoint.sh"]
