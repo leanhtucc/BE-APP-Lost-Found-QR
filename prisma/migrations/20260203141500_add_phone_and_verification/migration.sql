@@ -1,5 +1,5 @@
--- AlterTable
-ALTER TABLE "User" ADD COLUMN     "phoneNumber" TEXT,
-ADD COLUMN     "isVerified" BOOLEAN NOT NULL DEFAULT false,
-ADD COLUMN     "verificationCode" TEXT,
-ADD COLUMN     "verificationCodeExpiry" TIMESTAMP(3);
+-- Safely add columns if they don't exist to prevent migration failures
+ALTER TABLE "User" ADD COLUMN IF NOT EXISTS "phoneNumber" TEXT;
+ALTER TABLE "User" ADD COLUMN IF NOT EXISTS "isVerified" BOOLEAN NOT NULL DEFAULT false;
+ALTER TABLE "User" ADD COLUMN IF NOT EXISTS "verificationCode" TEXT;
+ALTER TABLE "User" ADD COLUMN IF NOT EXISTS "verificationCodeExpiry" TIMESTAMP(3);
