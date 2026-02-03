@@ -1,3 +1,4 @@
+console.log(">>> [STARTUP] Starting server.ts file execution...");
 import app from "./app";
 import { connectDatabase, disconnectDatabase } from "./config/database";
 import { ENV } from "./config/env";
@@ -8,12 +9,16 @@ import { logger } from "./libs/logger";
  */
 
 async function startServer() {
+  console.log(">>> [STARTUP] Inside startServer function...");
   logger.info("Initializing server startup...");
   try {
     // Connect to database
+    console.log(">>> [STARTUP] Attempting to connect to database...");
     await connectDatabase();
+    console.log(">>> [STARTUP] Database connection call finished.");
 
     // Start server
+    console.log(`>>> [STARTUP] Attempting to listen on port ${ENV.PORT}...`);
     const server = app.listen(ENV.PORT, "0.0.0.0", () => {
       logger.success(`🚀 Server is running on port ${ENV.PORT}`);
       logger.info(`📍 http://localhost:${ENV.PORT}`);
