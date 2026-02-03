@@ -8,6 +8,7 @@ import { logger } from "./libs/logger";
  */
 
 async function startServer() {
+  logger.info("Initializing server startup...");
   try {
     // Connect to database
     await connectDatabase();
