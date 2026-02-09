@@ -9,6 +9,7 @@ import {
   verifyRefreshToken,
 } from "../../libs/jwt";
 import { logger } from "../../libs/logger";
+import { createStreamUserToken } from "../../libs/stream-chat";
 import { tempStorage } from "../../libs/temp-storage";
 import { AppError } from "../../middlewares/error.middleware";
 import { comparePassword, hashPassword } from "../../utils/hash";
@@ -19,6 +20,7 @@ import {
   GoogleAuthResponse,
   LoginDTO,
   LoginResponse,
+  PrivacySettings,
   RegisterDTO,
   RegisterResponse,
   ResendVerificationDTO,
@@ -39,15 +41,43 @@ const authRepository = new AuthRepository();
 
 export class AuthService {
   private formatUserResponse(user: any): UserResponse {
+    // Parse privacy settings from JSON
+    let privacySettings: PrivacySettings = { showPhone: true, showEmail: true };
+    try {
+      if (user.privacySettings && typeof user.privacySettings === "object") {
+        privacySettings = user.privacySettings as PrivacySettings;
+      } else if (typeof user.privacySettings === "string") {
+        privacySettings = JSON.parse(user.privacySettings);
+      }
+    } catch {
+      // Use default privacy settings if parse fails
+    }
+
+    // Generate stream token for chat functionality
+    let streamToken = "";
+    try {
+      streamToken = createStreamUserToken(user.memberId || user.uid);
+    } catch (error) {
+      logger.warn("Failed to generate stream token:", error);
+    }
+
     return {
-      id: user.id,
-      uid: user.uid,
+      member_id: user.memberId || `USER_${user.uid}`,
+      full_name: user.displayName,
       email: user.email,
-      displayName: user.displayName,
-      photoURL: user.photoURL,
-      phoneNumber: user.phoneNumber,
-      totalReturned: user.totalReturned,
-      createdAt: user.createdAt,
+      phone: user.phoneNumber || null,
+      avatar_url: user.photoURL || null,
+      is_verified: user.isVerified || false,
+      stats: {
+        trust_score: user.trustScore || 5.0,
+        items_lost: user.itemsLost || 0,
+        items_returned: user.totalReturned || 0,
+      },
+      address: user.addressCity || null,
+      bio: user.bio || null,
+      stream_token: streamToken,
+      privacy_settings: privacySettings,
+      created_at: user.createdAt,
     };
   }
 
@@ -416,7 +446,7 @@ export class AuthService {
         // Link Google account to existing user
         await authRepository.updateUser(user.id, {
           googleId: googleUser.id,
-          photoURL: googleUser.picture || user.photoURL,
+          photoURL: googleUser.picture || user.photoURL || undefined,
           isVerified: true, // Auto-verify Google users
         });
         user = await authRepository.findByEmail(user.email);

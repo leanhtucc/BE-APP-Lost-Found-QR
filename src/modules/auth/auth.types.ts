@@ -33,15 +33,33 @@ export interface AuthResponse {
   user: UserResponse;
 }
 
+// Stats object for user profile
+export interface UserStats {
+  trust_score: number;
+  items_lost: number;
+  items_returned: number;
+}
+
+// Privacy settings structure - compatible with Prisma Json type
+export type PrivacySettings = {
+  showPhone?: boolean;
+  showEmail?: boolean;
+  [key: string]: boolean | undefined;
+};
+
 export interface UserResponse {
-  id: string;
-  uid: string;
+  member_id: string;
+  full_name: string;
   email: string;
-  displayName: string;
-  photoURL: string | null;
-  phoneNumber: string | null;
-  totalReturned: number;
-  createdAt: Date;
+  phone: string | null;
+  avatar_url: string | null;
+  is_verified: boolean;
+  stats: UserStats;
+  address: string | null;
+  bio: string | null;
+  stream_token: string;
+  privacy_settings: PrivacySettings;
+  created_at: Date;
 }
 
 export interface RefreshTokenDTO {
@@ -53,6 +71,9 @@ export interface UpdateProfileDTO {
   photoURL?: string;
   phoneNumber?: string;
   pushToken?: string;
+  bio?: string;
+  addressCity?: string;
+  privacySettings?: PrivacySettings;
 }
 
 export interface VerifyEmailDTO {

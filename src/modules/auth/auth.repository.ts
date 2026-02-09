@@ -1,4 +1,3 @@
-import { User } from "@prisma/client";
 import { prisma } from "../../libs/prisma";
 
 /**
@@ -18,18 +17,29 @@ export class AuthRepository {
     verificationCodeExpiry?: Date;
     isVerified?: boolean;
     googleId?: string;
+    bio?: string;
+    addressCity?: string;
   }) {
     return prisma.user.create({
-      data,
+      data: {
+        ...data,
+        memberId: `USER_${data.uid.replace("user_", "")}`, // Generate memberId
+      },
       select: {
         id: true,
         uid: true,
+        memberId: true,
         email: true,
         displayName: true,
         photoURL: true,
         phoneNumber: true,
+        trustScore: true,
         totalReturned: true,
+        itemsLost: true,
+        addressCity: true,
+        bio: true,
         isVerified: true,
+        privacySettings: true,
         createdAt: true,
         updatedAt: true,
       },
@@ -60,29 +70,58 @@ export class AuthRepository {
       select: {
         id: true,
         uid: true,
+        memberId: true,
         email: true,
         displayName: true,
         photoURL: true,
         phoneNumber: true,
+        trustScore: true,
         totalReturned: true,
+        itemsLost: true,
+        addressCity: true,
+        bio: true,
+        isVerified: true,
+        privacySettings: true,
         createdAt: true,
         updatedAt: true,
       },
     });
   }
 
-  async updateUser(id: string, data: Partial<User>) {
+  async updateUser(
+    id: string,
+    data: {
+      displayName?: string;
+      photoURL?: string;
+      phoneNumber?: string;
+      pushToken?: string;
+      bio?: string;
+      addressCity?: string;
+      privacySettings?: object;
+      isVerified?: boolean;
+      googleId?: string;
+      resetPasswordToken?: string | null;
+      resetPasswordExpiry?: Date | null;
+    }
+  ) {
     return prisma.user.update({
       where: { id },
       data,
       select: {
         id: true,
         uid: true,
+        memberId: true,
         email: true,
         displayName: true,
         photoURL: true,
         phoneNumber: true,
+        trustScore: true,
         totalReturned: true,
+        itemsLost: true,
+        addressCity: true,
+        bio: true,
+        isVerified: true,
+        privacySettings: true,
         createdAt: true,
         updatedAt: true,
       },

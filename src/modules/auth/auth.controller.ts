@@ -15,13 +15,15 @@ export class AuthController {
     try {
       console.log("[AUTH CONTROLLER] Register request received:", req.body);
 
-      const { email, password, displayName, photoURL } = req.body as any;
+      const { email, password, displayName, photoURL, phoneNumber } =
+        req.body as any;
 
       const result = await authService.register({
         email,
         password,
         displayName,
         photoURL,
+        phoneNumber,
       });
 
       console.log("[AUTH CONTROLLER] ✅ Register successful:", result);
@@ -75,12 +77,24 @@ export class AuthController {
   async updateProfile(req: Request, res: Response, next: NextFunction) {
     try {
       const userId = req.user!.id;
-      const { displayName, photoURL, pushToken } = req.body as any;
+      const {
+        displayName,
+        photoURL,
+        pushToken,
+        phoneNumber,
+        bio,
+        addressCity,
+        privacySettings,
+      } = req.body as any;
 
       const user = await authService.updateProfile(userId, {
         displayName,
         photoURL,
         pushToken,
+        phoneNumber,
+        bio,
+        addressCity,
+        privacySettings,
       });
 
       return ResponseUtil.success(res, user, "Profile updated successfully");

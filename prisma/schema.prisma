@@ -1,67 +1,76 @@
-// This is your Prisma schema file,
-// learn more about it in the docs: https://pris.ly/d/prisma-schema
-
-// Looking for ways to speed up your queries, or scale easily with your serverless or edge functions?
-// Try Prisma Accelerate: https://pris.ly/cli/accelerate-init
+generator client {
+  provider = "prisma-client-js"
+}
 
 datasource db {
   provider = "postgresql"
   url      = env("DATABASE_URL")
 }
 
-generator client {
-  provider = "prisma-client-js"
-}
-
-// Collection: Users (Quản lý người dùng)
 model User {
   id                     String    @id @default(cuid())
-  uid                    String    @unique // ID từ Firebase Auth
+  uid                    String    @unique
+  memberId               String    @unique @default(cuid()) // Định danh người dùng toàn hệ thống
   displayName            String
   email                  String    @unique
-  password               String? // Hashed password (optional for OAuth users)
   photoURL               String?
   pushToken              String?
   phoneNumber            String?
-  totalReturned          Int       @default(0) // Số lần đã trả lại đồ
-  isVerified             Boolean   @default(false) // Email đã xác thực chưa
-  verificationCode       String? // Mã xác thực email
-  verificationCodeExpiry DateTime? // Thời gian hết hạn mã xác thực
-  resetPasswordToken     String? // Token để reset mật khẩu
-  resetPasswordExpiry    DateTime? // Thời gian hết hạn token reset
-  googleId               String?   @unique // Google OAuth ID
+
+  // Trust & Reputation
+  trustScore             Float     @default(5.0) // Mức độ uy tín (0-5)
+  totalReturned          Int       @default(0)   // Số đồ đã trả
+  itemsLost              Int       @default(0)   // Số đồ bị mất
+
+  // Thông tin cá nhân mở rộng
+  addressCity            String?   // Địa chỉ thành phố
+  bio                    String?   // Tiểu sử
+
+  // Xác thực
+  isVerified             Boolean   @default(false) // Đánh dấu tài khoản đã xác minh
+
+  // Cài đặt riêng tư (JSONB)
+  privacySettings        Json?     @default("{}") // {"showPhone": true, "showEmail": false}
+
+  // Auth fields
+  password               String?
+  verificationCode       String?
+  verificationCodeExpiry DateTime?
+  googleId               String?   @unique
+  resetPasswordExpiry    DateTime?
+  resetPasswordToken     String?
+
+  // Timestamps
   createdAt              DateTime  @default(now())
   updatedAt              DateTime  @updatedAt
 
   // Relations
-  ownedItems Item[] @relation("ItemOwner")
+  ownedItems             Item[]    @relation("ItemOwner")
 
   @@index([uid])
   @@index([email])
+  @@index([memberId])
   @@index([googleId])
   @@index([resetPasswordToken])
 }
 
-// Collection: Items (Quản lý đồ vật)
 model Item {
   id               String   @id @default(cuid())
-  itemId           String   @unique // ID ngẫu nhiên để dùng trong QR code
+  itemId           String   @unique
   ownerId          String
   name             String
-  category         String // tech, pets, wallet, audio, etc.
+  category         String
   description      String?
-  status           String   @default("safe") // safe hoặc lost
-  lostMessage      String? // Lời nhắn khi bị mất
-  qrCodeUrl        String? // Link QR code đầy đủ
-  imagePublicUrl   String? // Link ảnh thật của món đồ
-  lastSeenLocation String? // JSON string chứa lat/lng: {"lat": 10.123, "lng": 106.456}
-  securityPin      String? // Mã PIN 4 số để xác nhận trả đồ
-  securityToken    String   @unique // Token bảo mật cho QR code
+  status           String   @default("safe")
+  lostMessage      String?
+  qrCodeUrl        String?
+  securityToken    String   @unique
   createdAt        DateTime @default(now())
   updatedAt        DateTime @updatedAt
-
-  // Relations
-  owner User @relation("ItemOwner", fields: [ownerId], references: [id], onDelete: Cascade)
+  imagePublicUrl   String?
+  lastSeenLocation String?
+  securityPin      String?
+  owner            User     @relation("ItemOwner", fields: [ownerId], references: [id], onDelete: Cascade)
 
   @@index([itemId])
   @@index([ownerId])

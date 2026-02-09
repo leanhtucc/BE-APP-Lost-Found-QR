@@ -98,6 +98,17 @@ export const updateProfileSchema = z.object({
       .string()
       .regex(/^[0-9]{10,11}$/, "Invalid phone number format")
       .optional(),
+    bio: z.string().max(500, "Bio is too long (max 500 characters)").optional(),
+    addressCity: z
+      .string()
+      .max(100, "Address is too long (max 100 characters)")
+      .optional(),
+    privacySettings: z
+      .object({
+        showPhone: z.boolean().optional(),
+        showEmail: z.boolean().optional(),
+      })
+      .optional(),
   }),
 });
 

@@ -2,152 +2,334 @@
 <html lang="vi">
   <head>
     <meta charset="UTF-8" />
-    <meta name="viewport" content="width=device-width,initial-scale=1" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Xác thực tài khoản - Lost & Found</title>
   </head>
   <body
     style="
       margin: 0;
       padding: 0;
-      font-family: Arial, sans-serif;
-      background: #f5f5f5;
+      font-family: &quot;Segoe UI&quot;, Tahoma, Geneva, Verdana, sans-serif;
+      background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+      min-height: 100vh;
     "
   >
     <table
       width="100%"
       cellpadding="0"
       cellspacing="0"
-      style="background: #f5f5f5; padding: 20px 0"
+      style="padding: 40px 20px"
     >
       <tr>
         <td align="center">
           <table
-            width="600"
+            width="100%"
             cellpadding="0"
             cellspacing="0"
-            style="background: #fff; border-radius: 8px; overflow: hidden"
+            style="
+              max-width: 520px;
+              background: #ffffff;
+              border-radius: 24px;
+              overflow: hidden;
+              box-shadow: 0 25px 50px -12px rgba(0, 0, 0, 0.25);
+            "
           >
+            <!-- Header với gradient đẹp mắt -->
             <tr>
               <td
                 style="
-                  background: linear-gradient(135deg, #1e88e5, #1565c0);
-                  padding: 30px;
+                  background: linear-gradient(
+                    135deg,
+                    #6366f1 0%,
+                    #8b5cf6 50%,
+                    #a855f7 100%
+                  );
+                  padding: 45px 30px;
                   text-align: center;
                 "
               >
-                <div style="font-size: 40px; margin-bottom: 10px">🔐</div>
-                <h1 style="color: #fff; margin: 0; font-size: 22px">
+                <!-- Logo/Icon container với hiệu ứng glass -->
+                <div
+                  style="
+                    width: 90px;
+                    height: 90px;
+                    background: rgba(255, 255, 255, 0.15);
+                    border-radius: 50%;
+                    margin: 0 auto 20px;
+                    line-height: 90px;
+                    backdrop-filter: blur(10px);
+                    border: 2px solid rgba(255, 255, 255, 0.3);
+                  "
+                >
+                  <span style="font-size: 45px">🔐</span>
+                </div>
+                <h1
+                  style="
+                    color: #ffffff;
+                    margin: 0;
+                    font-size: 28px;
+                    font-weight: 700;
+                    text-shadow: 0 2px 4px rgba(0, 0, 0, 0.1);
+                  "
+                >
                   Xác thực tài khoản
                 </h1>
                 <p
                   style="
-                    color: #fff;
-                    margin: 8px 0 0;
-                    font-size: 13px;
-                    opacity: 0.9;
+                    color: rgba(255, 255, 255, 0.9);
+                    margin: 12px 0 0;
+                    font-size: 15px;
+                    font-weight: 400;
                   "
                 >
                   Lost & Found
                 </p>
               </td>
             </tr>
+
+            <!-- Nội dung chính -->
             <tr>
-              <td style="padding: 30px 25px">
+              <td style="padding: 40px 35px">
+                <!-- Lời chào -->
                 <p
                   style="
-                    font-size: 15px;
-                    color: #1e88e5;
-                    margin: 0 0 15px;
+                    font-size: 18px;
+                    color: #1f2937;
+                    margin: 0 0 8px;
                     font-weight: 600;
                   "
                 >
-                  Xin chào {{displayName}}! 👋
+                  Xin chào <span style="color: #7c3aed">{{displayName}}</span>!
+                  👋
                 </p>
-                <p style="color: #555; line-height: 1.5; margin: 0 0 15px">
-                  Cảm ơn bạn đã đăng ký. Vui lòng nhập mã xác thực:
+                <p
+                  style="
+                    font-size: 15px;
+                    color: #6b7280;
+                    margin: 0 0 30px;
+                    line-height: 1.6;
+                  "
+                >
+                  Cảm ơn bạn đã đăng ký tài khoản. Chỉ còn một bước nữa để hoàn
+                  tất!
                 </p>
+
+                <!-- Box chứa mã xác thực - thiết kế nổi bật -->
                 <table
                   width="100%"
                   cellpadding="0"
                   cellspacing="0"
-                  style="margin: 25px 0"
+                  style="margin: 0 0 30px"
                 >
                   <tr>
                     <td
                       style="
-                        background: #e3f2fd;
-                        padding: 25px;
+                        background: linear-gradient(
+                          135deg,
+                          #f0f9ff 0%,
+                          #e0f2fe 100%
+                        );
+                        padding: 30px;
                         text-align: center;
-                        border-radius: 8px;
-                        border: 2px solid #1e88e5;
+                        border-radius: 16px;
+                        border: 2px solid #7dd3fc;
                       "
                     >
                       <p
                         style="
-                          margin: 0 0 8px;
-                          font-size: 11px;
-                          color: #1565c0;
+                          margin: 0 0 12px;
+                          font-size: 12px;
+                          color: #0369a1;
                           font-weight: 600;
                           text-transform: uppercase;
+                          letter-spacing: 2px;
                         "
                       >
-                        Mã xác thực
+                        Mã xác thực của bạn
                       </p>
+                      <!-- Mã OTP với thiết kế đặc biệt -->
+                      <div
+                        style="
+                          background: linear-gradient(
+                            135deg,
+                            #6366f1 0%,
+                            #8b5cf6 100%
+                          );
+                          border-radius: 12px;
+                          padding: 20px 30px;
+                          display: inline-block;
+                          box-shadow: 0 10px 25px -5px rgba(99, 102, 241, 0.4);
+                        "
+                      >
+                        <span
+                          style="
+                            font-size: 36px;
+                            font-weight: 700;
+                            color: #ffffff;
+                            letter-spacing: 8px;
+                            font-family: &quot;Courier New&quot;, monospace;
+                          "
+                          >{{code}}</span
+                        >
+                      </div>
                       <p
                         style="
-                          margin: 0;
-                          font-size: 32px;
-                          font-weight: bold;
-                          color: #1565c0;
-                          letter-spacing: 6px;
-                          font-family:
-                            Courier New,
-                            monospace;
+                          margin: 15px 0 0;
+                          font-size: 13px;
+                          color: #64748b;
                         "
                       >
-                        {{code}}
-                      </p>
-                      <p style="margin: 8px 0 0; font-size: 10px; color: #666">
-                        Hiệu lực: 15 phút
+                        ⏱️ Mã có hiệu lực trong
+                        <strong style="color: #6366f1">15 phút</strong>
                       </p>
                     </td>
                   </tr>
                 </table>
-                <p
-                  style="
-                    color: #999;
-                    font-size: 12px;
-                    line-height: 1.5;
-                    margin: 15px 0 0;
-                  "
-                >
-                  <strong>Lưu ý:</strong> Không chia sẻ mã này.
-                </p>
+
+                <!-- Hướng dẫn -->
                 <div
                   style="
-                    margin-top: 25px;
-                    padding-top: 20px;
-                    border-top: 1px solid #eee;
+                    background: #f8fafc;
+                    border-radius: 12px;
+                    padding: 20px;
+                    margin-bottom: 25px;
                   "
                 >
-                  <p style="margin: 0; color: #666; font-size: 13px">
-                    Trân trọng,
+                  <p
+                    style="
+                      font-size: 14px;
+                      color: #475569;
+                      margin: 0 0 12px;
+                      font-weight: 600;
+                    "
+                  >
+                    📋 Hướng dẫn:
                   </p>
-                  <p style="margin: 4px 0 0; color: #1e88e5; font-weight: 600">
-                    Lost & Found Team
+                  <ol
+                    style="
+                      margin: 0;
+                      padding-left: 20px;
+                      color: #64748b;
+                      font-size: 13px;
+                      line-height: 1.8;
+                    "
+                  >
+                    <li>Quay lại ứng dụng Lost & Found</li>
+                    <li>Nhập mã xác thực ở trên</li>
+                    <li>Bắt đầu sử dụng đầy đủ tính năng!</li>
+                  </ol>
+                </div>
+
+                <!-- Cảnh báo bảo mật -->
+                <div
+                  style="
+                    background: linear-gradient(
+                      135deg,
+                      #fef3c7 0%,
+                      #fde68a 100%
+                    );
+                    border-radius: 12px;
+                    padding: 16px 20px;
+                    border-left: 4px solid #f59e0b;
+                  "
+                >
+                  <p style="font-size: 13px; color: #92400e; margin: 0">
+                    <strong>🔒 Bảo mật:</strong> Không chia sẻ mã này với bất kỳ
+                    ai. Đội ngũ Lost & Found sẽ không bao giờ yêu cầu bạn cung
+                    cấp mã xác thực.
                   </p>
                 </div>
               </td>
             </tr>
+
+            <!-- Footer -->
             <tr>
               <td
-                style="background: #f8f9fa; padding: 15px; text-align: center"
+                style="
+                  background: linear-gradient(135deg, #f9fafb 0%, #f3f4f6 100%);
+                  padding: 30px 35px;
+                  text-align: center;
+                  border-top: 1px solid #e5e7eb;
+                "
               >
-                <p style="margin: 0; font-size: 11px; color: #999">
-                  © {{year}} Lost & Found
+                <p style="margin: 0 0 8px; font-size: 14px; color: #6b7280">
+                  Trân trọng,
+                </p>
+                <p
+                  style="
+                    margin: 0 0 20px;
+                    font-size: 16px;
+                    color: #7c3aed;
+                    font-weight: 700;
+                  "
+                >
+                  Lost & Found Team 💜
+                </p>
+
+                <!-- Social links placeholder -->
+                <div style="margin-bottom: 20px">
+                  <span
+                    style="
+                      display: inline-block;
+                      width: 36px;
+                      height: 36px;
+                      background: #e5e7eb;
+                      border-radius: 50%;
+                      margin: 0 5px;
+                      line-height: 36px;
+                      font-size: 16px;
+                    "
+                    >📱</span
+                  >
+                  <span
+                    style="
+                      display: inline-block;
+                      width: 36px;
+                      height: 36px;
+                      background: #e5e7eb;
+                      border-radius: 50%;
+                      margin: 0 5px;
+                      line-height: 36px;
+                      font-size: 16px;
+                    "
+                    >💬</span
+                  >
+                  <span
+                    style="
+                      display: inline-block;
+                      width: 36px;
+                      height: 36px;
+                      background: #e5e7eb;
+                      border-radius: 50%;
+                      margin: 0 5px;
+                      line-height: 36px;
+                      font-size: 16px;
+                    "
+                    >📧</span
+                  >
+                </div>
+
+                <p style="margin: 0; font-size: 11px; color: #9ca3af">
+                  © {{year}} Lost & Found. All rights reserved.
+                </p>
+                <p style="margin: 8px 0 0; font-size: 11px; color: #9ca3af">
+                  Nếu bạn không đăng ký tài khoản, vui lòng bỏ qua email này.
                 </p>
               </td>
             </tr>
           </table>
+
+          <!-- Tagline -->
+          <p
+            style="
+              margin: 25px 0 0;
+              font-size: 13px;
+              color: rgba(255, 255, 255, 0.8);
+              text-align: center;
+            "
+          >
+            ✨ Kết nối đồ vật thất lạc với chủ nhân ✨
+          </p>
         </td>
       </tr>
     </table>
