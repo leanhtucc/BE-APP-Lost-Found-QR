@@ -421,6 +421,78 @@ export class AuthService {
   }
 
   /**
+   * Firebase Auth with ID Token (for mobile apps)
+   */
+  async verifyFirebaseToken(idToken: string): Promise<GoogleAuthResponse> {
+    try {
+      // Import động để tránh lỗi nếu firebaseAdmin config có trục trặc do thiếu ENV
+      const admin: any = (await import("../../config/firebaseAdmin.js")).default;
+      
+      const decodedToken = await admin.auth().verifyIdToken(idToken);
+      const { uid, phone_number, email, picture, name } = decodedToken;
+
+      let user = await authRepository.findByUid(uid);
+      let isNewUser = false;
+
+      if (!user) {
+        let actualEmail = email;
+        if (!actualEmail) {
+            actualEmail = `${uid}@firebase.app`;
+        } else {
+            // Check if email already exists
+            const existingWithEmail = await authRepository.findByEmail(actualEmail);
+            if (existingWithEmail) {
+                 actualEmail = `${uid}_${actualEmail}`; // Prevent duplicate email constraint error
+            }
+        }
+        
+        const createdUser = await authRepository.createUser({
+          uid: uid,
+          email: actualEmail,
+          password: "", 
+          displayName: name || "Người dùng mới",
+          photoURL: picture || undefined,
+          phoneNumber: phone_number || undefined,
+          isVerified: true, 
+        });
+        
+        user = await authRepository.findByUid(createdUser.uid);
+        isNewUser = true;
+      }
+
+      if (!user) {
+        throw new AppError("Failed to create or find user", 500);
+      }
+
+      const accessToken = generateAccessToken({
+        id: user.id,
+        uid: user.uid,
+        email: user.email,
+      });
+
+      const refreshToken = generateRefreshToken({
+        id: user.id,
+        uid: user.uid,
+        email: user.email,
+      });
+
+      // Provide isNewUser info via GoogleAuthResponse interface compatibility
+      return {
+        accessToken,
+        refreshToken,
+        user: this.formatUserResponse(user),
+        isNewUser,
+      };
+    } catch (error: any) {
+      logger.error("Firebase Auth error:", error);
+      if (error.code && String(error.code).startsWith('auth/')) {
+        throw new AppError("Invalid or expired Firebase ID Token", 401);
+      }
+      throw new AppError("Firebase authentication failed", 500);
+    }
+  }
+
+  /**
    * Process Google user - shared logic for both web and mobile flows
    */
   private async processGoogleUser(googleUser: {

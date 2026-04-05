@@ -24,6 +24,8 @@ dist/
 uploads/
 public/uploads/
 
+firebase/api-phone-number-for-firebase-adminsdk-fbsvc-6472cb491d.json
+
 # OS files
 .DS_Store
 Thumbs.db

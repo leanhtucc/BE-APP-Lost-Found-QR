@@ -13,6 +13,7 @@ import {
   resetPasswordSchema,
   updateProfileSchema,
   verifyEmailSchema,
+  firebaseVerifySchema,
 } from "./auth.schema";
 
 /**
@@ -63,6 +64,13 @@ router.post(
   "/google",
   validate(googleAuthSchema),
   authController.googleAuthWithIdToken
+);
+
+// For Firebase auth flow (mobile)
+router.post(
+  "/firebase-verify",
+  validate(firebaseVerifySchema),
+  authController.firebaseVerify
 );
 
 // Password reset routes

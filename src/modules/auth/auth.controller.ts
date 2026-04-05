@@ -207,6 +207,29 @@ export class AuthController {
     }
   }
 
+  // POST /api/auth/firebase-verify - Đăng nhập bằng Firebase ID Token (Mobile flow)
+  async firebaseVerify(req: Request, res: Response, next: NextFunction) {
+    try {
+      const { idToken } = req.body as any;
+
+      if (!idToken) {
+        return ResponseUtil.error(res, "Firebase ID token is required", 400);
+      }
+
+      const result = await authService.verifyFirebaseToken(idToken);
+
+      return ResponseUtil.success(
+        res,
+        result,
+        result.isNewUser
+          ? "Account created successfully via Firebase"
+          : "Login successful via Firebase"
+      );
+    } catch (error) {
+      next(error);
+    }
+  }
+
   // POST /api/auth/forgot-password - Request password reset
   async forgotPassword(req: Request, res: Response, next: NextFunction) {
     try {

@@ -189,3 +189,14 @@ export const googleAuthSchema = z.object({
       .min(1, "Google ID token is required"),
   }),
 });
+
+// Firebase Auth Schema (for mobile app flow)
+export const firebaseVerifySchema = z.object({
+  body: z.object({
+    idToken: z
+      .string({
+        required_error: "Firebase ID token is required",
+      })
+      .min(1, "Firebase ID token is required"),
+  }),
+});
