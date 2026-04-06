@@ -127,12 +127,12 @@ export class AuthController {
     }
   }
 
-  // POST /api/auth/verify-email - Xác thực email với mã
-  async verifyEmail(req: Request, res: Response, next: NextFunction) {
+  // POST /api/auth/verify-otp - Xác thực SĐT qua SMS code
+  async verifyOtp(req: Request, res: Response, next: NextFunction) {
     try {
-      const { email, code } = req.body as any;
+      const { phoneNumber, code } = req.body as any;
 
-      const result = await authService.verifyEmail({ email, code });
+      const result = await authService.verifyOtp({ phoneNumber, code });
 
       return ResponseUtil.success(res, result, result.message);
     } catch (error) {
@@ -140,12 +140,12 @@ export class AuthController {
     }
   }
 
-  // POST /api/auth/resend-verification - Gửi lại mã xác thực
-  async resendVerification(req: Request, res: Response, next: NextFunction) {
+  // POST /api/auth/resend-otp - Gửi lại mã SMS OTP
+  async resendOtp(req: Request, res: Response, next: NextFunction) {
     try {
-      const { email } = req.body as any;
+      const { phoneNumber } = req.body as any;
 
-      const result = await authService.resendVerificationCode({ email });
+      const result = await authService.resendOtp({ phoneNumber });
 
       return ResponseUtil.success(res, result, result.message);
     } catch (error) {

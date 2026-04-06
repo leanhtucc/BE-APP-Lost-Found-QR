@@ -7,7 +7,7 @@ export interface RegisterDTO {
   password: string;
   displayName: string;
   photoURL?: string;
-  phoneNumber?: string;
+  phoneNumber: string; // Đã bắt buộc cho app FindBack
 }
 
 export interface RegisterResponse {
@@ -76,19 +76,19 @@ export interface UpdateProfileDTO {
   privacySettings?: PrivacySettings;
 }
 
-export interface VerifyEmailDTO {
-  email: string;
+export interface VerifyOtpDTO {
+  phoneNumber: string;
   code: string;
 }
 
-export interface VerifyEmailResponse {
+export interface VerifyOtpResponse {
   message: string;
   accessToken: string;
   refreshToken: string;
 }
 
-export interface ResendVerificationDTO {
-  email: string;
+export interface ResendOtpDTO {
+  phoneNumber: string;
 }
 
 export interface GoogleAuthDTO {

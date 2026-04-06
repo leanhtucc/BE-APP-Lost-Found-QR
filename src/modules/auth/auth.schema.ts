@@ -47,9 +47,8 @@ export const registerSchema = z.object({
 
     photoURL: z.string().optional().or(z.literal("")),
     phoneNumber: z
-      .string()
-      .regex(/^[0-9]{10,11}$/, "Invalid phone number format")
-      .optional(),
+      .string({ required_error: "Phone number is required" })
+      .regex(/^(?:\+84|0)[0-9]{9,10}$/, "Invalid phone number format"),
   }),
 });
 
@@ -112,36 +111,24 @@ export const updateProfileSchema = z.object({
   }),
 });
 
-export const verifyEmailSchema = z.object({
+export const verifyOtpSchema = z.object({
   body: z.object({
-    email: z
-      .string({
-        required_error: "Email is required",
-      })
-      .email("Invalid email format")
-      .regex(emailRegex, "Invalid email format")
-      .toLowerCase()
-      .trim(),
+    phoneNumber: z
+      .string({ required_error: "Phone number is required" })
+      .regex(/^(?:\+84|0)[0-9]{9,10}$/, "Invalid phone number format"),
 
     code: z
-      .string({
-        required_error: "Verification code is required",
-      })
+      .string({ required_error: "Verification code is required" })
       .length(6, "Verification code must be 6 digits")
       .regex(/^\d{6}$/, "Verification code must contain only numbers"),
   }),
 });
 
-export const resendVerificationSchema = z.object({
+export const resendOtpSchema = z.object({
   body: z.object({
-    email: z
-      .string({
-        required_error: "Email is required",
-      })
-      .email("Invalid email format")
-      .regex(emailRegex, "Invalid email format")
-      .toLowerCase()
-      .trim(),
+    phoneNumber: z
+      .string({ required_error: "Phone number is required" })
+      .regex(/^(?:\+84|0)[0-9]{9,10}$/, "Invalid phone number format"),
   }),
 });
 

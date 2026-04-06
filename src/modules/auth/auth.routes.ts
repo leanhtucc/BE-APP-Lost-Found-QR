@@ -9,10 +9,10 @@ import {
   loginSchema,
   refreshTokenSchema,
   registerSchema,
-  resendVerificationSchema,
   resetPasswordSchema,
   updateProfileSchema,
-  verifyEmailSchema,
+  verifyOtpSchema,
+  resendOtpSchema,
   firebaseVerifySchema,
 } from "./auth.schema";
 
@@ -41,17 +41,17 @@ router.post(
 );
 
 router.post(
-  "/verify-email",
+  "/verify-otp",
   queryToBody,
-  validate(verifyEmailSchema),
-  authController.verifyEmail
+  validate(verifyOtpSchema),
+  authController.verifyOtp
 );
 
 router.post(
-  "/resend-verification",
+  "/resend-otp",
   queryToBody,
-  validate(resendVerificationSchema),
-  authController.resendVerification
+  validate(resendOtpSchema),
+  authController.resendOtp
 );
 
 // Google OAuth routes

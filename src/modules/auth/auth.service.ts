@@ -10,6 +10,7 @@ import {
 } from "../../libs/jwt";
 import { logger } from "../../libs/logger";
 import { createStreamUserToken } from "../../libs/stream-chat";
+import { smsService } from "../../libs/sms";
 import { tempStorage } from "../../libs/temp-storage";
 import { AppError } from "../../middlewares/error.middleware";
 import { comparePassword, hashPassword } from "../../utils/hash";
@@ -23,13 +24,13 @@ import {
   PrivacySettings,
   RegisterDTO,
   RegisterResponse,
-  ResendVerificationDTO,
+  ResendOtpDTO,
   ResetPasswordDTO,
   ResetPasswordResponse,
   UpdateProfileDTO,
   UserResponse,
-  VerifyEmailDTO,
-  VerifyEmailResponse,
+  VerifyOtpDTO,
+  VerifyOtpResponse,
 } from "./auth.types";
 
 /**
@@ -92,16 +93,22 @@ export class AuthService {
   }
 
   async register(data: RegisterDTO): Promise<RegisterResponse> {
+    // Check if phone exists
+    const existingPhone = await authRepository.findByPhoneNumber(data.phoneNumber);
+    if (existingPhone) {
+      throw new AppError("Số điện thoại này đã được đăng ký", 400);
+    }
+
     // Check if email exists in database
     const existingUser = await authRepository.findByEmail(data.email);
     if (existingUser) {
       throw new AppError("Email already registered", 400);
     }
 
-    // Check if email has pending registration
-    if (tempStorage.has(data.email)) {
+    // Check if phone has pending registration
+    if (tempStorage.has(data.phoneNumber)) {
       throw new AppError(
-        "Verification code already sent. Please check your email or wait 15 minutes to resend.",
+        "Verification code already sent. Please check your SMS or wait to resend.",
         400
       );
     }
@@ -113,8 +120,8 @@ export class AuthService {
     const verificationCode = this.generateVerificationCode();
     const expiresAt = this.getCodeExpiry();
 
-    // Save to temporary storage (NOT database yet)
-    tempStorage.set(data.email, {
+    // Save to temporary storage using phoneNumber as Key
+    tempStorage.set(data.phoneNumber, {
       email: data.email,
       password: hashedPassword,
       displayName: data.displayName,
@@ -124,35 +131,17 @@ export class AuthService {
       expiresAt,
     });
 
-    // Send verification email
-    try {
-      await emailService.sendVerificationEmail(
-        data.email,
-        data.displayName,
-        verificationCode
-      );
-      logger.info(
-        `Verification code sent to ${data.email}. User will be created after verification.`
-      );
-    } catch (error) {
-      if (ENV.SKIP_EMAIL_VERIFICATION) {
-        logger.warn(
-          `Failed to send verification email to ${data.email}, but skipping error due to SKIP_EMAIL_VERIFICATION=true. Code: ${verificationCode}`
-        );
-      } else {
-        // Remove from temp storage if email fails
-        tempStorage.delete(data.email);
-        logger.error("Failed to send verification email:", error);
-        throw new AppError(
-          "Failed to send verification email. Please try again.",
-          500
-        );
-      }
+    // Send SMS via smsService
+    const smsSent = await smsService.sendOTP(data.phoneNumber, verificationCode);
+    
+    if (!smsSent && !ENV.SKIP_EMAIL_VERIFICATION) {
+      tempStorage.delete(data.phoneNumber);
+      throw new AppError("Lỗi hệ thống khi gửi SMS OTP. Vui lòng thử lại sau.", 500);
     }
 
     return {
       message:
-        "Verification code sent! Please check your email and verify to complete registration.",
+        "Mã OTP đã được gửi đến số điện thoại của bạn. Vui lòng kiểm tra tin nhắn.",
       email: data.email,
     };
   }
@@ -242,26 +231,26 @@ export class AuthService {
     return this.formatUserResponse(user);
   }
 
-  async verifyEmail(data: VerifyEmailDTO): Promise<VerifyEmailResponse> {
-    // Check temp storage for pending registration
-    const pendingReg = tempStorage.get(data.email);
+  async verifyOtp(data: VerifyOtpDTO): Promise<VerifyOtpResponse> {
+    // Check temp storage for pending registration using phoneNumber
+    const pendingReg = tempStorage.get(data.phoneNumber);
     if (!pendingReg) {
       throw new AppError(
-        "No pending registration found. Please register first or request a new verification code.",
+        "No pending registration found for this phone number. Please register first.",
         404
       );
     }
 
     // Verify code
     if (pendingReg.verificationCode !== data.code) {
-      throw new AppError("Invalid verification code", 400);
+      throw new AppError("Invalid OTP code", 400);
     }
 
     // Check if code expired
     if (new Date() > pendingReg.expiresAt) {
-      tempStorage.delete(data.email);
+      tempStorage.delete(data.phoneNumber);
       throw new AppError(
-        "Verification code expired. Please register again.",
+        "OTP expired. Please request a new one.",
         400
       );
     }
@@ -275,19 +264,19 @@ export class AuthService {
       displayName: pendingReg.displayName,
       photoURL: pendingReg.photoURL || undefined,
       phoneNumber: pendingReg.phoneNumber || undefined,
-      isVerified: true, // Already verified
+      isVerified: true, // Already verified via SMS
       verificationCode: undefined,
       verificationCodeExpiry: undefined,
     });
 
     // Remove from temp storage
-    tempStorage.delete(data.email);
+    tempStorage.delete(data.phoneNumber);
 
     logger.info(
-      `User ${user.email} created successfully after email verification`
+      `User ${user.phoneNumber} created successfully after SMS verification`
     );
 
-    // Send welcome email
+    // Send welcome email (optional, since registered successfully)
     try {
       await emailService.sendWelcomeEmail(user.email, user.displayName);
     } catch (error) {
@@ -308,29 +297,21 @@ export class AuthService {
     });
 
     return {
-      message: "Email verified successfully! Account created.",
+      message: "Phone verified successfully! Account created.",
       accessToken,
       refreshToken,
     };
   }
 
-  async resendVerificationCode(
-    data: ResendVerificationDTO
+  async resendOtp(
+    data: { phoneNumber: string }
   ): Promise<{ message: string }> {
-    // Check if user already exists in database
-    const existingUser = await authRepository.findByEmail(data.email);
-    if (existingUser) {
-      if (existingUser.isVerified) {
-        throw new AppError("Email already verified", 400);
-      }
-      throw new AppError("User already exists. Please use login instead.", 400);
-    }
-
     // Check temp storage
-    const pendingReg = tempStorage.get(data.email);
+    const pendingReg = tempStorage.get(data.phoneNumber);
     if (!pendingReg) {
+      // It's possible the user closed the app and tempStorage expired.
       throw new AppError(
-        "No pending registration found. Please register first.",
+        "No pending registration found. Please register again.",
         404
       );
     }
@@ -340,32 +321,19 @@ export class AuthService {
     const expiresAt = this.getCodeExpiry();
 
     // Update temp storage with new code
-    tempStorage.set(data.email, {
+    tempStorage.set(data.phoneNumber, {
       ...pendingReg,
       verificationCode,
       expiresAt,
     });
 
-    // Send verification email
-    try {
-      await emailService.sendVerificationEmail(
-        data.email,
-        pendingReg.displayName,
-        verificationCode
-      );
-      logger.info(`Verification code resent to ${data.email}`);
-    } catch (error) {
-      if (ENV.SKIP_EMAIL_VERIFICATION) {
-        logger.warn(
-          `Failed to resend verification email to ${data.email}, but skipping error due to SKIP_EMAIL_VERIFICATION=true. Code: ${verificationCode}`
-        );
-      } else {
-        logger.error("Failed to resend verification email:", error);
-        throw new AppError("Failed to send verification email", 500);
-      }
+    // Send SMS
+    const smsSent = await smsService.sendOTP(data.phoneNumber, verificationCode);
+    if (!smsSent && !ENV.SKIP_EMAIL_VERIFICATION) {
+      throw new AppError("Failed to send SMS OTP", 500);
     }
 
-    return { message: "Verification code sent successfully" };
+    return { message: "Mã OTP mới đã được gửi." };
   }
 
   async updateProfile(
