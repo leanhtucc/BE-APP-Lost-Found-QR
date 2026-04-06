@@ -625,13 +625,13 @@ export class AuthService {
         throw new AppError("Token does not contain a phone number. Please sign in with a phone number.", 400);
       }
 
-      let user = await authRepository.findByPhoneNumber(phone_number);
+      let user: any = await authRepository.findByPhoneNumber(phone_number);
 
       if (!user) {
         // Lấy thông tin Tên, Email, Pass từ tempStorage (đã được gọi qua `/register`)
         const pendingReg = tempStorage.get(phone_number);
 
-        user = await authRepository.createUser({
+        const createdUser = await authRepository.createUser({
           uid: uid,
           phoneNumber: phone_number,
           email: pendingReg ? pendingReg.email : `${uid}@firebase.local`, // Tránh lỗi unique nếu không có email
@@ -640,6 +640,8 @@ export class AuthService {
           photoURL: pendingReg?.photoURL || undefined,
           isVerified: true,
         });
+
+        user = await authRepository.findByUid(createdUser.uid);
 
         // Xóa thông tin tạm sau khi đã đăng ký thành công
         if (pendingReg) tempStorage.delete(phone_number);
