@@ -1,6 +1,7 @@
 import { NextFunction, Request, Response } from "express";
 import { ResponseUtil } from "../../utils/response";
 import { AuthService } from "./auth.service";
+import { AppError } from "../../middlewares/error.middleware";
 
 /**
  * Auth Controller
@@ -247,6 +248,24 @@ export class AuthController {
       const data = req.body;
       const result = await authService.resetPassword(data);
       return ResponseUtil.success(res, result, result.message);
+    } catch (error) {
+      next(error);
+    }
+  }
+
+  // POST /api/auth/firebase-verify
+  async verifyFirebaseUser(req: Request, res: Response, next: NextFunction) {
+    try {
+      const { idToken } = req.body;
+
+      if (!idToken) {
+        throw new AppError("idToken is required", 400);
+      }
+
+      const result = await authService.verifyFirebaseUser(idToken);
+
+      // Return exactly what the prompt requested structure: { success: true, user, token }
+      return res.status(200).json(result);
     } catch (error) {
       next(error);
     }

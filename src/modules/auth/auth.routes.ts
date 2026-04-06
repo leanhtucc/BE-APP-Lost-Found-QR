@@ -70,7 +70,7 @@ router.post(
 router.post(
   "/firebase-verify",
   validate(firebaseVerifySchema),
-  authController.firebaseVerify
+  authController.verifyFirebaseUser
 );
 
 // Password reset routes

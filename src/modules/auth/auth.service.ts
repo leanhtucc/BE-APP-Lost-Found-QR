@@ -10,6 +10,7 @@ import {
 } from "../../libs/jwt";
 import { logger } from "../../libs/logger";
 import { createStreamUserToken } from "../../libs/stream-chat";
+import admin from "../../config/firebaseAdmin";
 import { smsService } from "../../libs/sms";
 import { tempStorage } from "../../libs/temp-storage";
 import { AppError } from "../../middlewares/error.middleware";
@@ -131,17 +132,9 @@ export class AuthService {
       expiresAt,
     });
 
-    // Send SMS via smsService
-    const smsSent = await smsService.sendOTP(data.phoneNumber, verificationCode);
-    
-    if (!smsSent && !ENV.SKIP_EMAIL_VERIFICATION) {
-      tempStorage.delete(data.phoneNumber);
-      throw new AppError("Lỗi hệ thống khi gửi SMS OTP. Vui lòng thử lại sau.", 500);
-    }
-
+    // Giả lập lưu thành công mà không gọi SMS backend vì Mobile tự dùng Firebase SDK để gửi SMS
     return {
-      message:
-        "Mã OTP đã được gửi đến số điện thoại của bạn. Vui lòng kiểm tra tin nhắn.",
+      message: "Thông tin đã được lưu tạm. Vui lòng gửi OTP từ Mobile để xác thực.",
       email: data.email,
     };
   }
@@ -618,6 +611,68 @@ export class AuthService {
     return {
       message: "Password has been reset successfully. You can now login.",
     };
+  }
+
+  /**
+   * Xác minh User qua Firebase Auth (The "Gold" Flow)
+   */
+  async verifyFirebaseUser(idToken: string) {
+    try {
+      const decodedToken = await admin.auth().verifyIdToken(idToken);
+      const { uid, phone_number } = decodedToken;
+
+      if (!phone_number) {
+        throw new AppError("Token does not contain a phone number. Please sign in with a phone number.", 400);
+      }
+
+      let user = await authRepository.findByPhoneNumber(phone_number);
+
+      if (!user) {
+        // Lấy thông tin Tên, Email, Pass từ tempStorage (đã được gọi qua `/register`)
+        const pendingReg = tempStorage.get(phone_number);
+
+        user = await authRepository.createUser({
+          uid: uid,
+          phoneNumber: phone_number,
+          email: pendingReg ? pendingReg.email : `${uid}@firebase.local`, // Tránh lỗi unique nếu không có email
+          password: pendingReg ? pendingReg.password : "", 
+          displayName: pendingReg ? pendingReg.displayName : "Người dùng mới",
+          photoURL: pendingReg?.photoURL || undefined,
+          isVerified: true,
+        });
+
+        // Xóa thông tin tạm sau khi đã đăng ký thành công
+        if (pendingReg) tempStorage.delete(phone_number);
+      } else {
+        // If found: Update the lastLogin timestamp
+        await authRepository.updateLastLogin(user.id);
+      }
+
+      if (!user) {
+        throw new AppError("Failed to verify user representation", 500);
+      }
+
+      const accessToken = generateAccessToken({
+        id: user.id,
+        uid: user.uid,
+        email: user.email,
+      });
+
+      const refreshToken = generateRefreshToken({
+        id: user.id,
+        uid: user.uid,
+        email: user.email,
+      });
+
+      return {
+        success: true,
+        user: this.formatUserResponse(user),
+        token: { accessToken, refreshToken },
+      };
+    } catch (error: any) {
+      logger.error("Failed to verify firebase token:", error);
+      throw new AppError("Invalid or expired Firebase token. " + error.message, 401);
+    }
   }
 }
 

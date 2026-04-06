@@ -39,6 +39,8 @@ model User {
   googleId               String?   @unique
   resetPasswordExpiry    DateTime?
   resetPasswordToken     String?
+  lastLogin              DateTime?
+  role                   String    @default("user")
 
   // Timestamps
   createdAt              DateTime  @default(now())

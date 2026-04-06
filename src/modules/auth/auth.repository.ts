@@ -58,6 +58,13 @@ export class AuthRepository {
     });
   }
 
+  async updateLastLogin(id: string) {
+    return prisma.user.update({
+      where: { id },
+      data: { lastLogin: new Date() }
+    });
+  }
+
   async findByGoogleId(googleId: string) {
     return prisma.user.findUnique({
       where: { googleId },
