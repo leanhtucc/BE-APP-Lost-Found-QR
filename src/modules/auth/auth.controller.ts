@@ -1,7 +1,7 @@
 import { NextFunction, Request, Response } from "express";
+import { AppError } from "../../middlewares/error.middleware";
 import { ResponseUtil } from "../../utils/response";
 import { AuthService } from "./auth.service";
-import { AppError } from "../../middlewares/error.middleware";
 
 /**
  * Auth Controller
@@ -264,8 +264,13 @@ export class AuthController {
 
       const result = await authService.verifyFirebaseUser(idToken);
 
-      // Return exactly what the prompt requested structure: { success: true, user, token }
-      return res.status(200).json(result);
+      return ResponseUtil.success(
+        res,
+        result,
+        result.isNewUser
+          ? "Account created successfully via Firebase"
+          : "Login successful via Firebase"
+      );
     } catch (error) {
       next(error);
     }

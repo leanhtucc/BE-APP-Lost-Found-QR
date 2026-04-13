@@ -1,6 +1,7 @@
 import { User } from "@prisma/client";
 import { nanoid } from "nanoid";
 import { ENV } from "../../config/env";
+import admin from "../../config/firebaseAdmin";
 import { emailService } from "../../libs/email";
 import { googleOAuthService } from "../../libs/google-oauth";
 import {
@@ -9,9 +10,8 @@ import {
   verifyRefreshToken,
 } from "../../libs/jwt";
 import { logger } from "../../libs/logger";
-import { createStreamUserToken } from "../../libs/stream-chat";
-import admin from "../../config/firebaseAdmin";
 import { smsService } from "../../libs/sms";
+import { createStreamUserToken } from "../../libs/stream-chat";
 import { tempStorage } from "../../libs/temp-storage";
 import { AppError } from "../../middlewares/error.middleware";
 import { comparePassword, hashPassword } from "../../utils/hash";
@@ -25,7 +25,6 @@ import {
   PrivacySettings,
   RegisterDTO,
   RegisterResponse,
-  ResendOtpDTO,
   ResetPasswordDTO,
   ResetPasswordResponse,
   UpdateProfileDTO,
@@ -93,9 +92,38 @@ export class AuthService {
     return expiry;
   }
 
+  private getPhoneCandidates(phoneNumber: string): string[] {
+    const normalizedInput = String(phoneNumber || "").trim();
+    const digits = normalizedInput.replace(/\D/g, "");
+    const candidates = new Set<string>();
+
+    if (normalizedInput) {
+      candidates.add(normalizedInput);
+    }
+
+    if (!digits) {
+      return [...candidates];
+    }
+
+    if (digits.startsWith("84")) {
+      candidates.add(`+${digits}`);
+      candidates.add(`0${digits.slice(2)}`);
+    } else if (digits.startsWith("0")) {
+      candidates.add(digits);
+      candidates.add(`+84${digits.slice(1)}`);
+    } else {
+      candidates.add(digits);
+      candidates.add(`+${digits}`);
+    }
+
+    return [...candidates];
+  }
+
   async register(data: RegisterDTO): Promise<RegisterResponse> {
     // Check if phone exists
-    const existingPhone = await authRepository.findByPhoneNumber(data.phoneNumber);
+    const existingPhone = await authRepository.findByPhoneNumber(
+      data.phoneNumber
+    );
     if (existingPhone) {
       throw new AppError("Số điện thoại này đã được đăng ký", 400);
     }
@@ -134,7 +162,8 @@ export class AuthService {
 
     // Giả lập lưu thành công mà không gọi SMS backend vì Mobile tự dùng Firebase SDK để gửi SMS
     return {
-      message: "Thông tin đã được lưu tạm. Vui lòng gửi OTP từ Mobile để xác thực.",
+      message:
+        "Thông tin đã được lưu tạm. Vui lòng gửi OTP từ Mobile để xác thực.",
       email: data.email,
     };
   }
@@ -242,10 +271,7 @@ export class AuthService {
     // Check if code expired
     if (new Date() > pendingReg.expiresAt) {
       tempStorage.delete(data.phoneNumber);
-      throw new AppError(
-        "OTP expired. Please request a new one.",
-        400
-      );
+      throw new AppError("OTP expired. Please request a new one.", 400);
     }
 
     // Create user in database NOW (after verification)
@@ -296,9 +322,7 @@ export class AuthService {
     };
   }
 
-  async resendOtp(
-    data: { phoneNumber: string }
-  ): Promise<{ message: string }> {
+  async resendOtp(data: { phoneNumber: string }): Promise<{ message: string }> {
     // Check temp storage
     const pendingReg = tempStorage.get(data.phoneNumber);
     if (!pendingReg) {
@@ -321,7 +345,10 @@ export class AuthService {
     });
 
     // Send SMS
-    const smsSent = await smsService.sendOTP(data.phoneNumber, verificationCode);
+    const smsSent = await smsService.sendOTP(
+      data.phoneNumber,
+      verificationCode
+    );
     if (!smsSent && !ENV.SKIP_EMAIL_VERIFICATION) {
       throw new AppError("Failed to send SMS OTP", 500);
     }
@@ -387,8 +414,9 @@ export class AuthService {
   async verifyFirebaseToken(idToken: string): Promise<GoogleAuthResponse> {
     try {
       // Import động để tránh lỗi nếu firebaseAdmin config có trục trặc do thiếu ENV
-      const admin: any = (await import("../../config/firebaseAdmin.js")).default;
-      
+      const admin: any = (await import("../../config/firebaseAdmin.js"))
+        .default;
+
       const decodedToken = await admin.auth().verifyIdToken(idToken);
       const { uid, phone_number, email, picture, name } = decodedToken;
 
@@ -398,25 +426,26 @@ export class AuthService {
       if (!user) {
         let actualEmail = email;
         if (!actualEmail) {
-            actualEmail = `${uid}@firebase.app`;
+          actualEmail = `${uid}@firebase.app`;
         } else {
-            // Check if email already exists
-            const existingWithEmail = await authRepository.findByEmail(actualEmail);
-            if (existingWithEmail) {
-                 actualEmail = `${uid}_${actualEmail}`; // Prevent duplicate email constraint error
-            }
+          // Check if email already exists
+          const existingWithEmail =
+            await authRepository.findByEmail(actualEmail);
+          if (existingWithEmail) {
+            actualEmail = `${uid}_${actualEmail}`; // Prevent duplicate email constraint error
+          }
         }
-        
+
         const createdUser = await authRepository.createUser({
           uid: uid,
           email: actualEmail,
-          password: "", 
+          password: "",
           displayName: name || "Người dùng mới",
           photoURL: picture || undefined,
           phoneNumber: phone_number || undefined,
-          isVerified: true, 
+          isVerified: true,
         });
-        
+
         user = await authRepository.findByUid(createdUser.uid);
         isNewUser = true;
       }
@@ -446,7 +475,7 @@ export class AuthService {
       };
     } catch (error: any) {
       logger.error("Firebase Auth error:", error);
-      if (error.code && String(error.code).startsWith('auth/')) {
+      if (error.code && String(error.code).startsWith("auth/")) {
         throw new AppError("Invalid or expired Firebase ID Token", 401);
       }
       throw new AppError("Firebase authentication failed", 500);
@@ -622,29 +651,51 @@ export class AuthService {
       const { uid, phone_number } = decodedToken;
 
       if (!phone_number) {
-        throw new AppError("Token does not contain a phone number. Please sign in with a phone number.", 400);
+        throw new AppError(
+          "Token does not contain a phone number. Please sign in with a phone number.",
+          400
+        );
       }
 
-      let user: any = await authRepository.findByPhoneNumber(phone_number);
+      const phoneCandidates = this.getPhoneCandidates(phone_number);
+      let user: any = null;
+
+      for (const candidate of phoneCandidates) {
+        user = await authRepository.findByPhoneNumber(candidate);
+        if (user) break;
+      }
+
+      let isNewUser = false;
 
       if (!user) {
         // Lấy thông tin Tên, Email, Pass từ tempStorage (đã được gọi qua `/register`)
-        const pendingReg = tempStorage.get(phone_number);
+        let pendingReg = null;
+        let matchedPendingPhone = phone_number;
+
+        for (const candidate of phoneCandidates) {
+          const foundPending = tempStorage.get(candidate);
+          if (foundPending) {
+            pendingReg = foundPending;
+            matchedPendingPhone = candidate;
+            break;
+          }
+        }
 
         const createdUser = await authRepository.createUser({
           uid: uid,
-          phoneNumber: phone_number,
+          phoneNumber: pendingReg?.phoneNumber || phone_number,
           email: pendingReg ? pendingReg.email : `${uid}@firebase.local`, // Tránh lỗi unique nếu không có email
-          password: pendingReg ? pendingReg.password : "", 
+          password: pendingReg ? pendingReg.password : "",
           displayName: pendingReg ? pendingReg.displayName : "Người dùng mới",
           photoURL: pendingReg?.photoURL || undefined,
           isVerified: true,
         });
 
         user = await authRepository.findByUid(createdUser.uid);
+        isNewUser = true;
 
         // Xóa thông tin tạm sau khi đã đăng ký thành công
-        if (pendingReg) tempStorage.delete(phone_number);
+        if (pendingReg) tempStorage.delete(matchedPendingPhone);
       } else {
         // If found: Update the lastLogin timestamp
         await authRepository.updateLastLogin(user.id);
@@ -666,14 +717,24 @@ export class AuthService {
         email: user.email,
       });
 
-      return {
-        success: true,
+      const responseData = {
+        accessToken,
+        refreshToken,
         user: this.formatUserResponse(user),
+        isNewUser,
+      };
+
+      return {
+        ...responseData,
+        // Keep legacy shape for older mobile clients while exposing flat tokens.
         token: { accessToken, refreshToken },
       };
     } catch (error: any) {
       logger.error("Failed to verify firebase token:", error);
-      throw new AppError("Invalid or expired Firebase token. " + error.message, 401);
+      throw new AppError(
+        "Invalid or expired Firebase token. " + error.message,
+        401
+      );
     }
   }
 }
