@@ -112,8 +112,47 @@ export const updateStatusSchema = z.object({
       .max(500, "Lost message must be less than 500 characters")
       .optional()
       .or(z.literal("")),
+    latitude: z
+      .string()
+      .optional()
+      .refine(
+        (value) => value === undefined || Number.isFinite(Number(value)),
+        { message: "latitude must be a valid number" }
+      )
+      .refine(
+        (value) =>
+          value === undefined || (Number(value) >= -90 && Number(value) <= 90),
+        { message: "latitude must be in range [-90, 90]" }
+      ),
+    longitude: z
+      .string()
+      .optional()
+      .refine(
+        (value) => value === undefined || Number.isFinite(Number(value)),
+        { message: "longitude must be a valid number" }
+      )
+      .refine(
+        (value) =>
+          value === undefined ||
+          (Number(value) >= -180 && Number(value) <= 180),
+        { message: "longitude must be in range [-180, 180]" }
+      ),
   }),
 });
+
+export const updateStatusSchemaWithCoordinates = updateStatusSchema.refine(
+  (payload) => {
+    const { latitude, longitude } = payload.query;
+    const hasLatitude = latitude !== undefined && latitude !== "";
+    const hasLongitude = longitude !== undefined && longitude !== "";
+
+    return hasLatitude === hasLongitude;
+  },
+  {
+    message: "latitude and longitude must be provided together",
+    path: ["query", "latitude"],
+  }
+);
 
 // Schema cho list items
 export const listItemsSchema = z.object({

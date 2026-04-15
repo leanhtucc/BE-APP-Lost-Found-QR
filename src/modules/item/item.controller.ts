@@ -135,7 +135,7 @@ export class ItemController {
     try {
       const userId = (req as any).user.id;
       const { id } = req.params;
-      const { status, lostMessage } = req.query as any;
+      const { status, lostMessage, latitude, longitude } = req.query as any;
 
       if (!id) {
         return ResponseUtil.badRequest(res, "Item ID is required");
@@ -145,7 +145,17 @@ export class ItemController {
         id,
         userId,
         status,
-        lostMessage
+        lostMessage,
+        {
+          latitude:
+            latitude !== undefined && latitude !== ""
+              ? Number(latitude)
+              : undefined,
+          longitude:
+            longitude !== undefined && longitude !== ""
+              ? Number(longitude)
+              : undefined,
+        }
       );
 
       return ResponseUtil.success(res, result, "Status updated successfully");

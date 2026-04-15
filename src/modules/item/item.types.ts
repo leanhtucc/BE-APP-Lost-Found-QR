@@ -41,6 +41,13 @@ export interface UpdateItemDTO {
   securityPin?: string;
 }
 
+export interface UpdateItemStatusDTO {
+  status: "safe" | "lost";
+  lostMessage?: string;
+  latitude?: number;
+  longitude?: number;
+}
+
 export interface ItemResponse {
   id: string;
   itemId: string;

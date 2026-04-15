@@ -9,7 +9,7 @@ import {
   scanQRSchema,
   searchItemsSchema,
   updateItemSchema,
-  updateStatusSchema,
+  updateStatusSchemaWithCoordinates,
 } from "./item.schema";
 
 /**
@@ -88,7 +88,7 @@ router.patch(
   "/items/:id/status",
   authMiddleware,
   validate(itemIdParamSchema),
-  validate(updateStatusSchema),
+  validate(updateStatusSchemaWithCoordinates),
   itemController.updateStatus
 );
 

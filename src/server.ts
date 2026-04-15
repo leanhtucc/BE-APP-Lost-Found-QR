@@ -1,8 +1,14 @@
 console.log(">>> [STARTUP] Starting server.ts file execution...");
+import { createServer } from "http";
 import app from "./app";
 import { connectDatabase, disconnectDatabase } from "./config/database";
 import { ENV } from "./config/env";
 import { logger } from "./libs/logger";
+import { redis } from "./libs/redis";
+import {
+  initializeSocketServer,
+  shutdownSocketServer,
+} from "./socket/radar.socket";
 
 /**
  * Server Entry Point
@@ -19,7 +25,10 @@ async function startServer() {
 
     // Start server
     console.log(`>>> [STARTUP] Attempting to listen on port ${ENV.PORT}...`);
-    const server = app.listen(ENV.PORT, "0.0.0.0", () => {
+    const httpServer = createServer(app);
+    initializeSocketServer(httpServer);
+
+    const server = httpServer.listen(ENV.PORT, "0.0.0.0", () => {
       logger.success(`🚀 Server is running on port ${ENV.PORT}`);
       logger.info(`📍 http://localhost:${ENV.PORT}`);
       logger.info(`🌍 Environment: ${ENV.NODE_ENV}`);
@@ -30,6 +39,8 @@ async function startServer() {
       logger.warn("⚠️  Shutting down gracefully...");
 
       server.close(async () => {
+        await shutdownSocketServer();
+        await redis.disconnect();
         await disconnectDatabase();
         logger.info("👋 Server closed");
         process.exit(0);

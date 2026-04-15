@@ -2,6 +2,8 @@ import { nanoid } from "nanoid";
 import { ENV } from "../../config/env";
 import { logger } from "../../libs/logger";
 import { AppError } from "../../middlewares/error.middleware";
+import { emitLostItemToNearbyUsers } from "../../socket/radar.socket";
+import { encodeGeoHash } from "../../utils/geospatial";
 import { ItemRepository } from "./item.repository";
 import {
   CreateItemDTO,
@@ -22,8 +24,65 @@ import {
  */
 
 const itemRepository = new ItemRepository();
+const ITEM_GEOHASH_PRECISION = 6;
 
 export class ItemService {
+  private resolveReportedCoordinates(
+    coordinates: {
+      latitude?: number;
+      longitude?: number;
+    },
+    fallbackLocation?: string | null
+  ): { latitude: number; longitude: number } | null {
+    const hasLatitude =
+      coordinates.latitude !== undefined &&
+      Number.isFinite(coordinates.latitude);
+    const hasLongitude =
+      coordinates.longitude !== undefined &&
+      Number.isFinite(coordinates.longitude);
+
+    if (hasLatitude !== hasLongitude) {
+      throw new AppError(
+        "latitude and longitude must be provided together",
+        400
+      );
+    }
+
+    if (hasLatitude && hasLongitude) {
+      const latitude = Number(coordinates.latitude);
+      const longitude = Number(coordinates.longitude);
+
+      if (latitude < -90 || latitude > 90) {
+        throw new AppError("latitude must be in range [-90, 90]", 400);
+      }
+
+      if (longitude < -180 || longitude > 180) {
+        throw new AppError("longitude must be in range [-180, 180]", 400);
+      }
+
+      return { latitude, longitude };
+    }
+
+    if (!fallbackLocation) {
+      return null;
+    }
+
+    try {
+      const parsed = JSON.parse(fallbackLocation);
+
+      if (typeof parsed.lat === "number" && typeof parsed.lng === "number") {
+        return {
+          latitude: parsed.lat,
+          longitude: parsed.lng,
+        };
+      }
+    } catch {
+      return null;
+    }
+
+    return null;
+  }
+
   // Format response
   private formatItemResponse(item: any): ItemResponse {
     return {
@@ -248,7 +307,11 @@ export class ItemService {
     itemId: string,
     userId: string,
     status: "safe" | "lost",
-    lostMessage?: string
+    lostMessage?: string,
+    coordinates: {
+      latitude?: number;
+      longitude?: number;
+    } = {}
   ): Promise<ItemResponse> {
     const item = await itemRepository.findById(itemId);
 
@@ -264,12 +327,60 @@ export class ItemService {
     }
 
     const updateData: UpdateItemDTO = { status };
+    let reportedCoordinates: { latitude: number; longitude: number } | null =
+      null;
 
     if (status === "lost" && lostMessage) {
       updateData.lostMessage = lostMessage;
     }
 
+    if (status === "lost") {
+      reportedCoordinates = this.resolveReportedCoordinates(
+        coordinates,
+        item.lastSeenLocation
+      );
+
+      if (!reportedCoordinates) {
+        throw new AppError(
+          "Location coordinates are required when reporting item as lost",
+          400
+        );
+      }
+    }
+
     const updated = await itemRepository.updateItem(itemId, updateData);
+
+    if (status === "lost" && reportedCoordinates) {
+      const geohash = encodeGeoHash(
+        reportedCoordinates.latitude,
+        reportedCoordinates.longitude,
+        ITEM_GEOHASH_PRECISION
+      );
+
+      await itemRepository.updateItemGeoPoint(
+        itemId,
+        reportedCoordinates.latitude,
+        reportedCoordinates.longitude,
+        geohash
+      );
+
+      await emitLostItemToNearbyUsers({
+        id: updated.id,
+        itemId: updated.itemId,
+        name: updated.name,
+        category: updated.category,
+        description: updated.description || undefined,
+        lostMessage: updated.lostMessage || undefined,
+        imagePublicUrl: updated.imagePublicUrl || undefined,
+        latitude: reportedCoordinates.latitude,
+        longitude: reportedCoordinates.longitude,
+        reportedAt: new Date().toISOString(),
+      });
+    }
+
+    if (status === "safe") {
+      await itemRepository.clearItemGeoPoint(itemId);
+    }
 
     logger.info(
       `Item status changed to ${status}: ${item.itemId} by user ${userId}`

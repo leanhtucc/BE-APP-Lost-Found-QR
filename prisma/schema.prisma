@@ -67,6 +67,11 @@ model Item {
   lostMessage      String?
   qrCodeUrl        String?
   securityToken    String   @unique
+  latitude         Float?
+  longitude        Float?
+  locationGeoHash  String?  @map("location_geohash") @db.VarChar(16)
+  location         Unsupported("geography(Point,4326)")?
+  locationUpdatedAt DateTime? @map("location_updated_at")
   createdAt        DateTime @default(now())
   updatedAt        DateTime @updatedAt
   imagePublicUrl   String?
@@ -77,4 +82,5 @@ model Item {
   @@index([itemId])
   @@index([ownerId])
   @@index([status])
+  @@index([locationGeoHash], map: "Item_location_geohash_idx")
 }

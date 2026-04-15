@@ -158,6 +158,41 @@ export class ItemRepository {
     });
   }
 
+  // Cập nhật geospatial location cho Live Radar
+  async updateItemGeoPoint(
+    itemId: string,
+    latitude: number,
+    longitude: number,
+    geohash: string
+  ) {
+    await prisma.$executeRaw`
+      UPDATE "Item"
+      SET
+        "latitude" = ${latitude},
+        "longitude" = ${longitude},
+        "location_geohash" = ${geohash},
+        "location_updated_at" = NOW(),
+        "location" = ST_SetSRID(ST_MakePoint(${longitude}, ${latitude}), 4326)::geography,
+        "updatedAt" = NOW()
+      WHERE "id" = ${itemId};
+    `;
+  }
+
+  // Xóa geospatial location (khi item trở lại trạng thái safe)
+  async clearItemGeoPoint(itemId: string) {
+    await prisma.$executeRaw`
+      UPDATE "Item"
+      SET
+        "latitude" = NULL,
+        "longitude" = NULL,
+        "location_geohash" = NULL,
+        "location_updated_at" = NULL,
+        "location" = NULL,
+        "updatedAt" = NOW()
+      WHERE "id" = ${itemId};
+    `;
+  }
+
   // Xóa item
   async deleteItem(id: string) {
     return await prisma.item.delete({
