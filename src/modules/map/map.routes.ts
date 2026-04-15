@@ -1,18 +1,17 @@
 import { Router } from "express";
 import { authMiddleware } from "../../middlewares/auth.middleware";
 import { validate } from "../../middlewares/validate.middleware";
-import { MapController } from "./map.controller";
-import { nearbyMapSchema } from "./map.schema";
+import { mapController } from "./map.controller";
+import { nearbySchema } from "./map.schema";
 
 const router = Router();
-const mapController = new MapController();
 
-// GET /api/map/nearby
+// GET /api/map/nearby - requires auth (optional, but we keep auth for now)
 router.get(
   "/nearby",
   authMiddleware,
-  validate(nearbyMapSchema),
-  mapController.getNearbyItems
+  validate(nearbySchema),
+  mapController.getNearby
 );
 
 export default router;

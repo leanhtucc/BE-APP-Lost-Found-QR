@@ -77,10 +77,15 @@ model Item {
   imagePublicUrl   String?
   lastSeenLocation String?
   securityPin      String?
+  // New fields for lost item coordinates
+  lostLat          Float?   // latitude when item reported lost
+  lostLng          Float?   // longitude when item reported lost
   owner            User     @relation("ItemOwner", fields: [ownerId], references: [id], onDelete: Cascade)
 
   @@index([itemId])
   @@index([ownerId])
   @@index([status])
+  // Index for lost location (BTREE, sufficient for MVP)
+  @@index([lostLat, lostLng])
   @@index([locationGeoHash], map: "Item_location_geohash_idx")
 }

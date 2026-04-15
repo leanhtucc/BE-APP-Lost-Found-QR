@@ -1,20 +1,18 @@
 import { NextFunction, Request, Response } from "express";
-import { ResponseUtil } from "../../utils/response";
 import { mapService } from "./map.service";
 
 export class MapController {
-  async getNearbyItems(req: Request, res: Response, next: NextFunction) {
+  getNearby = async (req: Request, res: Response, next: NextFunction) => {
     try {
-      const parsedQuery = mapService.parseNearbyQuery(req.query);
-      const result = await mapService.getNearbyLostItems(parsedQuery);
-
-      return ResponseUtil.success(
-        res,
-        result,
-        "Nearby lost items loaded successfully"
-      );
-    } catch (error) {
-      next(error);
+      const lat = Number(req.query.lat);
+      const lng = Number(req.query.lng);
+      const radius = req.query.radius ? Number(req.query.radius) : undefined;
+      const result = await mapService.getNearby({ lat, lng, radius });
+      res.json({ success: true, data: result });
+    } catch (err) {
+      next(err);
     }
-  }
+  };
 }
+
+export const mapController = new MapController();
