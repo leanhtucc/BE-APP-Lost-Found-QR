@@ -56,6 +56,23 @@ export class ItemController {
     }
   }
 
+  // GET /api/items/my-vault - Lấy danh sách đồ ở trạng thái an toàn
+  async getVaultItems(req: Request, res: Response, next: NextFunction) {
+    try {
+      const userId = (req as any).user.id;
+      // Re-use listItems logic but force status = "safe"
+      const result = await itemService.listItems(userId, {
+        status: "safe",
+        page: 1,
+        limit: 100, // retrieve all vault items
+      });
+
+      return ResponseUtil.success(res, result);
+    } catch (error) {
+      next(error);
+    }
+  }
+
   // GET /api/items - Lấy danh sách items của user
   async listItems(req: Request, res: Response, next: NextFunction) {
     try {

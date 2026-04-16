@@ -13,6 +13,22 @@ export class MapController {
       next(err);
     }
   };
+
+  countActiveUsers = async (
+    req: Request,
+    res: Response,
+    next: NextFunction
+  ) => {
+    try {
+      const lat = Number(req.query.lat);
+      const lng = Number(req.query.lng);
+      const radius = req.query.radius ? Number(req.query.radius) : 2000;
+      const count = await mapService.countActiveUsers(lat, lng, radius);
+      res.json({ success: true, data: count });
+    } catch (err) {
+      next(err);
+    }
+  };
 }
 
 export const mapController = new MapController();

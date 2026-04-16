@@ -48,6 +48,8 @@ model User {
 
   // Relations
   ownedItems             Item[]    @relation("ItemOwner")
+  locations              UserLocation[]
+  posts                  Post[]
 
   @@index([uid])
   @@index([email])
@@ -81,6 +83,7 @@ model Item {
   lostLat          Float?   // latitude when item reported lost
   lostLng          Float?   // longitude when item reported lost
   owner            User     @relation("ItemOwner", fields: [ownerId], references: [id], onDelete: Cascade)
+  posts            Post[]
 
   @@index([itemId])
   @@index([ownerId])
@@ -88,4 +91,55 @@ model Item {
   // Index for lost location (BTREE, sufficient for MVP)
   @@index([lostLat, lostLng])
   @@index([locationGeoHash], map: "Item_location_geohash_idx")
+}
+
+model UserLocation {
+  userId    String   @id @map("user_id")
+  lat       Float
+  lng       Float
+  updatedAt DateTime @updatedAt
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([lat, lng])
+}
+
+model Post {
+  id           String   @id @default(cuid())
+  ownerId      String   @map("owner_id")
+  itemId       String   @map("item_id")
+  lat          Float
+  lng          Float
+  address      String?
+  bountyAmount Int      @map("bounty_amount")
+  status       String   @default("PENDING_PAYMENT") // PENDING_PAYMENT, ACTIVE, RESOLVED, CANCELLED
+  description  String?
+  createdAt    DateTime @default(now())
+  updatedAt    DateTime @updatedAt
+
+  owner   User   @relation(fields: [ownerId], references: [id])
+  item    Item   @relation(fields: [itemId], references: [id])
+
+  escrowTransactions EscrowTransaction[]
+
+  @@index([ownerId])
+  @@index([itemId])
+  @@index([status])
+  @@index([lat, lng])
+}
+
+model EscrowTransaction {
+  id              String   @id @default(cuid())
+  postId          String   @map("post_id")
+  amount          Int
+  provider        String   // VNPAY, MOMO
+  status          String   @default("HOLDING") // HOLDING, RELEASED, REFUNDED
+  transactionCode String?  @map("transaction_code")
+  createdAt       DateTime @default(now())
+  updatedAt       DateTime @updatedAt
+
+  post Post @relation(fields: [postId], references: [id])
+
+  @@index([postId])
+  @@index([status])
 }

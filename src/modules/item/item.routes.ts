@@ -32,6 +32,9 @@ router.post(
   itemController.createItem
 );
 
+// GET /api/items/my-vault - Lấy danh sách đồ chưa báo mất
+router.get("/items/my-vault", authMiddleware, itemController.getVaultItems);
+
 // GET /api/items - Lấy danh sách items của user
 router.get(
   "/items",

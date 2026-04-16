@@ -62,3 +62,27 @@ export async function findNearbyLostItems(
     })
   );
 }
+
+/**
+ * Perform a Haversine distance query to count active users within radius
+ */
+export async function countActiveUsersNear(
+  lat: number,
+  lng: number,
+  radius: number = 2000
+): Promise<number> {
+  const earthRadius = 6371000;
+  // count users active in last 1 hour
+  const sql = `
+    SELECT count(*) as count
+    FROM "UserLocation"
+    WHERE "updatedAt" >= NOW() - INTERVAL '1 hour'
+      AND ${earthRadius} * acos(
+        LEAST(1.0, cos(radians($1)) * cos(radians("lat")) *
+        cos(radians("lng") - radians($2)) +
+        sin(radians($1)) * sin(radians("lat")))
+      ) <= $3
+  `;
+  const rows = await prisma.$queryRawUnsafe(sql, lat, lng, radius);
+  return Number((rows as any[])[0]?.count || 0);
+}
