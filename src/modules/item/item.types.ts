@@ -81,6 +81,8 @@ export interface ScanQRResponse {
     lost_message?: string;
     image_url?: string;
     owner_info: OwnerInfo;
+    bounty_amount?: number;
+    escrow_status?: string;
   };
   action: "open_chat" | "info_only";
   message?: string;

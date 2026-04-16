@@ -68,7 +68,13 @@ export class ItemRepository {
             photoURL: true,
             phoneNumber: true,
             createdAt: true,
+            memberId: true,
           },
+        },
+        posts: {
+          where: { status: "ACTIVE" },
+          orderBy: { createdAt: "desc" },
+          take: 1,
         },
       },
     });

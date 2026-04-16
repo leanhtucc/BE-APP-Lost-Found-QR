@@ -175,9 +175,14 @@ export class ItemService {
       throw new AppError("Item not found", 404);
     }
 
+    const shortId = (item.owner.memberId || item.owner.uid || "A3F2")
+      .substring(0, 4)
+      .toUpperCase();
+
+    // Chủ nhân ẩn danh
     const ownerInfo: any = {
-      display_name: item.owner.displayName,
-      avatar: item.owner.photoURL || "",
+      display_name: `Chủ nhân ẩn danh #${shortId}`,
+      avatar: "", // Khóa ảnh đại diện cho chế độ ẩn danh theo design
       joined_date: new Date(item.owner.createdAt).getFullYear().toString(),
     };
 
@@ -198,6 +203,16 @@ export class ItemService {
       };
     }
 
+    // Lấy thông tin bounty từ Post
+    let bountyAmount: number | undefined = undefined;
+    let escrowStatus: string | undefined = undefined;
+    // item.posts đã được include take: 1 từ Repo
+    const activePost = (item as any).posts?.[0];
+    if (activePost) {
+      bountyAmount = activePost.bountyAmount;
+      escrowStatus = "Đã khóa an toàn trong escrow";
+    }
+
     // Nếu status là "lost"
     return {
       item_info: {
@@ -209,6 +224,8 @@ export class ItemService {
         lost_message: item.lostMessage || undefined,
         image_url: item.imagePublicUrl || undefined,
         owner_info: ownerInfo,
+        bounty_amount: bountyAmount,
+        escrow_status: escrowStatus,
       },
       action: "open_chat",
     };
