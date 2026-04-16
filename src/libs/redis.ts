@@ -36,8 +36,17 @@ export class RedisClient {
       },
     });
 
-    this.client.on("error", (error) => {
-      logger.warn("Redis error, switching to in-memory fallback", error);
+    this.client.on("error", (error: any) => {
+      if (error?.code === "ECONNREFUSED" || error?.name === "AggregateError") {
+        logger.warn(
+          "Redis connection refused, switching to in-memory fallback"
+        );
+      } else {
+        logger.warn(
+          "Redis error, switching to in-memory fallback",
+          error?.message || error
+        );
+      }
       this.useInMemoryFallback = true;
     });
 
@@ -46,8 +55,20 @@ export class RedisClient {
       .then(() => {
         logger.info("Redis connected");
       })
-      .catch((error) => {
-        logger.warn("Unable to connect Redis, using in-memory fallback", error);
+      .catch((error: any) => {
+        if (
+          error?.code === "ECONNREFUSED" ||
+          error?.name === "AggregateError"
+        ) {
+          logger.warn(
+            "Unable to connect Redis (ECONNREFUSED), using in-memory fallback"
+          );
+        } else {
+          logger.warn(
+            "Unable to connect Redis, using in-memory fallback",
+            error?.message || error
+          );
+        }
         this.useInMemoryFallback = true;
         this.client = null;
       })
