@@ -82,6 +82,7 @@ model Item {
   // New fields for lost item coordinates
   lostLat          Float?   // latitude when item reported lost
   lostLng          Float?   // longitude when item reported lost
+  lostAddress      String?  // Address where item was lost
   owner            User     @relation("ItemOwner", fields: [ownerId], references: [id], onDelete: Cascade)
   posts            Post[]
 

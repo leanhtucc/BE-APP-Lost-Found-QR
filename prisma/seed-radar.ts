@@ -22,6 +22,7 @@ const FAKE_ITEMS = [
       "https://images.unsplash.com/photo-1678685888221-cda773a3dcdb?w=400",
     lostLat: 10.7769,
     lostLng: 106.7009,
+    lostAddress: "Trạm xe buýt chợ Bến Thành, Quận 1",
   },
   {
     name: "Vi da nam Louis Vuitton",
@@ -32,6 +33,7 @@ const FAKE_ITEMS = [
       "https://images.unsplash.com/photo-1548036328-c9fa89d128fa?w=400",
     lostLat: 10.7731,
     lostLng: 106.703,
+    lostAddress: "Góc đường Nguyễn Huệ, Quận 1",
   },
   {
     name: "Laptop Dell XPS 13",
@@ -129,6 +131,7 @@ async function main() {
           status: "lost",
           lostLat: item.lostLat,
           lostLng: item.lostLng,
+          lostAddress: item.lostAddress,
           lostMessage: item.lostMessage,
         },
       });
@@ -147,6 +150,7 @@ async function main() {
           imagePublicUrl: item.imagePublicUrl,
           lostLat: item.lostLat,
           lostLng: item.lostLng,
+          lostAddress: item.lostAddress,
           securityToken: nanoid(32),
           qrCodeUrl: `https://findback.app/scan/${itemId}`,
         },

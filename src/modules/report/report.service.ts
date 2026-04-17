@@ -117,6 +117,7 @@ export class ReportService {
           status: "lost",
           lostLat: post.lat,
           lostLng: post.lng,
+          lostAddress: post.address,
         },
       }),
     ]);

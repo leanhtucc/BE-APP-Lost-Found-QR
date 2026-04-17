@@ -30,6 +30,7 @@ export interface LostFeedCard {
   distanceLabel: string | null;
   lostLat: number | null;
   lostLng: number | null;
+  address: string | null;
   isOwn: boolean;
   ownerDisplayName: string;
   ownerPhotoURL: string | null;
