@@ -15,11 +15,15 @@ export function validate(schema: ZodSchema) {
         params: req.params,
       });
 
-      await schema.parseAsync({
+      const parsedParams = await schema.parseAsync({
         body: req.body,
         query: req.query,
         params: req.params,
       });
+      
+      req.body = parsedParams.body;
+      req.query = parsedParams.query;
+      req.params = parsedParams.params;
 
       console.log("[VALIDATION] ✅ Validation passed");
       next();

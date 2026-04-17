@@ -71,11 +71,10 @@ export async function fetchLostFeed(
         AND i."ownerId" != $1
         AND i."lostLat" IS NOT NULL
         AND i."lostLng" IS NOT NULL
-        AND ${haversineExpr(lat!, lng!)} <= $2
       ORDER BY "distanceMetres" ASC
       LIMIT 100;
     `;
-    nearbyRows = (await prisma.$queryRawUnsafe(sql, userId, radius)) as any[];
+    nearbyRows = (await prisma.$queryRawUnsafe(sql, userId)) as any[];
   } else {
     // Mặc định trả về đồ án mới nhất toàn cầu nếu User chưa cấp quyền Location
     const sql = `

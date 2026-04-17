@@ -157,7 +157,11 @@ export const updateStatusSchemaWithCoordinates = updateStatusSchema.refine(
 // Schema cho list items
 export const listItemsSchema = z.object({
   query: z.object({
-    status: z.enum(["SAFE", "PENDING_PAYMENT", "LOST", "FOUND", "RESOLVED", "ALL"]).optional(),
+    status: z
+      .string()
+      .transform((val) => val.toUpperCase())
+      .pipe(z.enum(["SAFE", "PENDING_PAYMENT", "LOST", "FOUND", "RESOLVED", "ALL"]))
+      .optional(),
     category: z.enum(ITEM_CATEGORIES).optional(),
     page: z
       .string()
