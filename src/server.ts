@@ -5,6 +5,7 @@ import { connectDatabase, disconnectDatabase } from "./config/database";
 import { ENV } from "./config/env";
 import { logger } from "./libs/logger";
 import { redis } from "./libs/redis";
+import { notificationService } from "./modules/notification/notification.service";
 import {
   initializeSocketServer,
   shutdownSocketServer,
@@ -27,6 +28,7 @@ async function startServer() {
     console.log(`>>> [STARTUP] Attempting to listen on port ${ENV.PORT}...`);
     const httpServer = createServer(app);
     initializeSocketServer(httpServer);
+    notificationService.startCleanupJob();
 
     const server = httpServer.listen(ENV.PORT, "0.0.0.0", () => {
       logger.success(`🚀 Server is running on port ${ENV.PORT}`);
@@ -39,6 +41,7 @@ async function startServer() {
       logger.warn("⚠️  Shutting down gracefully...");
 
       server.close(async () => {
+        notificationService.stopCleanupJob();
         await shutdownSocketServer();
         await redis.disconnect();
         await disconnectDatabase();

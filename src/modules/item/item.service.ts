@@ -3,14 +3,14 @@ import { ENV } from "../../config/env";
 import { logger } from "../../libs/logger";
 import { AppError } from "../../middlewares/error.middleware";
 import { emitLostItemToNearbyUsers } from "../../socket/radar.socket";
-import { encodeGeoHash } from "../../utils/geospatial";
+import { encodeGeoHash, haversineDistanceMeters } from "../../utils/geospatial";
 import { prisma } from "../../libs/prisma";
-import admin from "../../config/firebaseAdmin";
 import {
   createItemChannel,
   createStreamUserToken,
   upsertStreamUser,
 } from "../../libs/stream-chat";
+import { notificationService } from "../notification/notification.service";
 import { ItemRepository } from "./item.repository";
 import {
   CreateItemDTO,
@@ -302,30 +302,62 @@ export class ItemService {
     // Update item status to FOUND since someone scanned and initiated returned chat
     await itemRepository.updateItem(item.id, { status: "FOUND" });
 
-    // Send push notification to Owner
-    if (admin && item.owner.uid) {
-      const ownerUser = await prisma.user.findUnique({
-        where: { id: item.owner.id },
-      });
-      if (ownerUser?.pushToken) {
-        try {
-          await admin.messaging().send({
-            token: ownerUser.pushToken,
-            notification: {
-              title: "Tin vui! 🎉",
-              body: `Ai đó đã quét mã QR món đồ ${item.name} của bạn và muốn liên lạc!`,
-            },
-            data: {
-              type: "QR_SCANNED",
-              itemId: itemId,
-              channelId: channelId,
-            },
-          });
-        } catch (error) {
-          logger.error("Failed to send FCM to owner:", error);
-        }
+    // Persist notification records for app inbox + in-app realtime emit.
+    const notificationTasks: Promise<unknown>[] = [
+      notificationService.notifyStatusUpdate({
+        receiverId: item.owner.id,
+        category: "ITEM",
+        type: "QR_SCANNED",
+        title: "Có người quét mã QR",
+        content: `${guestDisplayName} đã quét QR của món đồ ${item.name}`,
+        metadata: {
+          item_id: itemId,
+          room_id: channelId,
+          finder_id: guestUser.id,
+        },
+      }),
+      notificationService.notifyNewChat({
+        receiverId: item.owner.id,
+        senderAvatar: guestUser.photoURL || "",
+        roomId: channelId,
+        messagePreview: `${guestDisplayName} vừa bắt đầu cuộc trò chuyện về ${item.name}`,
+        itemId,
+      }),
+    ];
+
+    if (
+      Number.isFinite(lat) &&
+      Number.isFinite(lng) &&
+      item.lostLat != null &&
+      item.lostLng != null
+    ) {
+      const distanceMeters = Math.round(
+        haversineDistanceMeters(lat as number, lng as number, item.lostLat, item.lostLng)
+      );
+
+      if (distanceMeters <= 2000) {
+        notificationTasks.push(
+          notificationService.notifyMatchFound({
+            receiverId: item.owner.id,
+            distanceMeters,
+            postId: item.id,
+            itemName: item.name,
+          })
+        );
+      }
+
+      if (distanceMeters <= 100) {
+        notificationTasks.push(
+          notificationService.notifyProximityAlert({
+            receiverId: item.owner.id,
+            distanceMeters,
+            postId: item.id,
+          })
+        );
       }
     }
+
+    await Promise.allSettled(notificationTasks);
 
     return {
       success: true,

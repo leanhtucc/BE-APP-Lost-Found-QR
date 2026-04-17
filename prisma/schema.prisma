@@ -50,12 +50,39 @@ model User {
   ownedItems             Item[]    @relation("ItemOwner")
   locations              UserLocation[]
   posts                  Post[]
+  notifications          Notification[]
 
   @@index([uid])
   @@index([email])
   @@index([memberId])
   @@index([googleId])
   @@index([resetPasswordToken])
+}
+
+enum NotificationCategory {
+  IMPORTANT
+  TRANSACTION
+  ITEM
+  SOCIAL
+}
+
+model Notification {
+  id         String               @id @default(cuid())
+  receiverId String               @map("receiver_id")
+  category   NotificationCategory
+  type       String
+  title      String
+  content    String
+  metadata   Json?
+  isRead     Boolean              @default(false) @map("is_read")
+  createdAt  DateTime             @default(now()) @map("created_at")
+
+  receiver User @relation(fields: [receiverId], references: [id], onDelete: Cascade)
+
+  @@index([receiverId, createdAt])
+  @@index([receiverId, isRead])
+  @@index([category])
+  @@index([type])
 }
 
 model Item {

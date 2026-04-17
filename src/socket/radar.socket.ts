@@ -63,6 +63,10 @@ function toRoomKey(precision: number, geohash: string): string {
   return `radar:p${precision}:${geohash}`;
 }
 
+function toUserRoomKey(userId: string): string {
+  return `user:${userId}`;
+}
+
 function getAuthToken(socket: Socket): string | null {
   const authToken = socket.handshake.auth?.token;
 
@@ -256,6 +260,11 @@ export function initializeSocketServer(httpServer: HttpServer): Server {
   });
 
   ioInstance.on("connection", (socket) => {
+    const userId = String(socket.data.userId || "");
+    if (userId) {
+      socket.join(toUserRoomKey(userId));
+    }
+
     logger.info("[RadarSocket] Client connected", { socketId: socket.id });
 
     socket.on(
@@ -384,4 +393,17 @@ export async function shutdownSocketServer(): Promise<void> {
   });
 
   ioInstance = null;
+}
+
+export function emitInAppNotificationToUser(
+  userId: string,
+  payload: unknown,
+  eventName = "notification:new"
+): boolean {
+  if (!ioInstance || !userId) {
+    return false;
+  }
+
+  ioInstance.to(toUserRoomKey(userId)).emit(eventName, payload);
+  return true;
 }

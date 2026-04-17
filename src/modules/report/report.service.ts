@@ -1,5 +1,6 @@
 import admin from "../../config/firebaseAdmin";
 import { prisma } from "../../libs/prisma";
+import { notificationService } from "../notification/notification.service";
 import {
   ReportLostItemParams,
   ReportLostItemResponse,
@@ -114,7 +115,7 @@ export class ReportService {
       }),
       prisma.escrowTransaction.update({
         where: { id: holdingTx.id },
-        data: { status: "RELEASED", transactionCode }, // Ideally stays HOLDING until item found, but for this mock let's say RECEIVED_FUNDS
+        data: { status: "HOLDING", transactionCode },
       }),
       prisma.item.update({
         where: { id: post.itemId },
@@ -127,7 +128,15 @@ export class ReportService {
       }),
     ]);
 
-    // 2. Broadcast via FCM to nearby users (5km radius)
+    // 2. Create transaction notification for owner (escrow locked)
+    await notificationService.notifyEscrowLocked({
+      receiverId: post.ownerId,
+      amount,
+      transactionId: transactionCode || holdingTx.id,
+      postId,
+    });
+
+    // 3. Broadcast via FCM to nearby users (5km radius)
     await this.broadcastToNearbyUsers(post.lat, post.lng, post.item.name);
   }
 
@@ -136,7 +145,7 @@ export class ReportService {
     lng: number,
     itemName: string
   ) {
-    if (!admin) {
+    if (!admin.apps.length) {
       console.warn(
         "Firebase Admin SDK is mock/undefined. Skipping FCM broadcast."
       );
