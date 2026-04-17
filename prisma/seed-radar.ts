@@ -10,7 +10,7 @@ import { nanoid } from "nanoid";
 
 const prisma = new PrismaClient();
 
-const TEST_USER_UID = "test-radar-user-001";
+const TEST_USER_UID = "mock-owner-999";
 
 const FAKE_ITEMS = [
   {
@@ -100,7 +100,7 @@ async function main() {
         uid: TEST_USER_UID,
         memberId: nanoid(10),
         displayName: "Test Radar User",
-        email: "test-radar@findback.app",
+        email: "mock-owner-999@findback.app",
         photoURL: "https://i.pravatar.cc/150?u=test-radar",
         isVerified: true,
       } as any,

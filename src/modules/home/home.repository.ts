@@ -55,6 +55,32 @@ export async function fetchLostFeed(
       LIMIT 100;
     `;
     nearbyRows = (await prisma.$queryRawUnsafe(sql, userId, radius)) as any[];
+  } else {
+    // Mặc định trả về đồ án mới nhất toàn cầu nếu User chưa cấp quyền Location
+    const sql = `
+      SELECT
+        i."itemId",
+        i."name",
+        i."category",
+        i."imagePublicUrl",
+        i."lostMessage",
+        i."lostLat",
+        i."lostLng",
+        i."lostAddress",
+        i."updatedAt",
+        u."displayName" as "ownerDisplayName",
+        u."photoURL"    as "ownerPhotoURL",
+        NULL AS "distanceMetres"
+      FROM "Item" i
+      JOIN "User" u ON u."id" = i."ownerId"
+      WHERE i."status" = 'LOST'
+        AND i."ownerId" != $1
+        AND i."lostLat" IS NOT NULL
+        AND i."lostLng" IS NOT NULL
+      ORDER BY i."updatedAt" DESC
+      LIMIT 100;
+    `;
+    nearbyRows = (await prisma.$queryRawUnsafe(sql, userId)) as any[];
   }
 
   // ── Format distance label ─────────────────────────────────────────────

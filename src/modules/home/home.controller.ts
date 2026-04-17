@@ -10,11 +10,11 @@ export class HomeController {
     try {
       const userId = req.user!.id; // set by authMiddleware
       const lat =
-        req.query.lat !== undefined ? Number(req.query.lat) : undefined;
+        req.query.lat !== undefined && req.query.lat !== "" ? Number(req.query.lat) : undefined;
       const lng =
-        req.query.lng !== undefined ? Number(req.query.lng) : undefined;
+        req.query.lng !== undefined && req.query.lng !== "" ? Number(req.query.lng) : undefined;
       const radius =
-        req.query.radius !== undefined ? Number(req.query.radius) : 5000;
+        req.query.radius !== undefined && req.query.radius !== "" ? Number(req.query.radius) : 50000;
 
       const data = await homeService.getLostFeed(userId, { lat, lng, radius });
       res.json({ success: true, data });
