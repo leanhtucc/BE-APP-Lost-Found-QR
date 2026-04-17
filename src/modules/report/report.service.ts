@@ -1,7 +1,11 @@
 import admin from "../../config/firebaseAdmin";
+import { logger } from "../../libs/logger";
 import { prisma } from "../../libs/prisma";
+import { AppError } from "../../middlewares/error.middleware";
 import { notificationService } from "../notification/notification.service";
 import {
+  CancelTransactionResult,
+  CompleteTransactionResult,
   ReportLostItemParams,
   ReportLostItemResponse,
   WebhookPaymentPayload,
@@ -10,6 +14,32 @@ import {
 const SYSTEM_FEE_PERCENTAGE = 0.1; // 10% fee
 
 export class ReportService {
+  private parseItemChannelId(channelId: string): {
+    itemId: string;
+    finderId: string;
+  } | null {
+    if (!channelId.startsWith("item_")) {
+      return null;
+    }
+
+    const parts = channelId.split("_");
+    if (parts.length < 3) {
+      return null;
+    }
+
+    const itemId = parts[1] || "";
+    const finderId = parts.slice(2).join("_");
+
+    if (!itemId || !finderId) {
+      return null;
+    }
+
+    return {
+      itemId,
+      finderId,
+    };
+  }
+
   /**
    * Bước 4 (Tạo Report):
    * Create Post, Transaction, and mock payment URL
@@ -138,6 +168,217 @@ export class ReportService {
 
     // 3. Broadcast via FCM to nearby users (5km radius)
     await this.broadcastToNearbyUsers(post.lat, post.lng, post.item.name);
+  }
+
+  async cancelEscrowForItem(
+    ownerId: string,
+    itemId: string
+  ): Promise<CancelTransactionResult | null> {
+    const post = await prisma.post.findFirst({
+      where: {
+        ownerId,
+        itemId,
+        status: {
+          in: ["PENDING_PAYMENT", "ACTIVE"],
+        },
+      },
+      orderBy: {
+        createdAt: "desc",
+      },
+      include: {
+        escrowTransactions: {
+          orderBy: {
+            createdAt: "desc",
+          },
+        },
+      },
+    });
+
+    if (!post) {
+      return null;
+    }
+
+    const holdingTx = post.escrowTransactions.find(
+      (tx) => tx.status === "HOLDING"
+    );
+
+    await prisma.$transaction(async (tx: any) => {
+      await tx.post.update({
+        where: { id: post.id },
+        data: { status: "CANCELLED" },
+      });
+
+      if (holdingTx) {
+        await tx.escrowTransaction.update({
+          where: { id: holdingTx.id },
+          data: { status: "REFUNDED" },
+        });
+      }
+
+      await tx.item.update({
+        where: { id: itemId },
+        data: {
+          status: "SAFE",
+          lostLat: null,
+          lostLng: null,
+          lostAddress: null,
+        },
+      });
+    });
+
+    if (holdingTx) {
+      await notificationService.notifyPaymentRefunded({
+        receiverId: ownerId,
+        amount: holdingTx.amount,
+        transactionId: holdingTx.transactionCode || holdingTx.id,
+        status: "refunded",
+        postId: post.id,
+      });
+    }
+
+    await notificationService.notifyStatusUpdate({
+      receiverId: ownerId,
+      category: "ITEM",
+      type: "STATUS_UPDATE",
+      title: "Đã hủy giao dịch",
+      content: "Bài đăng thất lạc đã được hủy và giao dịch được hoàn về ví.",
+      metadata: {
+        post_id: post.id,
+        item_id: itemId,
+      },
+    });
+
+    return {
+      postId: post.id,
+      postStatus: "CANCELLED",
+      transactionStatus: holdingTx ? "REFUNDED" : null,
+      refundedAmount: holdingTx?.amount || 0,
+    };
+  }
+
+  async completeEscrowFromChannel(
+    ownerId: string,
+    channelId: string
+  ): Promise<CompleteTransactionResult | null> {
+    const parsed = this.parseItemChannelId(channelId);
+
+    if (!parsed) {
+      return null;
+    }
+
+    const { itemId, finderId } = parsed;
+
+    const post = await prisma.post.findFirst({
+      where: {
+        itemId,
+        status: {
+          in: ["PENDING_PAYMENT", "ACTIVE", "RESOLVED"],
+        },
+      },
+      orderBy: {
+        createdAt: "desc",
+      },
+      include: {
+        escrowTransactions: {
+          orderBy: {
+            createdAt: "desc",
+          },
+        },
+      },
+    });
+
+    if (!post) {
+      return null;
+    }
+
+    if (post.ownerId !== ownerId) {
+      throw new AppError("Only item owner can complete settlement", 403);
+    }
+
+    const alreadyReleasedTx = post.escrowTransactions.find(
+      (tx) => tx.status === "RELEASED"
+    );
+
+    if (post.status === "RESOLVED" && alreadyReleasedTx) {
+      return {
+        postId: post.id,
+        postStatus: "RESOLVED",
+        transactionStatus: "RELEASED",
+        releasedAmount: post.bountyAmount,
+        finderId,
+      };
+    }
+
+    const holdingTx = post.escrowTransactions.find(
+      (tx) => tx.status === "HOLDING"
+    );
+
+    await prisma.$transaction(async (tx: any) => {
+      await tx.post.update({
+        where: { id: post.id },
+        data: { status: "RESOLVED" },
+      });
+
+      if (holdingTx) {
+        await tx.escrowTransaction.update({
+          where: { id: holdingTx.id },
+          data: { status: "RELEASED" },
+        });
+      }
+
+      await tx.item.update({
+        where: { id: itemId },
+        data: {
+          status: "RESOLVED",
+        },
+      });
+    });
+
+    const finder = await prisma.user.findUnique({
+      where: { id: finderId },
+      select: { id: true },
+    });
+
+    if (finder) {
+      await notificationService.notifyBountyReleased({
+        receiverId: finderId,
+        amount: post.bountyAmount,
+        transactionId:
+          holdingTx?.transactionCode ||
+          holdingTx?.id ||
+          alreadyReleasedTx?.transactionCode ||
+          alreadyReleasedTx?.id ||
+          post.id,
+        status: "released",
+        postId: post.id,
+      });
+    } else {
+      logger.warn("Finder user not found for released notification", {
+        postId: post.id,
+        finderId,
+      });
+    }
+
+    await notificationService.notifyStatusUpdate({
+      receiverId: ownerId,
+      category: "ITEM",
+      type: "STATUS_UPDATE",
+      title: "Giao dịch đã hoàn tất",
+      content: "Tiền thưởng đã được chuyển cho người nhặt thành công.",
+      metadata: {
+        post_id: post.id,
+        item_id: itemId,
+        finder_id: finderId,
+      },
+    });
+
+    return {
+      postId: post.id,
+      postStatus: "RESOLVED",
+      transactionStatus: holdingTx || alreadyReleasedTx ? "RELEASED" : null,
+      releasedAmount: post.bountyAmount,
+      finderId,
+    };
   }
 
   private async broadcastToNearbyUsers(

@@ -11,6 +11,7 @@ import { AppError } from "../../middlewares/error.middleware";
 import { emitLostItemToNearbyUsers } from "../../socket/radar.socket";
 import { encodeGeoHash, haversineDistanceMeters } from "../../utils/geospatial";
 import { notificationService } from "../notification/notification.service";
+import { reportService } from "../report/report.service";
 import { ItemRepository } from "./item.repository";
 import {
   CreateItemDTO,
@@ -543,6 +544,9 @@ export class ItemService {
 
     if (status === "SAFE") {
       await itemRepository.clearItemGeoPoint(itemId);
+
+      // Cancel active report/escrow flow and trigger REFUNDED notification.
+      await reportService.cancelEscrowForItem(userId, itemId);
     }
 
     logger.info(

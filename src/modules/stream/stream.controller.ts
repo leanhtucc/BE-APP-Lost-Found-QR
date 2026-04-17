@@ -19,6 +19,7 @@ import {
 } from "../../libs/stream-chat";
 import { ResponseUtil } from "../../utils/response";
 import { notificationService } from "../notification/notification.service";
+import { reportService } from "../report/report.service";
 
 export class StreamChatController {
   /**
@@ -191,6 +192,7 @@ export class StreamChatController {
     next: NextFunction
   ): Promise<void> => {
     try {
+      const userId = req.user!.id;
       const { channelId } = req.params;
 
       if (!channelId) {
@@ -198,9 +200,22 @@ export class StreamChatController {
         return;
       }
 
+      const settlement = await reportService.completeEscrowFromChannel(
+        userId,
+        channelId
+      );
+
       await closeItemChannel(channelId);
 
-      ResponseUtil.success(res, {}, "Channel closed successfully");
+      ResponseUtil.success(
+        res,
+        {
+          settlement,
+        },
+        settlement
+          ? "Channel closed and settlement completed successfully"
+          : "Channel closed successfully"
+      );
     } catch (error) {
       next(error);
     }

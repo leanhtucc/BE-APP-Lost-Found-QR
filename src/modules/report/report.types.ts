@@ -22,3 +22,18 @@ export interface WebhookPaymentPayload {
   transactionCode: string; // the mock code from gateway
   status: string; // success / fail
 }
+
+export interface CancelTransactionResult {
+  postId: string;
+  postStatus: "CANCELLED";
+  transactionStatus: "REFUNDED" | null;
+  refundedAmount: number;
+}
+
+export interface CompleteTransactionResult {
+  postId: string;
+  postStatus: "RESOLVED";
+  transactionStatus: "RELEASED" | null;
+  releasedAmount: number;
+  finderId: string;
+}
