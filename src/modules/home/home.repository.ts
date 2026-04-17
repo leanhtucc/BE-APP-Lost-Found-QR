@@ -134,8 +134,11 @@ export async function fetchLostFeed(
     category: row.category,
     imagePublicUrl: row.imagePublicUrl ?? null,
     lostMessage: row.lostMessage ?? null,
-    distanceMeters: Math.round(Number(row.distanceMetres)),
-    distanceLabel: formatDistance(Number(row.distanceMetres)),
+    distanceMeters:
+      row.distanceMetres != null ? Math.round(Number(row.distanceMetres)) : null,
+    distanceLabel: formatDistance(
+      row.distanceMetres != null ? Number(row.distanceMetres) : null
+    ),
     lostLat: Number(row.lostLat),
     lostLng: Number(row.lostLng),
     address: row.lostAddress ?? null,
