@@ -23,8 +23,29 @@ export async function fetchLostFeed(
   const hasLocation = lat !== undefined && lng !== undefined;
 
   // ── Part 1: own lost items (always fetched) ──────────────────────────
-  // Theo đặc tả B+, Radar không trả về đồ của bản thân. Người dùng xem đồ mất của mình qua kho đồ.
-  const ownItems: any[] = [];
+  // Lấy danh sách đồ đã mất của chính User để hiển thị lên Map & Feed
+  const sqlOwn = `
+    SELECT
+      i."itemId",
+      i."name",
+      i."category",
+      i."imagePublicUrl",
+      i."lostMessage",
+      i."lostLat",
+      i."lostLng",
+      i."lostAddress",
+      i."updatedAt",
+      u."displayName" as "ownerDisplayName",
+      u."photoURL"    as "ownerPhotoURL"
+    FROM "Item" i
+    JOIN "User" u ON u."id" = i."ownerId"
+    WHERE i."status" = 'LOST'
+      AND i."ownerId" = $1
+      AND i."lostLat" IS NOT NULL
+      AND i."lostLng" IS NOT NULL
+    ORDER BY i."updatedAt" DESC;
+  `;
+  const ownItems = (await prisma.$queryRawUnsafe(sqlOwn, userId)) as any[];
 
 
   // ── Part 2: nearby lost items from others (only when location given) ──
@@ -122,9 +143,11 @@ export async function fetchLostFeed(
       lostLng: item.lostLng ?? null,
       address: item.lostAddress ?? null,
       isOwn: true,
-      ownerDisplayName: item.owner.displayName,
-      ownerPhotoURL: item.owner.photoURL ?? null,
-      reportedAt: item.updatedAt.toISOString(),
+      ownerDisplayName: item.ownerDisplayName ?? "",
+      ownerPhotoURL: item.ownerPhotoURL ?? null,
+      reportedAt: item.updatedAt
+        ? new Date(item.updatedAt).toISOString()
+        : new Date().toISOString(),
     };
   });
 
