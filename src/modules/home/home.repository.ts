@@ -120,6 +120,27 @@ function isNotNull<T>(value: T | null): value is T {
   return value !== null;
 }
 
+function sortNearbyCandidates(
+  candidates: NearbyCandidate[],
+  hasLocation: boolean
+): NearbyCandidate[] {
+  const sorted = [...candidates];
+
+  if (hasLocation) {
+    sorted.sort((a, b) => {
+      const left = a.distanceMeters ?? Number.MAX_SAFE_INTEGER;
+      const right = b.distanceMeters ?? Number.MAX_SAFE_INTEGER;
+      return left - right;
+    });
+  } else {
+    sorted.sort(
+      (a, b) => toTimestamp(b.row.updatedAt) - toTimestamp(a.row.updatedAt)
+    );
+  }
+
+  return sorted;
+}
+
 /**
  * Single query that returns the user's own lost items UNION with
  * nearby lost items from other users (when lat/lng provided).
@@ -226,7 +247,7 @@ export async function fetchLostFeed(
     };
   });
 
-  const nearbyCandidates = nearbyRows
+  const allNearbyCandidates = nearbyRows
     .map((row): NearbyCandidate | null => {
       const coordinates = extractCoordinates(row);
       if (!coordinates) return null;
@@ -242,14 +263,6 @@ export async function fetchLostFeed(
           )
         : null;
 
-      if (
-        hasLocation &&
-        distanceMeters !== null &&
-        distanceMeters > effectiveRadius
-      ) {
-        return null;
-      }
-
       return {
         row,
         coordinates,
@@ -258,19 +271,26 @@ export async function fetchLostFeed(
     })
     .filter(isNotNull);
 
-  if (hasLocation) {
-    nearbyCandidates.sort((a, b) => {
-      const left = a.distanceMeters ?? Number.MAX_SAFE_INTEGER;
-      const right = b.distanceMeters ?? Number.MAX_SAFE_INTEGER;
-      return left - right;
-    });
-  } else {
-    nearbyCandidates.sort(
-      (a, b) => toTimestamp(b.row.updatedAt) - toTimestamp(a.row.updatedAt)
-    );
-  }
+  const nearbyCandidatesInRadius = hasLocation
+    ? allNearbyCandidates.filter(
+        (candidate) =>
+          candidate.distanceMeters !== null &&
+          candidate.distanceMeters <= effectiveRadius
+      )
+    : allNearbyCandidates;
 
-  const nearbyCards: LostFeedCard[] = nearbyCandidates
+  // Keep UX resilient: if no item is inside radius, fallback to nearest LOST items.
+  const nearbyCandidates =
+    hasLocation && nearbyCandidatesInRadius.length === 0
+      ? allNearbyCandidates
+      : nearbyCandidatesInRadius;
+
+  const sortedNearbyCandidates = sortNearbyCandidates(
+    nearbyCandidates,
+    hasLocation
+  );
+
+  const nearbyCards: LostFeedCard[] = sortedNearbyCandidates
     .slice(0, MAX_NEARBY_RESULTS)
     .map(({ row, coordinates, distanceMeters }) => ({
       itemId: row.itemId,
