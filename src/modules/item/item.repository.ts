@@ -281,8 +281,8 @@ export class ItemRepository {
     const [totalItems, safeItems, lostItems, categoryCounts, recentItems] =
       await Promise.all([
         prisma.item.count({ where: { ownerId } }),
-        prisma.item.count({ where: { ownerId, status: "safe" } }),
-        prisma.item.count({ where: { ownerId, status: "lost" } }),
+        prisma.item.count({ where: { ownerId, status: "SAFE" } }),
+        prisma.item.count({ where: { ownerId, status: "LOST" } }),
         prisma.item.groupBy({
           by: ["category"],
           where: { ownerId },

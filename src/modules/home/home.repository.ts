@@ -23,25 +23,9 @@ export async function fetchLostFeed(
   const hasLocation = lat !== undefined && lng !== undefined;
 
   // ── Part 1: own lost items (always fetched) ──────────────────────────
-  const ownItems = await prisma.item.findMany({
-    where: { ownerId: userId, status: "lost" },
-    select: {
-      itemId: true,
-      name: true,
-      category: true,
-      imagePublicUrl: true,
-      lostMessage: true,
-      lostLat: true,
-      lostLng: true,
-      lostAddress: true,
-      updatedAt: true,
-      owner: {
-        select: { displayName: true, photoURL: true },
-      },
-    },
-    orderBy: { updatedAt: "desc" },
-    take: 50,
-  });
+  // Theo đặc tả B+, Radar không trả về đồ của bản thân. Người dùng xem đồ mất của mình qua kho đồ.
+  const ownItems: any[] = [];
+
 
   // ── Part 2: nearby lost items from others (only when location given) ──
   let nearbyRows: any[] = [];
@@ -62,7 +46,7 @@ export async function fetchLostFeed(
         ${haversineExpr(lat!, lng!)} AS "distanceMetres"
       FROM "Item" i
       JOIN "User" u ON u."id" = i."ownerId"
-      WHERE i."status" = 'lost'
+      WHERE i."status" = 'LOST'
         AND i."ownerId" != $1
         AND i."lostLat" IS NOT NULL
         AND i."lostLng" IS NOT NULL

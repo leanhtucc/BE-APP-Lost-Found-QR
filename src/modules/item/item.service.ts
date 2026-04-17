@@ -4,6 +4,13 @@ import { logger } from "../../libs/logger";
 import { AppError } from "../../middlewares/error.middleware";
 import { emitLostItemToNearbyUsers } from "../../socket/radar.socket";
 import { encodeGeoHash } from "../../utils/geospatial";
+import { prisma } from "../../libs/prisma";
+import admin from "../../config/firebaseAdmin";
+import {
+  createItemChannel,
+  createStreamUserToken,
+  upsertStreamUser,
+} from "../../libs/stream-chat";
 import { ItemRepository } from "./item.repository";
 import {
   CreateItemDTO,
@@ -186,8 +193,8 @@ export class ItemService {
       joined_date: new Date(item.owner.createdAt).getFullYear().toString(),
     };
 
-    // Nếu status là "safe"
-    if (item.status === "safe") {
+    // Nếu status là "SAFE"
+    if (item.status === "SAFE") {
       return {
         item_info: {
           id: item.itemId,
@@ -213,7 +220,7 @@ export class ItemService {
       escrowStatus = "Đã khóa an toàn trong escrow";
     }
 
-    // Nếu status là "lost"
+    // Nếu status là "LOST"
     return {
       item_info: {
         id: item.itemId,
@@ -231,6 +238,107 @@ export class ItemService {
     };
   }
 
+  // Khởi tạo Chat cho Guest (Luồng B+)
+  async initGuestChat(
+    itemId: string,
+    phoneNumber: string,
+    lat?: number,
+    lng?: number
+  ) {
+    const item = await itemRepository.findByItemId(itemId);
+
+    if (!item) {
+      throw new AppError("Item not found", 404);
+    }
+
+    if (item.status !== "LOST") {
+      throw new AppError("Item is not currently lost", 400);
+    }
+
+    // Lookup or Create Guest User
+    // We will search for a user by phoneNumber. If not exists, create a guest user.
+    let guestUser = await prisma.user.findFirst({
+      where: { phoneNumber },
+    });
+
+    if (!guestUser) {
+      const shortPhone = phoneNumber.substring(phoneNumber.length - 4);
+      const guestUid = `guest_${nanoid(10)}`;
+      guestUser = await prisma.user.create({
+        data: {
+          uid: guestUid,
+          email: `${guestUid}@guest.findback.app`,
+          phoneNumber,
+          displayName: `Người nhặt được (*${shortPhone})`,
+          role: "guest",
+        },
+      });
+    }
+
+    // Register guest in StreamChat
+    const guestDisplayName = guestUser.displayName || `Guest (*${phoneNumber.slice(-4)})`;
+    await upsertStreamUser({
+      id: guestUser.id,
+      name: guestDisplayName,
+    });
+
+    // Create StreamChat token
+    const chatToken = createStreamUserToken(guestUser.id);
+
+    // Ensure Owner is on StreamChat
+    await upsertStreamUser({
+      id: item.owner.id,
+      name: item.owner.displayName,
+    });
+
+    // Create item channel
+    const { channelId } = await createItemChannel(
+      itemId,
+      item.name,
+      item.owner.id,
+      guestUser.id
+    );
+
+    // Update item status to FOUND since someone scanned and initiated returned chat
+    await itemRepository.updateItem(item.id, { status: "FOUND" });
+
+    // Send push notification to Owner
+    if (admin && item.owner.uid) {
+      const ownerUser = await prisma.user.findUnique({
+        where: { id: item.owner.id },
+      });
+      if (ownerUser?.pushToken) {
+        try {
+          await admin.messaging().send({
+            token: ownerUser.pushToken,
+            notification: {
+              title: "Tin vui! 🎉",
+              body: `Ai đó đã quét mã QR món đồ ${item.name} của bạn và muốn liên lạc!`,
+            },
+            data: {
+              type: "QR_SCANNED",
+              itemId: itemId,
+              channelId: channelId,
+            },
+          });
+        } catch (error) {
+          logger.error("Failed to send FCM to owner:", error);
+        }
+      }
+    }
+
+    return {
+      success: true,
+      chatToken,
+      guestId: guestUser.id,
+      channelId,
+      guestInfo: {
+        id: guestUser.id,
+        displayName: guestDisplayName,
+      },
+    };
+  }
+
   // Lấy danh sách items của user
   async listItems(
     userId: string,
@@ -241,7 +349,7 @@ export class ItemService {
     const skip = (page - 1) * limit;
 
     const { items, total } = await itemRepository.findByOwnerId(userId, {
-      status: query.status || undefined,
+      status: query.status === "ALL" ? undefined : query.status,
       category: query.category || undefined,
       skip,
       take: limit,
@@ -323,7 +431,7 @@ export class ItemService {
   async updateStatus(
     itemId: string,
     userId: string,
-    status: "safe" | "lost",
+    status: "SAFE" | "PENDING_PAYMENT" | "LOST" | "FOUND" | "RESOLVED",
     lostMessage?: string,
     coordinates: {
       latitude?: number;
@@ -347,11 +455,11 @@ export class ItemService {
     let reportedCoordinates: { latitude: number; longitude: number } | null =
       null;
 
-    if (status === "lost" && lostMessage) {
+    if (status === "LOST" && lostMessage) {
       updateData.lostMessage = lostMessage;
     }
 
-    if (status === "lost") {
+    if (status === "LOST") {
       reportedCoordinates = this.resolveReportedCoordinates(
         coordinates,
         item.lastSeenLocation
@@ -367,7 +475,7 @@ export class ItemService {
 
     const updated = await itemRepository.updateItem(itemId, updateData);
 
-    if (status === "lost" && reportedCoordinates) {
+    if (status === "LOST" && reportedCoordinates) {
       const geohash = encodeGeoHash(
         reportedCoordinates.latitude,
         reportedCoordinates.longitude,
@@ -395,7 +503,7 @@ export class ItemService {
       });
     }
 
-    if (status === "safe") {
+    if (status === "SAFE") {
       await itemRepository.clearItemGeoPoint(itemId);
     }
 

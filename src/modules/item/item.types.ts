@@ -34,7 +34,7 @@ export interface UpdateItemDTO {
   name?: string;
   category?: ItemCategory;
   description?: string;
-  status?: "safe" | "lost";
+  status?: "SAFE" | "PENDING_PAYMENT" | "LOST" | "FOUND" | "RESOLVED";
   lostMessage?: string;
   imagePublicUrl?: string;
   lastSeenLocation?: string; // JSON string của Location
@@ -42,7 +42,7 @@ export interface UpdateItemDTO {
 }
 
 export interface UpdateItemStatusDTO {
-  status: "safe" | "lost";
+  status: "SAFE" | "PENDING_PAYMENT" | "LOST" | "FOUND" | "RESOLVED";
   lostMessage?: string;
   latitude?: number;
   longitude?: number;
@@ -89,7 +89,7 @@ export interface ScanQRResponse {
 }
 
 export interface ListItemsQuery {
-  status?: "safe" | "lost" | "all";
+  status?: "SAFE" | "PENDING_PAYMENT" | "LOST" | "FOUND" | "RESOLVED" | "ALL";
   category?: string;
   page?: number;
   limit?: number;
@@ -106,7 +106,7 @@ export interface ListItemsResponse {
 // Search Items
 export interface SearchItemsQuery {
   q: string; // Search keyword
-  status?: "safe" | "lost" | "all";
+  status?: "SAFE" | "PENDING_PAYMENT" | "LOST" | "FOUND" | "RESOLVED" | "ALL";
   category?: string;
   page?: number;
   limit?: number;

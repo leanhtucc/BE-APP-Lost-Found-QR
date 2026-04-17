@@ -62,7 +62,7 @@ export class ItemController {
       const userId = (req as any).user.id;
       // Re-use listItems logic but force status = "safe"
       const result = await itemService.listItems(userId, {
-        status: "safe",
+        status: "SAFE",
         page: 1,
         limit: 100, // retrieve all vault items
       });
@@ -193,6 +193,22 @@ export class ItemController {
       const result = await itemService.scanQRCode(itemId);
 
       return ResponseUtil.success(res, result);
+    } catch (error) {
+      next(error);
+    }
+  }
+
+  // POST /api/scan/guest-init - Khởi tạo chat ẩn danh (Guest Flow B+)
+  async initGuestChat(req: Request, res: Response, next: NextFunction) {
+    try {
+      const { itemId, phoneNumber, lat, lng } = req.body;
+
+      if (!itemId || !phoneNumber) {
+        return ResponseUtil.badRequest(res, "Item ID and Phone Number are required");
+      }
+
+      const result = await itemService.initGuestChat(itemId, phoneNumber, lat, lng);
+      return ResponseUtil.success(res, result, "Guest session created successfully");
     } catch (error) {
       next(error);
     }

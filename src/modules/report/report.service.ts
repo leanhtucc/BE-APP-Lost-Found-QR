@@ -58,6 +58,11 @@ export class ReportService {
         },
       });
 
+      await tx.item.update({
+        where: { id: itemId },
+        data: { status: "PENDING_PAYMENT" },
+      });
+
       return newPost;
     });
 
@@ -114,7 +119,7 @@ export class ReportService {
       prisma.item.update({
         where: { id: post.itemId },
         data: {
-          status: "lost",
+          status: "LOST",
           lostLat: post.lat,
           lostLng: post.lng,
           lostAddress: post.address,

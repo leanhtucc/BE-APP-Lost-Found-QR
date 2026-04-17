@@ -65,7 +65,7 @@ model Item {
   name             String
   category         String
   description      String?
-  status           String   @default("safe")
+  status           String   @default("SAFE") // SAFE, PENDING_PAYMENT, LOST, FOUND, RESOLVED
   lostMessage      String?
   qrCodeUrl        String?
   securityToken    String   @unique
