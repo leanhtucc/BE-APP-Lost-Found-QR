@@ -41,6 +41,7 @@ const FAKE_ITEMS = [
     imagePublicUrl: "https://picsum.photos/seed/laptop/400/400",
     lostLat: 10.795,
     lostLng: 106.7218,
+    lostAddress: "Quán Highlands Coffee, Landmark 81, Bình Thạnh",
   },
   {
     name: "Chia khoa xe Honda Vision",
@@ -50,6 +51,7 @@ const FAKE_ITEMS = [
     imagePublicUrl: "https://picsum.photos/seed/keys/400/400",
     lostLat: 10.7716,
     lostLng: 106.7043,
+    lostAddress: "Khu vực toà nhà Bitexco, Quận 1",
   },
   {
     name: "AirPods Pro Gen 2",
@@ -59,6 +61,7 @@ const FAKE_ITEMS = [
     imagePublicUrl: "https://picsum.photos/seed/airpods/400/400",
     lostLat: 10.7677,
     lostLng: 106.6928,
+    lostAddress: "Công viên 23/9, Phạm Ngũ Lão, Quận 1",
   },
   {
     name: "Balo Herschel mau xanh",
@@ -68,6 +71,7 @@ const FAKE_ITEMS = [
     imagePublicUrl: "https://picsum.photos/seed/backpack/400/400",
     lostLat: 10.781,
     lostLng: 106.6942,
+    lostAddress: "Siêu thị Vinmart, Phường 6, Quận 3",
   },
   {
     name: "Kinh mat Rayban Wayfarer",
@@ -77,6 +81,7 @@ const FAKE_ITEMS = [
     imagePublicUrl: "https://picsum.photos/seed/sunglasses/400/400",
     lostLat: 10.784,
     lostLng: 106.7092,
+    lostAddress: "Đường Điện Biên Phủ, Đa Kao, Quận 1",
   },
   {
     name: "The sinh vien + The xe buyt",
@@ -86,6 +91,7 @@ const FAKE_ITEMS = [
     imagePublicUrl: "https://picsum.photos/seed/card/400/400",
     lostLat: 10.8082,
     lostLng: 106.714,
+    lostAddress: "Trạm xe buýt Đại học Sư Phạm, Quận 5",
   },
 ];
 
