@@ -37,7 +37,10 @@ export class NotificationController {
       const userId = req.user!.id;
       const { id } = req.params;
 
-      const result = await notificationService.markNotificationAsRead(userId, id || "");
+      const result = await notificationService.markNotificationAsRead(
+        userId,
+        id || ""
+      );
       ResponseUtil.success(res, result, "Notification marked as read");
     } catch (error) {
       next(error);

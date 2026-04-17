@@ -1,9 +1,10 @@
-import { Notification, NotificationCategory, Prisma } from "@prisma/client";
+import { Notification } from "@prisma/client";
 import admin from "../../config/firebaseAdmin";
 import { logger } from "../../libs/logger";
 import { prisma } from "../../libs/prisma";
 import { AppError } from "../../middlewares/error.middleware";
 import { emitInAppNotificationToUser } from "../../socket/radar.socket";
+import { NotificationRepository } from "./notification.repository";
 import {
   CreateNotificationInput,
   EscrowLockedNotificationInput,
@@ -16,7 +17,6 @@ import {
   ProximityNotificationInput,
   StatusUpdateNotificationInput,
 } from "./notification.types";
-import { NotificationRepository } from "./notification.repository";
 
 const SOCIAL_NOTIFICATION_RETENTION_DAYS = 30;
 
@@ -46,9 +46,7 @@ export class NotificationService {
     };
   }
 
-  private toFcmData(
-    notification: NotificationDTO
-  ): Record<string, string> {
+  private toFcmData(notification: NotificationDTO): Record<string, string> {
     return {
       id: notification.id,
       receiver_id: notification.receiver_id,
@@ -127,7 +125,11 @@ export class NotificationService {
           ? "high"
           : "normal");
 
-      await this.sendPushNotification(input.receiverId, formatted, effectivePriority);
+      await this.sendPushNotification(
+        input.receiverId,
+        formatted,
+        effectivePriority
+      );
     }
 
     return formatted;
@@ -326,9 +328,12 @@ export class NotificationService {
 
     void executeCleanup();
 
-    this.cleanupTimer = setInterval(() => {
-      void executeCleanup();
-    }, 12 * 60 * 60 * 1000);
+    this.cleanupTimer = setInterval(
+      () => {
+        void executeCleanup();
+      },
+      12 * 60 * 60 * 1000
+    );
   }
 
   stopCleanupJob(): void {

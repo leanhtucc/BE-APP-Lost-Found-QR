@@ -1,15 +1,15 @@
 import { nanoid } from "nanoid";
 import { ENV } from "../../config/env";
 import { logger } from "../../libs/logger";
-import { AppError } from "../../middlewares/error.middleware";
-import { emitLostItemToNearbyUsers } from "../../socket/radar.socket";
-import { encodeGeoHash, haversineDistanceMeters } from "../../utils/geospatial";
 import { prisma } from "../../libs/prisma";
 import {
   createItemChannel,
   createStreamUserToken,
   upsertStreamUser,
 } from "../../libs/stream-chat";
+import { AppError } from "../../middlewares/error.middleware";
+import { emitLostItemToNearbyUsers } from "../../socket/radar.socket";
+import { encodeGeoHash, haversineDistanceMeters } from "../../utils/geospatial";
 import { notificationService } from "../notification/notification.service";
 import { ItemRepository } from "./item.repository";
 import {
@@ -276,7 +276,8 @@ export class ItemService {
     }
 
     // Register guest in StreamChat
-    const guestDisplayName = guestUser.displayName || `Guest (*${phoneNumber.slice(-4)})`;
+    const guestDisplayName =
+      guestUser.displayName || `Guest (*${phoneNumber.slice(-4)})`;
     await upsertStreamUser({
       id: guestUser.id,
       name: guestDisplayName,
@@ -332,7 +333,12 @@ export class ItemService {
       item.lostLng != null
     ) {
       const distanceMeters = Math.round(
-        haversineDistanceMeters(lat as number, lng as number, item.lostLat, item.lostLng)
+        haversineDistanceMeters(
+          lat as number,
+          lng as number,
+          item.lostLat,
+          item.lostLng
+        )
       );
 
       if (distanceMeters <= 2000) {

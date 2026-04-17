@@ -16,7 +16,11 @@ router.get(
   notificationController.getNotifications
 );
 
-router.get("/unread-count", authMiddleware, notificationController.getUnreadCount);
+router.get(
+  "/unread-count",
+  authMiddleware,
+  notificationController.getUnreadCount
+);
 
 router.patch(
   "/:id/read",

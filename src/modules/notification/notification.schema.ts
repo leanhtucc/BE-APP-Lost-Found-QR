@@ -34,10 +34,19 @@ function parsePositiveInt(
 export const listNotificationsSchema = z.object({
   query: z.object({
     category: z
-      .preprocess(parseOptionalCategory, z.enum(NOTIFICATION_CATEGORIES).optional())
+      .preprocess(
+        parseOptionalCategory,
+        z.enum(NOTIFICATION_CATEGORIES).optional()
+      )
       .optional(),
-    page: z.preprocess((value) => parsePositiveInt(value, 1, 100000), z.number()),
-    limit: z.preprocess((value) => parsePositiveInt(value, 20, 100), z.number()),
+    page: z.preprocess(
+      (value) => parsePositiveInt(value, 1, 100000),
+      z.number()
+    ),
+    limit: z.preprocess(
+      (value) => parsePositiveInt(value, 20, 100),
+      z.number()
+    ),
   }),
 });
 

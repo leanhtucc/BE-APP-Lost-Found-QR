@@ -17,8 +17,8 @@ import {
   unmuteUserInChannel,
   upsertStreamUser,
 } from "../../libs/stream-chat";
-import { notificationService } from "../notification/notification.service";
 import { ResponseUtil } from "../../utils/response";
+import { notificationService } from "../notification/notification.service";
 
 export class StreamChatController {
   /**
@@ -501,7 +501,8 @@ export class StreamChatController {
 
       const getStringValue = (value: unknown): string => {
         if (typeof value === "string") return value;
-        if (Array.isArray(value) && typeof value[0] === "string") return value[0];
+        if (Array.isArray(value) && typeof value[0] === "string")
+          return value[0];
         return "";
       };
 
@@ -516,7 +517,8 @@ export class StreamChatController {
 
         if (targetUserId && targetUserId !== userId) {
           const messagePreview =
-            getStringValue(metadata.message_preview) || "Bạn có một tin nhắn mới";
+            getStringValue(metadata.message_preview) ||
+            "Bạn có một tin nhắn mới";
 
           await notificationService.notifyNewChat({
             receiverId: targetUserId,
