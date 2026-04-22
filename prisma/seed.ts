@@ -25,7 +25,9 @@ const items = [
       "Mình làm rơi điện thoại ở khu vực thư viện trường, rất cần gấp vì có dữ liệu quan trọng. Xin hậu tạ!",
     imagePublicUrl:
       "https://images.unsplash.com/photo-1592286927505-2fd0dc900a12",
-    lastSeenLocation: JSON.stringify({ lat: 21.0077, lng: 105.8434 }),
+    lostLat: 21.0077,
+    lostLng: 105.8434,
+    lostAddress: "Khu vực thư viện ĐH Bách Khoa Hà Nội",
     securityPin: "1234",
   },
   {
@@ -38,7 +40,9 @@ const items = [
       "Để quên laptop ở quán cafe phố Bà Triệu. Có toàn bộ công việc quan trọng bên trong!",
     imagePublicUrl:
       "https://images.unsplash.com/photo-1517336714731-489689fd1ca8",
-    lastSeenLocation: JSON.stringify({ lat: 21.0186, lng: 105.8482 }),
+    lostLat: 21.0186,
+    lostLng: 105.8482,
+    lostAddress: "Phố Bà Triệu, Hai Bà Trưng, Hà Nội",
     securityPin: "5678",
   },
   {
@@ -49,7 +53,6 @@ const items = [
     lostMessage: null,
     imagePublicUrl:
       "https://images.unsplash.com/photo-1606841837239-c5a1a4a07af7",
-    lastSeenLocation: null,
     securityPin: null,
   },
   {
@@ -62,7 +65,9 @@ const items = [
       "Bé Lucky bị thất lạc ở công viên Thống Nhất chiều hôm qua. Gia đình rất lo lắng, mong mọi người giúp đỡ!",
     imagePublicUrl:
       "https://images.unsplash.com/photo-1612536616558-c2c8ab3e1f3e",
-    lastSeenLocation: JSON.stringify({ lat: 21.0157, lng: 105.8414 }),
+    lostLat: 21.0157,
+    lostLng: 105.8414,
+    lostAddress: "Công viên Thống Nhất, Hai Bà Trưng, Hà Nội",
     securityPin: "0000",
   },
   {
@@ -75,7 +80,9 @@ const items = [
       "Làm rơi ví khi đi taxi từ Hoàn Kiếm về Cầu Giấy. Bên trong có giấy tờ quan trọng, mong người nhặt được liên hệ!",
     imagePublicUrl:
       "https://images.unsplash.com/photo-1627123424574-724758594e93",
-    lastSeenLocation: JSON.stringify({ lat: 21.0279, lng: 105.8524 }),
+    lostLat: 21.0279,
+    lostLng: 105.8524,
+    lostAddress: "Hoàn Kiếm, Hà Nội",
     securityPin: "9999",
   },
   {
@@ -87,7 +94,9 @@ const items = [
       "Làm rơi chìa khóa xe ở bãi giữ xe Vincom Trần Duy Hưng. Không có chìa dự phòng, rất cần gấp!",
     imagePublicUrl:
       "https://images.unsplash.com/photo-1582139329536-e7284fece509",
-    lastSeenLocation: JSON.stringify({ lat: 21.0071, lng: 105.8018 }),
+    lostLat: 21.0071,
+    lostLng: 105.8018,
+    lostAddress: "Vincom Trần Duy Hưng, Cầu Giấy, Hà Nội",
     securityPin: "2468",
   },
   {
@@ -98,7 +107,9 @@ const items = [
     lostMessage:
       "Mất thẻ sinh viên khi đi thi cuối kỳ. Đang cần gấp để thi các môn tiếp theo. Xin cảm ơn!",
     imagePublicUrl: "https://images.unsplash.com/photo-1553729459-efe14ef6055d",
-    lastSeenLocation: JSON.stringify({ lat: 21.0376, lng: 105.781 }),
+    lostLat: 21.0376,
+    lostLng: 105.781,
+    lostAddress: "Đại học Quốc gia, Cầu Giấy, Hà Nội",
     securityPin: "1357",
   },
   {
@@ -110,7 +121,6 @@ const items = [
     lostMessage: null,
     imagePublicUrl:
       "https://images.unsplash.com/photo-1579586337278-3befd40fd17a",
-    lastSeenLocation: null,
     securityPin: null,
   },
   {
@@ -121,7 +131,9 @@ const items = [
     lostMessage:
       "Để quên balo trên xe bus tuyến 32. Bên trong có laptop và tài liệu quan trọng!",
     imagePublicUrl: "https://images.unsplash.com/photo-1553062407-98eeb64c6a62",
-    lastSeenLocation: JSON.stringify({ lat: 21.0285, lng: 105.8542 }),
+    lostLat: 21.0285,
+    lostLng: 105.8542,
+    lostAddress: "Xe bus tuyến 32, Hà Nội",
     securityPin: "7890",
   },
   {
@@ -132,7 +144,6 @@ const items = [
     lostMessage: null,
     imagePublicUrl:
       "https://images.unsplash.com/photo-1618366712010-f4ae9c647dcb",
-    lastSeenLocation: null,
     securityPin: null,
   },
   {
@@ -145,7 +156,9 @@ const items = [
       "Vòng tay này là quà sinh nhật từ người yêu, mình làm rơi ở Hồ Tây. Mong được tìm lại!",
     imagePublicUrl:
       "https://images.unsplash.com/photo-1599643478518-a784e5dc4c8f",
-    lastSeenLocation: JSON.stringify({ lat: 21.0478, lng: 105.8213 }),
+    lostLat: 21.0478,
+    lostLng: 105.8213,
+    lostAddress: "Hồ Tây, Hà Nội",
     securityPin: "1111",
   },
   {
@@ -157,7 +170,9 @@ const items = [
       "Làm rơi hộ chiếu ở sân bay Nội Bài. Sắp có chuyến bay, rất gấp! Xin hậu tạ hậu hĩnh!",
     imagePublicUrl:
       "https://images.unsplash.com/photo-1578575437130-527eed3abbec",
-    lastSeenLocation: JSON.stringify({ lat: 21.2187, lng: 105.8042 }),
+    lostLat: 21.2187,
+    lostLng: 105.8042,
+    lostAddress: "Sân bay Nội Bài, Hà Nội",
     securityPin: "2222",
   },
   {
@@ -169,7 +184,9 @@ const items = [
     lostMessage:
       "Để quên iPad tại quán Highlands Coffee Lotte Liễu Giai. Có dự án quan trọng chưa backup!",
     imagePublicUrl: "https://images.unsplash.com/photo-1544244015-0df4b3ffc6b0",
-    lastSeenLocation: JSON.stringify({ lat: 21.0338, lng: 105.8133 }),
+    lostLat: 21.0338,
+    lostLng: 105.8133,
+    lostAddress: "Lotte Center Liễu Giai, Ba Đình, Hà Nội",
     securityPin: "3333",
   },
   {
@@ -181,7 +198,9 @@ const items = [
       "Bé mèo tên Miu bị lạc gần khu vực Times City. Rất nhút nhát, mong được giúp đỡ!",
     imagePublicUrl:
       "https://images.unsplash.com/photo-1574158622682-e40e69881006",
-    lastSeenLocation: JSON.stringify({ lat: 20.9958, lng: 105.8692 }),
+    lostLat: 20.9958,
+    lostLng: 105.8692,
+    lostAddress: "Khu đô thị Times City, Hai Bà Trưng, Hà Nội",
     securityPin: "4444",
   },
   {
@@ -193,7 +212,6 @@ const items = [
     lostMessage: null,
     imagePublicUrl:
       "https://images.unsplash.com/photo-1590658268037-6bf12165a8df",
-    lastSeenLocation: null,
     securityPin: null,
   },
 ];
