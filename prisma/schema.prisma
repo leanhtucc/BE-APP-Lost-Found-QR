@@ -87,7 +87,7 @@ model Notification {
 
 model Item {
   id                String   @id @default(cuid())
-  itemId            String   @unique
+  itemId            String   @unique @default(cuid())
   ownerId           String
   name              String
   category          String

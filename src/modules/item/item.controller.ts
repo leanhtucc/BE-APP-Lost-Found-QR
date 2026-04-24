@@ -113,9 +113,9 @@ export class ItemController {
         status,
         lostMessage,
         imagePublicUrl,
-        lastSeenLocation,
-        securityPin,
-      } = req.query as any;
+        hasInsurance,
+        details,
+      } = req.body;
 
       if (!id) {
         return ResponseUtil.badRequest(res, "Item ID is required");
@@ -128,8 +128,8 @@ export class ItemController {
         status,
         lostMessage,
         imagePublicUrl,
-        lastSeenLocation,
-        securityPin,
+        hasInsurance,
+        details,
       });
 
       return ResponseUtil.success(res, result, "Item updated successfully");
