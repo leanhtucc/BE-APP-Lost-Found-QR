@@ -18,7 +18,12 @@ export class AIService {
    * Sử dụng Gemini API phân tích ảnh tải lên có thêm cơ chế Fallback chống sập.
    */
   async analyzeImage(file: Express.Multer.File): Promise<AIAnalysisResponse> {
-    const modelsToTry = ["gemini-2.5-flash", "gemini-2.0-flash", "gemini-flash-latest"];
+    const modelsToTry = [
+      "gemini-2.5-flash-lite", 
+      "gemini-2.5-flash", 
+      "gemini-2.0-flash-lite",
+      "gemini-flash-lite-latest"
+    ];
     let lastError: any;
 
     try {
@@ -66,16 +71,31 @@ Lưu ý: Nếu không nhận diện được rõ đồ vật, set confidence_sco
         } catch (err: any) {
           console.warn(`[AIService] Model ${modelName} failed:`, err?.message || err);
           lastError = err;
-          // Thử tiếp model khác trong danh sách
+          // Nghỉ 1 giây cho server Google load lại trước khi thử model tiếp theo (chống 503)
+          await new Promise(resolve => setTimeout(resolve, 1000));
         }
       }
 
-      // Nếu tất cả model đều fail
-      throw lastError;
+      // NẾU TẤT CẢ MODEL ĐỀU SẬP DO GOOGLE QUÁ TẢI (503) HOẶC HẾT QUOTA (429)
+      // => Graceful Degradation: Không quăng lỗi Crash App nữa! Trả về kết quả rỗng 
+      // để giao diện Mobile có thể bỏ qua AI và cho phép User tự gõ tay (Manual Data Entry)
+      console.warn("[AIService] Mọi AI đều sập lúc này. Trả về format rỗng cho UI!");
+      return {
+        suggested_name: "",
+        category: "other",
+        color: "",
+        confidence_score: 0,
+      };
 
     } catch (error: any) {
-      console.error("[AIService] Analyze image totally failed after fallbacks:", error?.message || error);
-      throw new AppError("Lỗi hệ thống khi phân tích hình ảnh với AI (Quá tải server)", 503);
+      console.error("[AIService] Có lỗi lạ lúc đọc file:", error?.message || error);
+      // Giữ nguyên UX tốt, nếu file rác v.v... cũng trả về rỗng để tự nhập
+      return {
+        suggested_name: "",
+        category: "other",
+        color: "",
+        confidence_score: 0,
+      };
     } finally {
       if (fs.existsSync(file.path)) {
         fs.unlinkSync(file.path);
