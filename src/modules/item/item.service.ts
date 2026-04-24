@@ -95,17 +95,16 @@ export class ItemService {
   private formatItemResponse(item: any): ItemResponse {
     return {
       id: item.id,
-      itemId: item.itemId,
       ownerId: item.ownerId,
       name: item.name,
       category: item.category,
       description: item.description,
       status: item.status,
       lostMessage: item.lostMessage,
-      qrCodeUrl: item.qrCodeUrl,
+      qrCodeId: item.qrCodeId,
       imagePublicUrl: item.imagePublicUrl,
-      lastSeenLocation: item.lastSeenLocation,
-      securityPin: item.securityPin,
+      details: item.details,
+      hasInsurance: item.hasInsurance,
       createdAt: item.createdAt,
       updatedAt: item.updatedAt,
     };
@@ -113,19 +112,19 @@ export class ItemService {
 
   /**
    * Format items eligible for creating a lost report (màn hình 1).
-   * Reads `attributes` JSON for device-specific details (color, storage, etc.).
+   * Reads `details` JSON for device-specific details (color, storage, etc.).
    */
   private formatEligibleItemResponse(item: any) {
-    const attrs: Record<string, string> = item.attributes ?? {};
+    const attrs: Record<string, string> | null = item.details ?? {};
     return {
       item_id: item.id,
       name: item.name,
       category: item.category,
       image_url: item.imagePublicUrl ?? null,
       details: {
-        color: attrs["color"] ?? null,
-        storage: attrs["storage"] ?? null,
-        serial: item.serialNumber ?? null,
+        color: attrs?.["color"] ?? null,
+        storage: attrs?.["storage"] ?? null,
+        serial: attrs?.["serial"] ?? null,
       },
       has_insurance: item.hasInsurance ?? false,
     };
@@ -135,42 +134,17 @@ export class ItemService {
   async createItem(userId: string, data: CreateItemDTO): Promise<ItemResponse> {
     try {
       // Generate unique IDs
-      const itemId = nanoid(16);
+      const qrCodeId = nanoid(16);
       const securityToken = nanoid(32);
-      const qrCodeUrl = `${ENV.APP_BASE_URL}/scan/${itemId}`;
-
-      // Validate security PIN if provided
-      if (data.securityPin && !/^\d{4}$/.test(data.securityPin)) {
-        throw new AppError("Security PIN must be 4 digits", 400);
-      }
-
-      // Validate location JSON if provided
-      if (data.lastSeenLocation) {
-        try {
-          const location = JSON.parse(data.lastSeenLocation);
-          if (
-            typeof location.lat !== "number" ||
-            typeof location.lng !== "number"
-          ) {
-            throw new Error("Invalid location format");
-          }
-        } catch {
-          throw new AppError(
-            "lastSeenLocation must be valid JSON with lat and lng",
-            400
-          );
-        }
-      }
 
       const item = await itemRepository.createItem({
         ...data,
         ownerId: userId,
-        itemId,
+        qrCodeId,
         securityToken,
-        qrCodeUrl,
       });
 
-      logger.info(`Item created: ${item.itemId} by user ${userId}`);
+      logger.info(`Item created: ${item.qrCodeId} by user ${userId}`);
 
       return this.formatItemResponse(item);
     } catch (error) {
@@ -196,8 +170,8 @@ export class ItemService {
   }
 
   // Quét QR code (public endpoint)
-  async scanQRCode(itemId: string): Promise<ScanQRResponse> {
-    const item = await itemRepository.findByItemId(itemId);
+  async scanQRCode(qrCodeId: string): Promise<ScanQRResponse> {
+    const item = await itemRepository.findByQrCodeId(qrCodeId);
 
     if (!item) {
       throw new AppError("Item not found", 404);
@@ -218,7 +192,7 @@ export class ItemService {
     if (item.status === "SAFE") {
       return {
         item_info: {
-          id: item.itemId,
+          id: item.qrCodeId,
           name: item.name,
           category: item.category,
           status: item.status,
@@ -244,7 +218,7 @@ export class ItemService {
     // Nếu status là "LOST"
     return {
       item_info: {
-        id: item.itemId,
+        id: item.qrCodeId,
         name: item.name,
         category: item.category,
         status: item.status,
@@ -261,12 +235,12 @@ export class ItemService {
 
   // Khởi tạo Chat cho Guest (Luồng B+)
   async initGuestChat(
-    itemId: string,
+    qrCodeId: string,
     phoneNumber: string,
     lat?: number,
     lng?: number
   ) {
-    const item = await itemRepository.findByItemId(itemId);
+    const item = await itemRepository.findByQrCodeId(qrCodeId);
 
     if (!item) {
       throw new AppError("Item not found", 404);
@@ -315,7 +289,7 @@ export class ItemService {
 
     // Create item channel
     const { channelId } = await createItemChannel(
-      itemId,
+      qrCodeId,
       item.name,
       item.owner.id,
       guestUser.id
@@ -333,7 +307,7 @@ export class ItemService {
         title: "Có người quét mã QR",
         content: `${guestDisplayName} đã quét QR của món đồ ${item.name}`,
         metadata: {
-          item_id: itemId,
+          item_id: qrCodeId,
           room_id: channelId,
           finder_id: guestUser.id,
         },
@@ -343,7 +317,7 @@ export class ItemService {
         senderAvatar: guestUser.photoURL || "",
         roomId: channelId,
         messagePreview: `${guestDisplayName} vừa bắt đầu cuộc trò chuyện về ${item.name}`,
-        itemId,
+        itemId: qrCodeId,
       }),
     ];
 
@@ -453,32 +427,9 @@ export class ItemService {
       throw new AppError("You don't have permission to update this item", 403);
     }
 
-    // Validate security PIN if provided
-    if (data.securityPin && !/^\d{4}$/.test(data.securityPin)) {
-      throw new AppError("Security PIN must be 4 digits", 400);
-    }
-
-    // Validate location JSON if provided
-    if (data.lastSeenLocation) {
-      try {
-        const location = JSON.parse(data.lastSeenLocation);
-        if (
-          typeof location.lat !== "number" ||
-          typeof location.lng !== "number"
-        ) {
-          throw new Error("Invalid location format");
-        }
-      } catch {
-        throw new AppError(
-          "lastSeenLocation must be valid JSON with lat and lng",
-          400
-        );
-      }
-    }
-
     const updated = await itemRepository.updateItem(itemId, data);
 
-    logger.info(`Item updated: ${item.itemId} by user ${userId}`);
+    logger.info(`Item updated: ${item.qrCodeId} by user ${userId}`);
 
     return this.formatItemResponse(updated);
   }
@@ -497,7 +448,7 @@ export class ItemService {
 
     await itemRepository.deleteItem(itemId);
 
-    logger.info(`Item deleted: ${item.itemId} by user ${userId}`);
+    logger.info(`Item deleted: ${item.qrCodeId} by user ${userId}`);
   }
 
   // Thay đổi trạng thái item (lost/safe)
@@ -564,7 +515,7 @@ export class ItemService {
 
       await emitLostItemToNearbyUsers({
         id: updated.id,
-        itemId: updated.itemId,
+        itemId: item.id,
         name: updated.name,
         category: updated.category,
         description: updated.description || undefined,
@@ -580,11 +531,11 @@ export class ItemService {
       await itemRepository.clearItemGeoPoint(itemId);
 
       // Cancel active report/escrow flow and trigger REFUNDED notification.
-      await reportService.cancelEscrowForItem(userId, itemId);
+      await reportService.cancelEscrowForItem(userId, item.id);
     }
 
     logger.info(
-      `Item status changed to ${status}: ${item.itemId} by user ${userId}`
+      `Item status changed to ${status}: ${item.qrCodeId} by user ${userId}`
     );
 
     return this.formatItemResponse(updated);

@@ -26,8 +26,8 @@ export interface CreateItemDTO {
   category: ItemCategory;
   description?: string;
   imagePublicUrl?: string;
-  lastSeenLocation?: string; // JSON string của Location
-  securityPin?: string;
+  hasInsurance?: boolean;
+  details?: any; // JSONB
 }
 
 export interface UpdateItemDTO {
@@ -37,8 +37,8 @@ export interface UpdateItemDTO {
   status?: "SAFE" | "PENDING_PAYMENT" | "LOST" | "FOUND" | "RESOLVED";
   lostMessage?: string;
   imagePublicUrl?: string;
-  lastSeenLocation?: string; // JSON string của Location
-  securityPin?: string;
+  hasInsurance?: boolean;
+  details?: any; // JSONB
 }
 
 export interface UpdateItemStatusDTO {
@@ -50,17 +50,16 @@ export interface UpdateItemStatusDTO {
 
 export interface ItemResponse {
   id: string;
-  itemId: string;
   ownerId: string;
   name: string;
   category: string;
   description?: string;
   status: string;
   lostMessage?: string;
-  qrCodeUrl?: string;
+  qrCodeId: string;
   imagePublicUrl?: string;
-  lastSeenLocation?: string;
-  securityPin?: string;
+  details?: any;
+  hasInsurance: boolean;
   createdAt: Date;
   updatedAt: Date;
 }

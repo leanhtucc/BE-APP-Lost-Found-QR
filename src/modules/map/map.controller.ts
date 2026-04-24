@@ -24,7 +24,7 @@ export class MapController {
       const lng = Number(req.query.lng);
       const radius = req.query.radius ? Number(req.query.radius) : 2000;
       const count = await mapService.countActiveUsers(lat, lng, radius);
-      res.json({ success: true, data: count });
+      res.json({ success: true, data: { active_users_count: count } });
     } catch (err) {
       next(err);
     }

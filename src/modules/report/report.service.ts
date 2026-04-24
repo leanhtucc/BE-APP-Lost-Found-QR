@@ -92,10 +92,10 @@ export class ReportService {
           lng: location.lng,
           address: location.address,
           bountyAmount: reward.baseAmount,
+          totalPaid: totalToPay,
           status: "PENDING_PAYMENT",
           description: `Báo mất ${item.name}`,
-          radarRadius: radar.radius,
-          durationHours: radar.durationHours,
+          radarConfig: radar,
         },
       });
 
@@ -187,7 +187,8 @@ export class ReportService {
     });
 
     // FCM broadcast to nearby users within the chosen radar radius (or 5 km fallback)
-    const radiusMeters = post.radarRadius ?? 5000;
+    const radarConfigObj = post.radarConfig as any;
+    const radiusMeters = radarConfigObj?.radius ?? 5000;
     await this.broadcastToNearbyUsers(
       post.lat,
       post.lng,

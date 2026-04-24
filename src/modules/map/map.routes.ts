@@ -14,9 +14,9 @@ router.get(
   mapController.getNearby
 );
 
-// GET /api/map/active-users-count
+// GET /api/map/active-users
 router.get(
-  "/active-users-count",
+  "/active-users",
   authMiddleware,
   validate(activeUsersSchema),
   mapController.countActiveUsers

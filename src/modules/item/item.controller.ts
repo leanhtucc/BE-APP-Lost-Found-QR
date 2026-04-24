@@ -19,17 +19,17 @@ export class ItemController {
         category,
         description,
         imagePublicUrl,
-        lastSeenLocation,
-        securityPin,
-      } = req.query as any;
+        hasInsurance,
+        details,
+      } = req.body;
 
       const result = await itemService.createItem(userId, {
         name,
         category,
         description,
         imagePublicUrl,
-        lastSeenLocation,
-        securityPin,
+        hasInsurance,
+        details,
       });
 
       return ResponseUtil.created(res, result, "Item created successfully");

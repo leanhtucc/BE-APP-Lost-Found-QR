@@ -107,8 +107,8 @@ model Item {
   lastSeenLocation  String?
   securityPin       String?
   // Guardian fields
-  serialNumber      String?  @map("serial_number")  // VD: "48A9...XL0"
-  attributes        Json?                             // {"color": "Titan Đen", "storage": "256GB"}
+  qrCodeId          String   @unique @map("qr_code_id") @default(cuid())
+  details           Json?    // {"color": "Titan Đen", "storage": "256GB", "serial": "48A..."}
   hasInsurance      Boolean  @default(false) @map("has_insurance")
   // Lost item coordinates
   lostLat           Float?
@@ -143,12 +143,12 @@ model Post {
   lng           Float
   address       String?
   bountyAmount  Int      @map("bounty_amount")
-  // PENDING_PAYMENT → SEARCHING → FOUND | EXPIRED_REFUNDED | CANCELLED
+  totalPaid     Int      @default(0) @map("total_paid")
+  // PENDING_PAYMENT → SEARCHING → FOUND | EXPIRED_REFUNDED | CANCELLED | RESOLVED
   status        String   @default("PENDING_PAYMENT")
   description   String?
   // Guardian Radar fields
-  radarRadius   Int?     @map("radar_radius")    // metres, e.g. 500
-  durationHours Int?     @map("duration_hours")  // e.g. 24
+  radarConfig   Json?    @map("radar_config")    // {"radius": 500, "duration_hours": 24}
   createdAt     DateTime @default(now())
   updatedAt     DateTime @updatedAt
 

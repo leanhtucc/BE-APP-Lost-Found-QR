@@ -1,11 +1,11 @@
 import { Request, Response, Router } from "express";
 import { ENV } from "./config/env";
+import aiRoutes from "./modules/ai/ai.routes";
 import authRoutes from "./modules/auth/auth.routes";
 import homeRoutes from "./modules/home/home.routes";
 import itemRoutes from "./modules/item/item.routes";
 import mapRoutes from "./modules/map/map.routes";
 import notificationRoutes from "./modules/notification/notification.routes";
-import radarRoutes from "./modules/radar/radar.routes";
 import reportRoutes from "./modules/report/report.routes";
 import streamRoutes from "./modules/stream/stream.routes";
 import uploadRoutes from "./modules/upload/upload.routes";
@@ -37,8 +37,9 @@ router.use(`${ENV.API_PREFIX}/reports`, reportRoutes);
 router.use(ENV.API_PREFIX, itemRoutes); // Item routes (/items, /scan)
 
 // v1 contract routes
+router.use("/v1/ai", aiRoutes);
 router.use("/v1/reports", reportRoutes);
-router.use("/v1/radar", radarRoutes);
+router.use("/v1/map", mapRoutes);
 router.use("/v1/notifications", notificationRoutes);
 
 export default router;

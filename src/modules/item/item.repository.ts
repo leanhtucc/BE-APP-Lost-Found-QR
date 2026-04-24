@@ -11,9 +11,8 @@ export class ItemRepository {
   async createItem(
     data: CreateItemDTO & {
       ownerId: string;
-      itemId: string;
+      qrCodeId: string;
       securityToken: string;
-      qrCodeUrl: string;
     }
   ) {
     return await prisma.item.create({
@@ -54,10 +53,10 @@ export class ItemRepository {
     });
   }
 
-  // Tìm item theo itemId (để quét QR)
-  async findByItemId(itemId: string) {
+  // Tìm item theo qrCodeId (để quét QR)
+  async findByQrCodeId(qrCodeId: string) {
     return await prisma.item.findUnique({
-      where: { itemId },
+      where: { qrCodeId },
       include: {
         owner: {
           select: {
@@ -239,7 +238,7 @@ export class ItemRepository {
         { name: { contains: options.query, mode: "insensitive" } },
         { description: { contains: options.query, mode: "insensitive" } },
         { category: { contains: options.query, mode: "insensitive" } },
-        { itemId: { contains: options.query, mode: "insensitive" } },
+        { qrCodeId: { contains: options.query, mode: "insensitive" } },
       ],
     };
 

@@ -8,7 +8,7 @@ import { ITEM_CATEGORIES } from "./item.types";
 
 // Schema cho tạo item mới
 export const createItemSchema = z.object({
-  query: z.object({
+  body: z.object({
     name: z
       .string()
       .min(1, "Name is required")
@@ -25,28 +25,8 @@ export const createItemSchema = z.object({
       .url("Invalid image URL")
       .optional()
       .or(z.literal("")),
-    lastSeenLocation: z
-      .string()
-      .refine(
-        (val) => {
-          if (!val) return true;
-          try {
-            const parsed = JSON.parse(val);
-            return (
-              typeof parsed.lat === "number" && typeof parsed.lng === "number"
-            );
-          } catch {
-            return false;
-          }
-        },
-        { message: "lastSeenLocation must be valid JSON with lat and lng" }
-      )
-      .optional(),
-    securityPin: z
-      .string()
-      .regex(/^\d{4}$/, "Security PIN must be 4 digits")
-      .optional()
-      .or(z.literal("")),
+    hasInsurance: z.boolean().optional().default(false),
+    details: z.any().optional(), // JSONB cho color, storage, serial...
   }),
 });
 
