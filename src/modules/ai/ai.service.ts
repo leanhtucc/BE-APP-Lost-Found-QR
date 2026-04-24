@@ -15,15 +15,15 @@ export class AIService {
   }
 
   /**
-   * Sử dụng Gemini API phân tích ảnh tải lên.
+   * Sử dụng Gemini API phân tích ảnh tải lên có thêm cơ chế Fallback chống sập.
    */
   async analyzeImage(file: Express.Multer.File): Promise<AIAnalysisResponse> {
-    try {
-      const model = this.genAI.getGenerativeModel({ model: "gemini-2.5-flash" });
+    const modelsToTry = ["gemini-2.5-flash", "gemini-2.0-flash", "gemini-flash-latest"];
+    let lastError: any;
 
+    try {
       const imageBuffer = fs.readFileSync(file.path);
       const mimeType = file.mimetype;
-
       const prompt = `Phân tích đồ vật chính trong ảnh và trả về JSON object (không bọc trong \`\`\`json). Cấu trúc: 
 {
   "suggested_name": "Tên chi tiết đồ (VD: iPhone 15 Pro Max)",
@@ -33,36 +33,49 @@ export class AIService {
 }
 Lưu ý: Nếu không nhận diện được rõ đồ vật, set confidence_score = 0.`;
 
-      const result = await model.generateContent([
-        prompt,
-        {
-          inlineData: {
-            data: imageBuffer.toString("base64"),
-            mimeType: mimeType,
-          },
-        },
-      ]);
+      for (const modelName of modelsToTry) {
+        try {
+          const model = this.genAI.getGenerativeModel({ model: modelName });
+          const result = await model.generateContent([
+            prompt,
+            {
+              inlineData: {
+                data: imageBuffer.toString("base64"),
+                mimeType: mimeType,
+              },
+            },
+          ]);
 
-      const text = result.response.text().trim();
-      
-      // Tìm chuỗi JSON từ kết quả trả về bằng Regex an toàn thay vì replace cứng
-      const jsonMatch = text.match(/\{[\s\S]*\}/);
-      if (!jsonMatch) {
-         console.error("Gemini AI did not return JSON:", text);
-         throw new Error("Invalid output format from Gemini");
+          const text = result.response.text().trim();
+          
+          // Tìm chuỗi JSON từ kết quả trả về bằng Regex an toàn
+          const jsonMatch = text.match(/\{[\s\S]*\}/);
+          if (!jsonMatch) {
+             console.error(`Gemini AI (${modelName}) did not return JSON:`, text);
+             throw new Error("Invalid output format from Gemini");
+          }
+          
+          const parsed = JSON.parse(jsonMatch[0]);
+
+          return {
+            suggested_name: parsed.suggested_name || "Unknown item",
+            category: parsed.category || "other",
+            color: parsed.color || "",
+            confidence_score: parsed.confidence_score || 0,
+          };
+        } catch (err: any) {
+          console.warn(`[AIService] Model ${modelName} failed:`, err?.message || err);
+          lastError = err;
+          // Thử tiếp model khác trong danh sách
+        }
       }
-      
-      const parsed = JSON.parse(jsonMatch[0]);
 
-      return {
-        suggested_name: parsed.suggested_name || "Unknown item",
-        category: parsed.category || "other",
-        color: parsed.color || "",
-        confidence_score: parsed.confidence_score || 0,
-      };
+      // Nếu tất cả model đều fail
+      throw lastError;
+
     } catch (error: any) {
-      console.error("[AIService] Analyze image failed:", error?.message || error);
-      throw new AppError("Lỗi hệ thống khi phân tích hình ảnh với AI", 500);
+      console.error("[AIService] Analyze image totally failed after fallbacks:", error?.message || error);
+      throw new AppError("Lỗi hệ thống khi phân tích hình ảnh với AI (Quá tải server)", 503);
     } finally {
       if (fs.existsSync(file.path)) {
         fs.unlinkSync(file.path);
