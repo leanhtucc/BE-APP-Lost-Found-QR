@@ -235,17 +235,28 @@ async function main() {
 
   // Tạo fake items
   for (const itemData of items) {
-    const itemId = nanoid(16);
+    const qtyId = nanoid(16);
     const securityToken = nanoid(32);
-    const qrCodeUrl = `http://localhost:3000/scan/${itemId}`;
 
     await prisma.item.create({
       data: {
-        itemId,
+        qrCodeId: qtyId,
         securityToken,
-        qrCodeUrl,
         ownerId: user.id,
-        ...itemData,
+        name: itemData.name,
+        category: itemData.category,
+        status: itemData.status.toUpperCase(),
+        lostMessage: itemData.lostMessage,
+        imagePublicUrl: itemData.imagePublicUrl,
+        lostLat: itemData.lostLat,
+        lostLng: itemData.lostLng,
+        lostAddress: itemData.lostAddress,
+        hasInsurance: itemData.name.includes("iPhone"),
+        details: {
+          description: itemData.description,
+          securityPin: itemData.securityPin,
+          color: "N/A"
+        }
       },
     });
 
