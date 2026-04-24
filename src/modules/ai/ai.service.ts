@@ -44,9 +44,15 @@ Lưu ý: Nếu không nhận diện được rõ đồ vật, set confidence_sco
       ]);
 
       const text = result.response.text().trim();
-      const cleanedText = text.replace(/^```json\s*/, "").replace(/\s*```$/, "");
       
-      const parsed = JSON.parse(cleanedText);
+      // Tìm chuỗi JSON từ kết quả trả về bằng Regex an toàn thay vì replace cứng
+      const jsonMatch = text.match(/\{[\s\S]*\}/);
+      if (!jsonMatch) {
+         console.error("Gemini AI did not return JSON:", text);
+         throw new Error("Invalid output format from Gemini");
+      }
+      
+      const parsed = JSON.parse(jsonMatch[0]);
 
       return {
         suggested_name: parsed.suggested_name || "Unknown item",
@@ -54,7 +60,8 @@ Lưu ý: Nếu không nhận diện được rõ đồ vật, set confidence_sco
         color: parsed.color || "",
         confidence_score: parsed.confidence_score || 0,
       };
-    } catch (error) {
+    } catch (error: any) {
+      console.error("[AIService] Analyze image failed:", error?.message || error);
       throw new AppError("Lỗi hệ thống khi phân tích hình ảnh với AI", 500);
     } finally {
       if (fs.existsSync(file.path)) {
