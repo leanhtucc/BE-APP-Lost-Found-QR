@@ -67,6 +67,13 @@ router.get(
   itemController.getDashboardSummary
 );
 
+// GET /api/items/eligible-for-report – Guardian màn hình 1 (PHẢI ĐẶT TRƯỚC /items/:id)
+router.get(
+  "/items/eligible-for-report",
+  authMiddleware,
+  itemController.getEligibleForReport
+);
+
 // GET /api/items/:id - Lấy thông tin 1 item
 router.get(
   "/items/:id",

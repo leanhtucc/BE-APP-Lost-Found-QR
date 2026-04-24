@@ -10,6 +10,7 @@ import {
   initializeSocketServer,
   shutdownSocketServer,
 } from "./socket/radar.socket";
+import { startRefundJob } from "./jobs/refund.job";
 
 /**
  * Server Entry Point
@@ -29,6 +30,7 @@ async function startServer() {
     const httpServer = createServer(app);
     initializeSocketServer(httpServer);
     notificationService.startCleanupJob();
+    startRefundJob();
 
     const server = httpServer.listen(ENV.PORT, "0.0.0.0", () => {
       logger.success(`🚀 Server is running on port ${ENV.PORT}`);

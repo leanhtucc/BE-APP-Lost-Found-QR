@@ -111,6 +111,26 @@ export class ItemService {
     };
   }
 
+  /**
+   * Format items eligible for creating a lost report (màn hình 1).
+   * Reads `attributes` JSON for device-specific details (color, storage, etc.).
+   */
+  private formatEligibleItemResponse(item: any) {
+    const attrs: Record<string, string> = item.attributes ?? {};
+    return {
+      item_id: item.id,
+      name: item.name,
+      category: item.category,
+      image_url: item.imagePublicUrl ?? null,
+      details: {
+        color: attrs["color"] ?? null,
+        storage: attrs["storage"] ?? null,
+        serial: item.serialNumber ?? null,
+      },
+      has_insurance: item.hasInsurance ?? false,
+    };
+  }
+
   // Tạo item mới
   async createItem(userId: string, data: CreateItemDTO): Promise<ItemResponse> {
     try {
@@ -376,6 +396,20 @@ export class ItemService {
         displayName: guestDisplayName,
       },
     };
+  }
+
+  /**
+   * GET /v1/items/eligible-for-report (màn hình 1)
+   * Lấy các items đang SAFE có thể báo mất.
+   */
+  async getEligibleItemsForReport(userId: string) {
+    const { items } = await itemRepository.findByOwnerId(userId, {
+      status: "SAFE",
+      skip: 0,
+      take: 100,
+    });
+
+    return { data: items.map((item) => this.formatEligibleItemResponse(item)) };
   }
 
   // Lấy danh sách items của user

@@ -60,13 +60,22 @@ export class ItemController {
   async getVaultItems(req: Request, res: Response, next: NextFunction) {
     try {
       const userId = (req as any).user.id;
-      // Re-use listItems logic but force status = "safe"
       const result = await itemService.listItems(userId, {
         status: "SAFE",
         page: 1,
-        limit: 100, // retrieve all vault items
+        limit: 100,
       });
+      return ResponseUtil.success(res, result);
+    } catch (error) {
+      next(error);
+    }
+  }
 
+  // GET /api/items/eligible-for-report - Màn hình 1 Guardian
+  async getEligibleForReport(req: Request, res: Response, next: NextFunction) {
+    try {
+      const userId = (req as any).user.id;
+      const result = await itemService.getEligibleItemsForReport(userId);
       return ResponseUtil.success(res, result);
     } catch (error) {
       next(error);

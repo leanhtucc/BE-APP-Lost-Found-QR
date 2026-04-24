@@ -2,21 +2,25 @@ import { NextFunction, Request, Response } from "express";
 import { reportService } from "./report.service";
 
 export class ReportController {
-  // POST /api/reports/lost-item
+  // POST /v1/reports  (also aliased as POST /api/reports/lost-item)
   createReport = async (req: Request, res: Response, next: NextFunction) => {
     try {
-      const userId = req.user!.id; // from authMiddleware
+      const userId = req.user!.id;
 
-      const params = {
+      const result = await reportService.createLostReport(userId, {
         itemId: req.body.item_id,
         location: req.body.location,
-        bounty: req.body.bounty,
-        paymentMethod: req.body.payment_method,
-      };
+        radar: {
+          radius: req.body.radar.radius,
+          durationHours: req.body.radar.duration_hours,
+        },
+        reward: {
+          baseAmount: req.body.reward.base_amount,
+          isCustom: req.body.reward.is_custom,
+        },
+      });
 
-      const result = await reportService.createLostReport(userId, params);
-
-      res.json({ success: true, data: result });
+      res.status(201).json({ success: true, data: result });
     } catch (err) {
       next(err);
     }
@@ -25,18 +29,13 @@ export class ReportController {
   // POST /api/reports/webhook/payment
   paymentWebhook = async (req: Request, res: Response, next: NextFunction) => {
     try {
-      // Typically there is a signature validation step here with MoMo/VNPay secrets
-      // For MVP, we parse payload directly
-
-      const payload = {
+      await reportService.handlePaymentWebhook({
         postId: req.body.post_id,
         amount: req.body.amount,
         provider: req.body.provider,
         transactionCode: req.body.transaction_code,
         status: req.body.status,
-      };
-
-      await reportService.handlePaymentWebhook(payload);
+      });
 
       res.json({ success: true, message: "Webhook processed" });
     } catch (err) {

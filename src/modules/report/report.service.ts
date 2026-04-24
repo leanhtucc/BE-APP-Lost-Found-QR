@@ -11,61 +11,78 @@ import {
   WebhookPaymentPayload,
 } from "./report.types";
 
-const SYSTEM_FEE_PERCENTAGE = 0.1; // 10% fee
+const SYSTEM_FEE_PERCENTAGE = 0.1; // 10% platform fee
+const EARTH_RADIUS_METERS = 6371000;
 
 export class ReportService {
+  // ─── Helpers ──────────────────────────────────────────────────────────────
+
   private parseItemChannelId(channelId: string): {
     itemId: string;
     finderId: string;
   } | null {
-    if (!channelId.startsWith("item_")) {
-      return null;
-    }
-
+    if (!channelId.startsWith("item_")) return null;
     const parts = channelId.split("_");
-    if (parts.length < 3) {
-      return null;
-    }
-
+    if (parts.length < 3) return null;
     const itemId = parts[1] || "";
     const finderId = parts.slice(2).join("_");
-
-    if (!itemId || !finderId) {
-      return null;
-    }
-
-    return {
-      itemId,
-      finderId,
-    };
+    if (!itemId || !finderId) return null;
+    return { itemId, finderId };
   }
 
   /**
-   * Bước 4 (Tạo Report):
-   * Create Post, Transaction, and mock payment URL
+   * Count active users within a given radius using Haversine SQL.
+   * Shared by both Radar simulate and FCM broadcast.
    */
+  async countNearbyActiveUsers(
+    lat: number,
+    lng: number,
+    radiusMeters: number
+  ): Promise<number> {
+    const rows = await prisma.$queryRawUnsafe<{ count: bigint }[]>(
+      `
+      SELECT COUNT(*)::bigint AS count
+      FROM "UserLocation" ul
+      WHERE ul."updatedAt" >= NOW() - INTERVAL '1 hour'
+        AND ${EARTH_RADIUS_METERS} * acos(
+          LEAST(1.0,
+            cos(radians($1)) * cos(radians(ul."lat")) *
+            cos(radians(ul."lng") - radians($2)) +
+            sin(radians($1)) * sin(radians(ul."lat"))
+          )
+        ) <= $3
+      `,
+      lat,
+      lng,
+      radiusMeters
+    );
+    return Number(rows[0]?.count ?? 0);
+  }
+
+  // ─── 1. Create Lost Report (POST /v1/reports) ─────────────────────────────
+
   async createLostReport(
     userId: string,
     params: ReportLostItemParams
   ): Promise<ReportLostItemResponse> {
-    const { itemId, location, bounty, paymentMethod } = params;
+    const { itemId, location, radar, reward } = params;
 
-    // Verify item ownership and status
-    const item = await prisma.item.findUnique({
-      where: { id: itemId },
-    });
-    if (!item) {
-      throw new Error("Item not found");
+    // Verify item ownership and eligibility
+    const item = await prisma.item.findUnique({ where: { id: itemId } });
+    if (!item) throw new AppError("Item not found", 404);
+    if (item.ownerId !== userId) throw new AppError("You do not own this item", 403);
+    if (item.status !== "SAFE") {
+      throw new AppError(
+        `Item cannot be reported: current status is ${item.status}`,
+        409
+      );
     }
-    if (item.ownerId !== userId) {
-      throw new Error("You do not own this item");
-    }
 
-    // Calculate total amount (Bounty + System Fee)
-    const systemFee = Math.round(bounty * SYSTEM_FEE_PERCENTAGE);
-    const totalAmount = bounty + systemFee;
+    // Calculate total (bounty + 10% fee)
+    const systemFee = Math.round(reward.baseAmount * SYSTEM_FEE_PERCENTAGE);
+    const totalToPay = reward.baseAmount + systemFee;
 
-    // Create Post + EscrowTransaction inside a DB transaction
+    // DB transaction: Post + EscrowTransaction + Item status
     const post = await prisma.$transaction(async (tx: any) => {
       const newPost = await tx.post.create({
         data: {
@@ -74,17 +91,19 @@ export class ReportService {
           lat: location.lat,
           lng: location.lng,
           address: location.address,
-          bountyAmount: bounty,
+          bountyAmount: reward.baseAmount,
           status: "PENDING_PAYMENT",
           description: `Báo mất ${item.name}`,
+          radarRadius: radar.radius,
+          durationHours: radar.durationHours,
         },
       });
 
       await tx.escrowTransaction.create({
         data: {
           postId: newPost.id,
-          amount: totalAmount,
-          provider: paymentMethod, // VNPAY, MOMO
+          amount: totalToPay,
+          provider: "VNPAY", // default; FE can override via webhook
           status: "HOLDING",
         },
       });
@@ -97,51 +116,52 @@ export class ReportService {
       return newPost;
     });
 
-    // Generate mock payment URL
-    const mockPaymentUrl = `https://vnpay-sandbox.com/mock-pay?order_id=${post.id}&amount=${totalAmount}`;
+    const paymentUrl = `https://sandbox.vnpayment.vn/paymentv2/vpcpay.html?order_id=${post.id}&amount=${totalToPay}`;
 
     return {
-      postId: post.id,
-      paymentUrl: mockPaymentUrl,
-      message: "Vui lòng hoàn tất thanh toán để kích hoạt Radar tìm kiếm.",
+      report_id: post.id,
+      status: "PENDING_PAYMENT",
+      payment: {
+        total_to_pay: totalToPay,
+        payment_url: paymentUrl,
+      },
     };
   }
 
+  // ─── 2. Payment Webhook ───────────────────────────────────────────────────
+
   /**
-   * Xử lý Webhook (Quan trọng nhất):
-   * Confirm payment -> set ACTIVE -> broadcast push notification
+   * Called by VNPay/MoMo webhook when payment succeeds.
+   * Transitions: PENDING_PAYMENT → SEARCHING
+   * Side effects: escrow locked notification + FCM broadcast to nearby users.
    */
   async handlePaymentWebhook(payload: WebhookPaymentPayload): Promise<void> {
-    const { postId, amount, status, provider, transactionCode } = payload;
+    const { postId, amount, status, transactionCode } = payload;
 
     if (status !== "success") {
-      throw new Error("Payment failed or cancelled");
+      throw new AppError("Payment failed or cancelled", 400);
     }
 
     const post = await prisma.post.findUnique({
       where: { id: postId },
-      include: {
-        escrowTransactions: true,
-        item: true,
-      },
+      include: { escrowTransactions: true, item: true },
     });
 
-    if (!post) throw new Error("Post not found");
-    if (post.status === "ACTIVE") return; // Already processed
+    if (!post) throw new AppError("Post not found", 404);
+    if (post.status === "SEARCHING") return; // Idempotent
 
     const holdingTx = post.escrowTransactions.find(
       (tx) => tx.status === "HOLDING"
     );
     if (!holdingTx || holdingTx.amount !== amount) {
-      throw new Error("Invalid transaction amount or state");
+      throw new AppError("Invalid transaction amount or state", 400);
     }
 
-    // 1. Mark as ACTIVE
-    // Update the Post and Transaction statuses. We also update the item's lost coordinates.
+    // Atomic state transition
     await prisma.$transaction([
       prisma.post.update({
         where: { id: postId },
-        data: { status: "ACTIVE" },
+        data: { status: "SEARCHING" },
       }),
       prisma.escrowTransaction.update({
         where: { id: holdingTx.id },
@@ -158,7 +178,7 @@ export class ReportService {
       }),
     ]);
 
-    // 2. Create transaction notification for owner (escrow locked)
+    // Notify owner that escrow is locked
     await notificationService.notifyEscrowLocked({
       receiverId: post.ownerId,
       amount,
@@ -166,9 +186,17 @@ export class ReportService {
       postId,
     });
 
-    // 3. Broadcast via FCM to nearby users (5km radius)
-    await this.broadcastToNearbyUsers(post.lat, post.lng, post.item.name);
+    // FCM broadcast to nearby users within the chosen radar radius (or 5 km fallback)
+    const radiusMeters = post.radarRadius ?? 5000;
+    await this.broadcastToNearbyUsers(
+      post.lat,
+      post.lng,
+      post.item.name,
+      radiusMeters
+    );
   }
+
+  // ─── 3. Cancel Escrow ─────────────────────────────────────────────────────
 
   async cancelEscrowForItem(
     ownerId: string,
@@ -178,25 +206,13 @@ export class ReportService {
       where: {
         ownerId,
         itemId,
-        status: {
-          in: ["PENDING_PAYMENT", "ACTIVE"],
-        },
+        status: { in: ["PENDING_PAYMENT", "SEARCHING"] },
       },
-      orderBy: {
-        createdAt: "desc",
-      },
-      include: {
-        escrowTransactions: {
-          orderBy: {
-            createdAt: "desc",
-          },
-        },
-      },
+      orderBy: { createdAt: "desc" },
+      include: { escrowTransactions: { orderBy: { createdAt: "desc" } } },
     });
 
-    if (!post) {
-      return null;
-    }
+    if (!post) return null;
 
     const holdingTx = post.escrowTransactions.find(
       (tx) => tx.status === "HOLDING"
@@ -217,12 +233,7 @@ export class ReportService {
 
       await tx.item.update({
         where: { id: itemId },
-        data: {
-          status: "SAFE",
-          lostLat: null,
-          lostLng: null,
-          lostAddress: null,
-        },
+        data: { status: "SAFE", lostLat: null, lostLng: null, lostAddress: null },
       });
     });
 
@@ -242,55 +253,38 @@ export class ReportService {
       type: "STATUS_UPDATE",
       title: "Đã hủy giao dịch",
       content: "Bài đăng thất lạc đã được hủy và giao dịch được hoàn về ví.",
-      metadata: {
-        post_id: post.id,
-        item_id: itemId,
-      },
+      metadata: { post_id: post.id, item_id: itemId },
     });
 
     return {
       postId: post.id,
       postStatus: "CANCELLED",
       transactionStatus: holdingTx ? "REFUNDED" : null,
-      refundedAmount: holdingTx?.amount || 0,
+      refundedAmount: holdingTx?.amount ?? 0,
     };
   }
+
+  // ─── 4. Complete Escrow (Finder confirmed) ────────────────────────────────
 
   async completeEscrowFromChannel(
     ownerId: string,
     channelId: string
   ): Promise<CompleteTransactionResult | null> {
     const parsed = this.parseItemChannelId(channelId);
-
-    if (!parsed) {
-      return null;
-    }
+    if (!parsed) return null;
 
     const { itemId, finderId } = parsed;
 
     const post = await prisma.post.findFirst({
       where: {
         itemId,
-        status: {
-          in: ["PENDING_PAYMENT", "ACTIVE", "RESOLVED"],
-        },
+        status: { in: ["PENDING_PAYMENT", "SEARCHING", "RESOLVED"] },
       },
-      orderBy: {
-        createdAt: "desc",
-      },
-      include: {
-        escrowTransactions: {
-          orderBy: {
-            createdAt: "desc",
-          },
-        },
-      },
+      orderBy: { createdAt: "desc" },
+      include: { escrowTransactions: { orderBy: { createdAt: "desc" } } },
     });
 
-    if (!post) {
-      return null;
-    }
-
+    if (!post) return null;
     if (post.ownerId !== ownerId) {
       throw new AppError("Only item owner can complete settlement", 403);
     }
@@ -314,24 +308,14 @@ export class ReportService {
     );
 
     await prisma.$transaction(async (tx: any) => {
-      await tx.post.update({
-        where: { id: post.id },
-        data: { status: "RESOLVED" },
-      });
-
+      await tx.post.update({ where: { id: post.id }, data: { status: "RESOLVED" } });
       if (holdingTx) {
         await tx.escrowTransaction.update({
           where: { id: holdingTx.id },
           data: { status: "RELEASED" },
         });
       }
-
-      await tx.item.update({
-        where: { id: itemId },
-        data: {
-          status: "RESOLVED",
-        },
-      });
+      await tx.item.update({ where: { id: itemId }, data: { status: "RESOLVED" } });
     });
 
     const finder = await prisma.user.findUnique({
@@ -344,10 +328,10 @@ export class ReportService {
         receiverId: finderId,
         amount: post.bountyAmount,
         transactionId:
-          holdingTx?.transactionCode ||
-          holdingTx?.id ||
-          alreadyReleasedTx?.transactionCode ||
-          alreadyReleasedTx?.id ||
+          holdingTx?.transactionCode ??
+          holdingTx?.id ??
+          alreadyReleasedTx?.transactionCode ??
+          alreadyReleasedTx?.id ??
           post.id,
         status: "released",
         postId: post.id,
@@ -365,11 +349,7 @@ export class ReportService {
       type: "STATUS_UPDATE",
       title: "Giao dịch đã hoàn tất",
       content: "Tiền thưởng đã được chuyển cho người nhặt thành công.",
-      metadata: {
-        post_id: post.id,
-        item_id: itemId,
-        finder_id: finderId,
-      },
+      metadata: { post_id: post.id, item_id: itemId, finder_id: finderId },
     });
 
     return {
@@ -381,63 +361,56 @@ export class ReportService {
     };
   }
 
+  // ─── 5. FCM Broadcast ─────────────────────────────────────────────────────
+
   private async broadcastToNearbyUsers(
     lat: number,
     lng: number,
-    itemName: string
-  ) {
+    itemName: string,
+    radiusMeters: number
+  ): Promise<void> {
     if (!admin.apps.length) {
-      console.warn(
-        "Firebase Admin SDK is mock/undefined. Skipping FCM broadcast."
-      );
+      logger.warn("Firebase Admin SDK not initialised – skipping FCM broadcast");
       return;
     }
 
-    const earthRadius = 6371000;
-    const radiusMeters = 5000;
-
-    const sql = `
+    const nearbyUsers = await prisma.$queryRawUnsafe<{ pushToken: string }[]>(
+      `
       SELECT u."pushToken"
       FROM "UserLocation" ul
-      JOIN "User" u ON u.id = ul.user_id
+      JOIN "User" u ON u.id = ul."user_id"
       WHERE u."pushToken" IS NOT NULL
         AND ul."updatedAt" >= NOW() - INTERVAL '1 hour'
-        AND ${earthRadius} * acos(
-          LEAST(1.0, cos(radians($1)) * cos(radians(ul."lat")) *
-          cos(radians(ul."lng") - radians($2)) +
-          sin(radians($1)) * sin(radians(ul."lat")))
+        AND ${EARTH_RADIUS_METERS} * acos(
+          LEAST(1.0,
+            cos(radians($1)) * cos(radians(ul."lat")) *
+            cos(radians(ul."lng") - radians($2)) +
+            sin(radians($1)) * sin(radians(ul."lat"))
+          )
         ) <= $3
-    `;
-
-    const nearbyUsers = await prisma.$queryRawUnsafe<{ pushToken: string }[]>(
-      sql,
+      `,
       lat,
       lng,
       radiusMeters
     );
 
     const tokens = nearbyUsers.map((u) => u.pushToken).filter(Boolean);
-
     if (tokens.length === 0) {
-      console.log("No nearby active users found for FCM broadcast.");
+      logger.info("No nearby active users found for FCM broadcast");
       return;
     }
 
-    const message = {
-      notification: {
-        title: "Radar Khẩn Cấp 🚨",
-        body: `Có người vừa thất lạc ${itemName} gần bạn (5km). Chú ý giúp đỡ nhé!`,
-      },
-      tokens,
-    };
-
     try {
-      const response = await admin.messaging().sendEachForMulticast(message);
-      console.log(
-        `Successfully broadcasted radar alert to ${response.successCount} users.`
-      );
+      const response = await admin.messaging().sendEachForMulticast({
+        notification: {
+          title: "Cảnh báo Guardian 🚨",
+          body: `Có ${itemName} vừa rơi gần bạn (${radiusMeters / 1000}km). Tìm thấy nhận thưởng ngay!`,
+        },
+        tokens,
+      });
+      logger.info(`FCM broadcast sent to ${response.successCount} users`);
     } catch (error) {
-      console.error("Error sending FCM multicast message:", error);
+      logger.error("FCM multicast error:", error);
     }
   }
 }
