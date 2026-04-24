@@ -19,7 +19,7 @@ export class AIService {
    */
   async analyzeImage(file: Express.Multer.File): Promise<AIAnalysisResponse> {
     try {
-      const model = this.genAI.getGenerativeModel({ model: "gemini-1.5-flash" });
+      const model = this.genAI.getGenerativeModel({ model: "gemini-2.5-flash" });
 
       const imageBuffer = fs.readFileSync(file.path);
       const mimeType = file.mimetype;
