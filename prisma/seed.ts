@@ -219,12 +219,20 @@ const items = [
 async function main() {
   console.log("🌱 Starting seed...");
 
-  // Lấy user đầu tiên để gán làm owner
-  const user = await prisma.user.findFirst();
+  // Lấy user đầu tiên để gán làm owner, nếu không có thì tự tạo 1 Dummy User
+  let user = await prisma.user.findFirst();
 
   if (!user) {
-    console.error("❌ No user found! Please create a user first.");
-    return;
+    console.log("⚠️ No user found! Creating a default user...");
+    user = await prisma.user.create({
+      data: {
+        id: "dummy_user_123",
+        uid: "firebase_dummy_uid",
+        email: "dummySeed@gmail.com",
+        displayName: "Guardian Bot",
+        photoURL: "https://api.dicebear.com/7.x/avataaars/png?seed=Guardian",
+      }
+    });
   }
 
   console.log(`✅ Found user: ${user.email}`);
