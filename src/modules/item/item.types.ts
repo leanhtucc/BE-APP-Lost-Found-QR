@@ -120,6 +120,29 @@ export interface SearchItemsResponse {
   query: string;
 }
 
+// Selection Summary (box "Chi tiết lựa chọn" – Guardian Radar)
+export interface SelectionSummaryResponse {
+  id: string;
+  name: string;
+  category: string;
+  image_url?: string;
+  display_text: {
+    /** Màu + dung lượng (VD: "Titan Đen - 256GB") */
+    primary: string;
+    /** Mô tả AI (ốp lưng, vết xước, sticker...) */
+    secondary: string;
+    /** Serial đã mask (VD: "48A9...XL0"), null nếu chưa có */
+    serial_number: string | null;
+  };
+  status_badges: {
+    has_insurance: boolean;
+    label: string;
+    color_theme: "SUCCESS" | "STANDARD" | "NONE";
+  };
+  /** Danh sách tag ngắn từ AI (VD: ["Titan Đen", "Ốp lưng xanh"]) */
+  ai_visual_tags: string[];
+}
+
 // Dashboard Summary
 export interface DashboardSummary {
   totalItems: number;

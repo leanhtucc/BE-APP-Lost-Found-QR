@@ -11,7 +11,7 @@ const router = Router();
 // Reusing multer config pattern from upload module
 const storage = multer.diskStorage({
   destination: (req, file, cb) => {
-    const uploadDir = path.join(process.cwd(), "public", "uploads", "ai_temp");
+    const uploadDir = path.join(process.cwd(), "public", "uploads");
     if (!fs.existsSync(uploadDir)) {
       fs.mkdirSync(uploadDir, { recursive: true });
     }

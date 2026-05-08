@@ -8,6 +8,7 @@ import { NotificationRepository } from "./notification.repository";
 import {
   CreateNotificationInput,
   EscrowLockedNotificationInput,
+  MarkAllReadResponse,
   MatchFoundNotificationInput,
   MoneyNotificationInput,
   NewChatNotificationInput,
@@ -143,17 +144,16 @@ export class NotificationService {
     const limit = query.limit || 20;
     const skip = (page - 1) * limit;
 
-    const { notifications, total } = await this.repository.findByReceiverId(
-      receiverId,
-      {
+    const { notifications, total, totalUnread } =
+      await this.repository.findByReceiverId(receiverId, {
         category: query.category,
         skip,
         take: limit,
-      }
-    );
+      });
 
     return {
-      notifications: notifications.map((item) => this.formatNotification(item)),
+      data: notifications.map((item) => this.formatNotification(item)),
+      total_unread: totalUnread,
       pagination: {
         page,
         limit,
@@ -187,6 +187,11 @@ export class NotificationService {
 
   async getUnreadCount(receiverId: string): Promise<number> {
     return this.repository.countUnread(receiverId);
+  }
+
+  async markAllAsRead(receiverId: string): Promise<MarkAllReadResponse> {
+    const updatedCount = await this.repository.markAllAsRead(receiverId);
+    return { updated_count: updatedCount };
   }
 
   async notifyEscrowLocked(input: EscrowLockedNotificationInput) {

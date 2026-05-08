@@ -22,6 +22,12 @@ router.get(
   notificationController.getUnreadCount
 );
 
+router.post(
+  "/read-all",
+  authMiddleware,
+  notificationController.markAllAsRead
+);
+
 router.patch(
   "/:id/read",
   authMiddleware,

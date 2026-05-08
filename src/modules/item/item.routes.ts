@@ -74,6 +74,14 @@ router.get(
   itemController.getEligibleForReport
 );
 
+// GET /api/items/:id/selection-summary – Box "Chi tiết lựa chọn" (PHẢI ĐẶT TRƯỚC /items/:id)
+router.get(
+  "/items/:id/selection-summary",
+  authMiddleware,
+  validate(itemIdParamSchema),
+  itemController.getSelectionSummary
+);
+
 // GET /api/items/:id - Lấy thông tin 1 item
 router.get(
   "/items/:id",

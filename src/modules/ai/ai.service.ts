@@ -29,14 +29,16 @@ export class AIService {
     try {
       const imageBuffer = fs.readFileSync(file.path);
       const mimeType = file.mimetype;
-      const prompt = `Phân tích đồ vật chính trong ảnh và trả về JSON object (không bọc trong \`\`\`json). Cấu trúc: 
+      const prompt = `Phân tích đồ vật chính trong ảnh và trả về JSON object (không bọc trong \`\`\`json). Cấu trúc:
 {
   "suggested_name": "Tên chi tiết đồ (VD: iPhone 15 Pro Max)",
   "category": "Thuộc vào: electronics, wallet, keys, bag, documents, jewelry, phone, other",
   "color": "Màu chủ đạo (VD: Đen)",
-  "confidence_score": 0.95
+  "confidence_score": 0.95,
+  "ai_visual_tags": ["Màu sắc chính xác", "Ốp lưng nếu có", "Vết xước nếu có", "Sticker nếu có", "Bất kỳ đặc điểm ngoại hình nổi bật nào"],
+  "description": "Mô tả tổng hợp các đặc điểm nhận dạng quan trọng nhất, sắp xếp: [Màu sắc] - [Phụ kiện/Ốp lưng nếu có] - [Vết xước/sticker nếu có]"
 }
-Lưu ý: Nếu không nhận diện được rõ đồ vật, set confidence_score = 0.`;
+Lưu ý: Nếu không nhận diện được rõ đồ vật, set confidence_score = 0. ai_visual_tags phải là mảng các chuỗi ngắn gọn. description phải viết đầy đủ bằng tiếng Việt.`;
 
       for (const modelName of modelsToTry) {
         try {
@@ -67,6 +69,9 @@ Lưu ý: Nếu không nhận diện được rõ đồ vật, set confidence_sco
             category: parsed.category || "other",
             color: parsed.color || "",
             confidence_score: parsed.confidence_score || 0,
+            imagePublicUrl: `/public/uploads/${file.filename}`,
+            ai_visual_tags: Array.isArray(parsed.ai_visual_tags) ? parsed.ai_visual_tags : [],
+            description: parsed.description || "",
           };
         } catch (err: any) {
           console.warn(`[AIService] Model ${modelName} failed:`, err?.message || err);
@@ -85,6 +90,7 @@ Lưu ý: Nếu không nhận diện được rõ đồ vật, set confidence_sco
         category: "other",
         color: "",
         confidence_score: 0,
+        imagePublicUrl: `/public/uploads/${file.filename}`,
       };
 
     } catch (error: any) {
@@ -95,11 +101,8 @@ Lưu ý: Nếu không nhận diện được rõ đồ vật, set confidence_sco
         category: "other",
         color: "",
         confidence_score: 0,
+        imagePublicUrl: `/public/uploads/${file.filename}`,
       };
-    } finally {
-      if (fs.existsSync(file.path)) {
-        fs.unlinkSync(file.path);
-      }
     }
   }
 }

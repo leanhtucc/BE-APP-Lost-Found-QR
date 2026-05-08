@@ -71,6 +71,23 @@ export class ItemController {
     }
   }
 
+  // GET /api/items/:id/selection-summary – Box "Chi tiết lựa chọn" (Guardian Radar)
+  async getSelectionSummary(req: Request, res: Response, next: NextFunction) {
+    try {
+      const userId = (req as any).user.id;
+      const { id } = req.params;
+
+      if (!id) {
+        return ResponseUtil.badRequest(res, "Item ID is required");
+      }
+
+      const result = await itemService.getSelectionSummary(id, userId);
+      return ResponseUtil.success(res, result);
+    } catch (error) {
+      next(error);
+    }
+  }
+
   // GET /api/items/eligible-for-report - Màn hình 1 Guardian
   async getEligibleForReport(req: Request, res: Response, next: NextFunction) {
     try {

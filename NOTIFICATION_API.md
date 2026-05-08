@@ -1,143 +1,352 @@
-# Tài liệu API Thông báo (Notification API Documentation)
+# 📄 NOTIFICATION API – Tài liệu ghép nối cho App (FindBack Alerts)
 
-Tài liệu này cung cấp chi tiết các API liên quan đến hệ thống thông báo dành cho Mobile App. Hệ thống bao gồm **Push Notifications** (thông báo đẩy qua Firebase/Expo) và **In-app Notifications** (thông báo trong ứng dụng qua Stream Chat).
-
----
-
-## 1. Cập nhật Push Token
-
-Dùng để gửi Token định danh thiết bị lên hệ thống, cho phép backend gửi thông báo đẩy (FCM/APNs) khi app không hoạt động.
-
-- **Endpoint**: `/api/auth/profile`
-- **Method**: `PATCH`
-- **Headers**:
-  - `Authorization: Bearer <access_token>`
-  - `Content-Type: application/json`
-- **Request Body**:
-  ```json
-  {
-    "pushToken": "ExponentPushToken[xxxxxxxxxxxxxxxxxxxxxx]"
-  }
-  ```
-- **Response Success (200 OK)**:
-  ```json
-  {
-    "success": true,
-    "data": {
-       "id": "user_id",
-       "email": "example@gmail.com",
-       "pushToken": "ExponentPushToken[xxxxxxxxxxxxxxxxxxxxxx]",
-       ...
-    },
-    "message": "Profile updated successfully"
-  }
-  ```
+> **Base URL:** `/v1/notifications` hoặc `/api/notifications`
+>
+> **Auth:** Tất cả endpoint đều yêu cầu header `Authorization: Bearer <token>`
 
 ---
 
-## 2. Kết nối Hệ thống Thông báo Real-time
+## 1. Cấu trúc 1 Notification Object
 
-Trước khi sử dụng các chức năng thông báo trong app, App cần lấy Token để kết nối vào bộ SDK Stream Chat.
+Mỗi thông báo trả về từ API có cấu trúc sau:
 
-- **Endpoint**: `/api/stream/token`
-- **Method**: `GET`
-- **Headers**: `Authorization: Bearer <access_token>`
-- **Response Success (200 OK)**:
-  ```json
-  {
-    "success": true,
-    "data": {
-      "token": "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9...",
-      "apiKey": "stream_api_key_xxxxxxxx",
-      "userId": "user_id_trong_he_thong"
-    },
-    "message": "Stream token generated successfully"
-  }
-  ```
-- **Lưu ý**: App nên gọi API này ngay sau khi đăng nhập thành công và khởi tạo Stream Chat Client.
+```jsonc
+{
+  "id": "clxyz123abc",                    // ID thông báo (cuid)
+  "receiver_id": "cluserid456",           // ID người nhận
+  "category": "IMPORTANT",                // Phân loại (dùng để filter theo Tab)
+  "type": "MATCH_FOUND",                  // Mã loại (dùng để render UI + deep link)
+  "title": "Tìm thấy tín hiệu phù hợp", // Tiêu đề hiển thị
+  "content": "iPhone 15 có người báo tìm thấy trong bán kính 300m", // Nội dung tóm tắt
+  "metadata": {                           // ⭐ Data động – xem bảng bên dưới
+    "distance": "300m",
+    "post_id": "post-123",
+    "item_name": "iPhone 15"
+  },
+  "is_read": false,                       // Trạng thái đã đọc
+  "created_at": "2026-05-08T10:00:00.000Z"
+}
+```
+
+### Giá trị `category` (Enum – dùng cho Tab filtering)
+
+| Giá trị | Ý nghĩa | Tab UI |
+|---|---|---|
+| `IMPORTANT` | Thông báo quan trọng, cần hành động ngay | ⚡ Quan trọng |
+| `TRANSACTION` | Giao dịch tiền, escrow, hoàn tiền | 💰 Giao dịch |
+| `ITEM` | Cập nhật trạng thái vật phẩm | 📦 Vật phẩm |
+| `SOCIAL` | Chat, tin nhắn, tương tác xã hội | 💬 Xã hội |
+
+### Giá trị `type` và Metadata tương ứng
+
+| `type` | `category` | Metadata mẫu | Deep Link FE |
+|---|---|---|---|
+| `MATCH_FOUND` | `IMPORTANT` | `{"distance": "300m", "post_id": "...", "item_name": "..."}` | Mở Radar Map / Chi tiết tin báo mất |
+| `PROXIMITY` | `IMPORTANT` | `{"distance": "100m", "post_id": "..."}` | Mở Live Tracking Map |
+| `QR_SCANNED` | `ITEM` | `{"item_id": "...", "room_id": "...", "finder_id": "..."}` | Mở Chat Room với người nhặt |
+| `NEW_CHAT` | `SOCIAL` | `{"room_id": "...", "sender_avatar": "...", "message_preview": "...", "item_id": "..."}` | Mở Chat Room |
+| `ESCROW_LOCKED` | `TRANSACTION` | `{"amount": 500000, "transaction_id": "...", "status": "locked", "post_id": "..."}` | Mở chi tiết Giao dịch |
+| `REFUNDED` | `TRANSACTION` | `{"amount": 500000, "transaction_id": "...", "status": "refunded", "post_id": "..."}` | Mở chi tiết Giao dịch |
+| `RELEASED` | `TRANSACTION` | `{"amount": 500000, "transaction_id": "...", "status": "released", "post_id": "..."}` | Mở chi tiết Giao dịch |
+
+> **Lưu ý:** `metadata` là JSONB, các field bên trong có thể khác nhau tùy `type`. App nên dùng optional chaining khi đọc.
 
 ---
 
-## 3. Lấy Danh sách Thông báo (Inbox)
+## 2. Endpoints
 
-Lấy danh sách các thông báo/hoạt động của người dùng (giống màn hình Activity Feed).
+### 2.1. Lấy danh sách thông báo
 
-- **Endpoint**: `/api/stream/notifications`
-- **Method**: `GET`
-- **Headers**: `Authorization: Bearer <access_token>`
-- **Response Success (200 OK)**:
-  ```json
-  {
-    "success": true,
-    "data": {
-      "total": 5,
-      "unreadTotal": 2,
-      "notifications": [
-        {
-          "id": "notification_id",
-          "type": "item_found",
-          "actor": { "id": "user_a", "name": "Nguyễn Văn A" },
-          "item": { "id": "item_id", "name": "Chìa khóa xe" },
-          "isRead": false,
-          "createdAt": "2024-02-02T10:00:00Z"
-        }
-      ]
+```
+GET /v1/notifications?category=IMPORTANT&page=1&limit=20
+```
+
+**Query Params:**
+
+| Param | Type | Required | Mặc định | Mô tả |
+|---|---|---|---|---|
+| `category` | string | ❌ | *(tất cả)* | Filter theo tab: `IMPORTANT`, `TRANSACTION`, `ITEM`, `SOCIAL` |
+| `page` | number | ❌ | `1` | Trang hiện tại |
+| `limit` | number | ❌ | `20` | Số item/trang (max 100) |
+
+**Response (200):**
+
+```json
+{
+  "success": true,
+  "message": "Notifications retrieved successfully",
+  "data": {
+    "data": [
+      {
+        "id": "notif-001",
+        "receiver_id": "user-123",
+        "category": "IMPORTANT",
+        "type": "MATCH_FOUND",
+        "title": "Tìm thấy tín hiệu phù hợp",
+        "content": "iPhone 15 có người báo tìm thấy trong bán kính 300m",
+        "metadata": {
+          "distance": "300m",
+          "post_id": "post-123",
+          "item_name": "iPhone 15"
+        },
+        "is_read": false,
+        "created_at": "2026-05-08T10:00:00.000Z"
+      }
+    ],
+    "total_unread": 5,
+    "pagination": {
+      "page": 1,
+      "limit": 20,
+      "total": 42,
+      "totalPages": 3,
+      "hasNextPage": true
     }
-  }
-  ```
+  },
+  "timestamp": "2026-05-08T10:01:00.000Z"
+}
+```
+
+> **⭐ `total_unread`** luôn trả về tổng thông báo chưa đọc của **toàn bộ user** (không bị ảnh hưởng bởi filter `category`). Dùng con số này để hiển thị badge đỏ ở icon 🔔.
 
 ---
 
-## 4. Đánh dấu Đã đọc Tất cả
+### 2.2. Đánh dấu 1 thông báo đã đọc
 
-Dùng khi người dùng xóa dấu chấm đỏ thông báo hoặc vào màn hình danh sách thông báo.
+```
+PATCH /v1/notifications/:id/read
+```
 
-- **Endpoint**: `/api/stream/notifications/mark-read`
-- **Method**: `POST`
-- **Headers**: `Authorization: Bearer <access_token>`
-- **Response Success (200 OK)**:
-  ```json
-  {
-    "success": true,
-    "message": "All notifications marked as read"
-  }
-  ```
+**Params:**
+
+| Param | Type | Mô tả |
+|---|---|---|
+| `id` | string (path) | ID của thông báo cần đánh dấu |
+
+**Response (200):**
+
+```json
+{
+  "success": true,
+  "message": "Notification marked as read",
+  "data": {
+    "id": "notif-001",
+    "receiver_id": "user-123",
+    "category": "IMPORTANT",
+    "type": "MATCH_FOUND",
+    "title": "Tìm thấy tín hiệu phù hợp",
+    "content": "...",
+    "metadata": { "..." },
+    "is_read": true,
+    "created_at": "2026-05-08T10:00:00.000Z"
+  },
+  "timestamp": "2026-05-08T10:05:00.000Z"
+}
+```
+
+**Lỗi có thể gặp:**
+
+| HTTP Code | Nguyên nhân |
+|---|---|
+| `404` | Notification không tồn tại hoặc không thuộc user hiện tại |
 
 ---
 
-## 5. Ghi nhận Hoạt động (Tạo thông báo tự động)
+### 2.3. Đánh dấu TẤT CẢ đã đọc
 
-App có thể chủ động log một hành động để hệ thống tự động sinh thông báo cho bên liên quan.
+```
+POST /v1/notifications/read-all
+```
 
-- **Endpoint**: `/api/stream/activity/:activityType`
-- **Method**: `POST`
-- **URL Params**: `:activityType` có thể là:
-  - `new_message`: Có tin nhắn mới.
-  - `item_found`: Có người quét QR báo tìm thấy món đồ.
-  - `item_returned`: Món đồ đã được trả lại thành công.
-- **Query Params (Metadata)**: Tùy vào loại activity, bạn có thể truyền thêm thông tin.
-  - Ví dụ: `?itemId=abc&finderName=John`
-- **Response Success (200 OK)**:
-  ```json
-  {
-    "success": true,
-    "message": "Activity logged successfully"
-  }
-  ```
+**Body:** Không cần body. Server tự lấy user từ token.
+
+**Response (200):**
+
+```json
+{
+  "success": true,
+  "message": "All notifications marked as read",
+  "data": {
+    "updated_count": 12
+  },
+  "timestamp": "2026-05-08T10:05:00.000Z"
+}
+```
+
+> `updated_count` = số thông báo vừa được chuyển từ chưa đọc → đã đọc. Nếu đã đọc hết rồi thì trả về `0`.
 
 ---
 
-## Quy trình tích hợp cho App (Workflow)
+### 2.4. Lấy số thông báo chưa đọc (Nhanh)
 
-1. **Giai đoạn Đăng nhập/Khởi động**:
-   - Bước 1: Gọi `/api/auth/login` (hoặc register).
-   - Bước 2: Gọi `/api/auth/profile` để cập nhật `pushToken` của thiết bị.
-   - Bước 3: Gọi `/api/stream/token` và lưu vào biến toàn cục của App.
+```
+GET /v1/notifications/unread-count
+```
 
-2. **Giai đoạn nhận Thông báo**:
-   - Nếu App đang mở (Foreground): Bộ SDK Stream sẽ tự động bắn Event, App lắng nghe và hiện thông báo in-app.
-   - Nếu App đang đóng (Background): Backend sẽ tự gửi Push Notification thông qua `pushToken` đã lưu.
+**Response (200):**
 
-3. **Giai đoạn Tương tác**:
-   - Khi vào tab Thông báo: Gọi `/api/stream/notifications` để lấy danh sách.
-   - Sau khi xem xong: Gọi `/api/stream/notifications/mark-read`.
+```json
+{
+  "success": true,
+  "message": "Unread notification count retrieved successfully",
+  "data": {
+    "unread_count": 5
+  },
+  "timestamp": "2026-05-08T10:01:00.000Z"
+}
+```
+
+> **Dùng khi nào?** Polling nhẹ để cập nhật badge 🔔 mà không cần load toàn bộ danh sách.
+
+---
+
+## 3. Real-time: Socket.io (Foreground Banner)
+
+Khi App đang mở, server đẩy thông báo mới qua Socket.io.
+
+### Kết nối
+
+```typescript
+import { io } from "socket.io-client";
+
+const socket = io("https://api.findback.vn", {
+  auth: { token: "<access_token>" }
+});
+```
+
+### Lắng nghe event
+
+```typescript
+socket.on("notification:new", (notification) => {
+  // notification = 1 NotificationDTO object (cấu trúc giống mục 1)
+  // → Hiện banner nổi (flash message)
+  // → Cập nhật badge count
+  // → Thêm vào đầu danh sách nếu đang ở màn thông báo
+});
+```
+
+### Ví dụ data nhận được:
+
+```json
+{
+  "id": "notif-007",
+  "receiver_id": "user-123",
+  "category": "TRANSACTION",
+  "type": "ESCROW_LOCKED",
+  "title": "Giao dịch an toàn",
+  "content": "500.000đ đã được khóa trong escrow",
+  "metadata": {
+    "amount": 500000,
+    "transaction_id": "txn-789",
+    "status": "locked",
+    "post_id": "post-456"
+  },
+  "is_read": false,
+  "created_at": "2026-05-08T12:00:00.000Z"
+}
+```
+
+---
+
+## 4. Push Notification: FCM (Background)
+
+Khi App đang đóng, server gửi push qua Firebase Cloud Messaging.
+
+### FCM Payload structure
+
+```json
+{
+  "notification": {
+    "title": "Giao dịch an toàn",
+    "body": "500.000đ đã được khóa trong escrow"
+  },
+  "data": {
+    "id": "notif-007",
+    "receiver_id": "user-123",
+    "category": "TRANSACTION",
+    "type": "ESCROW_LOCKED",
+    "is_read": "false",
+    "created_at": "2026-05-08T12:00:00.000Z",
+    "metadata": "{\"amount\":500000,\"transaction_id\":\"txn-789\",\"status\":\"locked\",\"post_id\":\"post-456\"}"
+  }
+}
+```
+
+> **Lưu ý:** Trong FCM `data`, tất cả value đều là **string**. `metadata` được JSON.stringify. App cần `JSON.parse(data.metadata)` khi xử lý.
+
+### Priority
+
+| Category | FCM Priority |
+|---|---|
+| `IMPORTANT` | `high` (hiện ngay, đánh thức thiết bị) |
+| `TRANSACTION` | `high` |
+| `ITEM` | `normal` |
+| `SOCIAL` | `normal` |
+
+---
+
+## 5. Gợi ý tích hợp cho App (React Native)
+
+### 5.1. Tab Filtering
+
+```typescript
+// Khi user chuyển tab
+const loadNotifications = async (category?: string, page = 1) => {
+  const params = new URLSearchParams({ page: String(page), limit: "20" });
+  if (category) params.append("category", category);
+
+  const res = await fetch(`${API}/v1/notifications?${params}`, { headers });
+  const json = await res.json();
+
+  // json.data.data        → mảng thông báo
+  // json.data.total_unread → badge đỏ
+  // json.data.pagination   → phân trang
+};
+```
+
+### 5.2. Deep Link từ Notification
+
+```typescript
+const handleNotificationPress = (notification) => {
+  const { type, metadata } = notification;
+
+  switch (type) {
+    case "MATCH_FOUND":
+      navigation.navigate("RadarMap", { postId: metadata.post_id });
+      break;
+    case "PROXIMITY":
+      navigation.navigate("LiveTracking", { postId: metadata.post_id });
+      break;
+    case "NEW_CHAT":
+      navigation.navigate("ChatRoom", { roomId: metadata.room_id });
+      break;
+    case "QR_SCANNED":
+      navigation.navigate("ChatRoom", { roomId: metadata.room_id });
+      break;
+    case "ESCROW_LOCKED":
+    case "REFUNDED":
+    case "RELEASED":
+      navigation.navigate("TransactionDetail", { txnId: metadata.transaction_id });
+      break;
+  }
+
+  // Đánh dấu đã đọc
+  await fetch(`${API}/v1/notifications/${notification.id}/read`, {
+    method: "PATCH", headers
+  });
+};
+```
+
+### 5.3. Empty State
+
+Nếu `data.data` là mảng rỗng `[]`, hiển thị giao diện "Không có thông báo mới" với các card tĩnh (hard-code bên FE): "Bảo mật tài khoản", "Mẹo tìm kiếm", v.v.
+
+---
+
+## 6. Tóm tắt tất cả Endpoints
+
+| Method | Endpoint | Mô tả |
+|---|---|---|
+| `GET` | `/v1/notifications` | Lấy danh sách thông báo (có filter, phân trang) |
+| `GET` | `/v1/notifications/unread-count` | Lấy số thông báo chưa đọc |
+| `PATCH` | `/v1/notifications/:id/read` | Đánh dấu 1 thông báo đã đọc |
+| `POST` | `/v1/notifications/read-all` | Đánh dấu tất cả đã đọc |

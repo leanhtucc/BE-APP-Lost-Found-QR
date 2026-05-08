@@ -34,7 +34,7 @@ export class NotificationRepository {
       where.category = options.category;
     }
 
-    const [notifications, total] = await Promise.all([
+    const [notifications, total, totalUnread] = await Promise.all([
       prisma.notification.findMany({
         where,
         orderBy: {
@@ -44,9 +44,12 @@ export class NotificationRepository {
         take: options.take,
       }),
       prisma.notification.count({ where }),
+      prisma.notification.count({
+        where: { receiverId, isRead: false },
+      }),
     ]);
 
-    return { notifications, total };
+    return { notifications, total, totalUnread };
   }
 
   async findByIdForReceiver(id: string, receiverId: string) {
@@ -65,6 +68,20 @@ export class NotificationRepository {
         isRead: true,
       },
     });
+  }
+
+  async markAllAsRead(receiverId: string): Promise<number> {
+    const result = await prisma.notification.updateMany({
+      where: {
+        receiverId,
+        isRead: false,
+      },
+      data: {
+        isRead: true,
+      },
+    });
+
+    return result.count;
   }
 
   async countUnread(receiverId: string): Promise<number> {

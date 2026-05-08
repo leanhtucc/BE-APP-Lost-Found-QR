@@ -23,6 +23,7 @@ import {
   ScanQRResponse,
   SearchItemsQuery,
   SearchItemsResponse,
+  SelectionSummaryResponse,
   UpdateItemDTO,
 } from "./item.types";
 
@@ -369,6 +370,91 @@ export class ItemService {
         id: guestUser.id,
         displayName: guestDisplayName,
       },
+    };
+  }
+
+  /**
+   * GET /v1/items/:id/selection-summary
+   * Trả về dữ liệu đầy đủ cho box "ĂChi tiết lựa chọn" trước khi kích hoạt Radar.
+   * Bao gồm: tên, mô tả AI, serial mask, badge bảo hiểm.
+   */
+  async getSelectionSummary(
+    itemId: string,
+    userId: string
+  ): Promise<SelectionSummaryResponse> {
+    const item = await itemRepository.findById(itemId);
+
+    if (!item) {
+      throw new AppError("Item not found", 404);
+    }
+
+    if (item.ownerId !== userId) {
+      throw new AppError("You don't have permission to view this item", 403);
+    }
+
+    const attrs: Record<string, string> = (item.details as any) ?? {};
+
+    // --- primary: Màu + Dung lượng ---
+    const parts: string[] = [];
+    if (attrs["color"]) parts.push(attrs["color"]);
+    if (attrs["storage"]) parts.push(attrs["storage"]);
+    const primary = parts.length > 0 ? parts.join(" - ") : item.name;
+
+    // --- secondary: Mô tả AI ---
+    // Ưu tiên description AI, fallback sang description thông thường, rồi mới đến tững attr
+    let secondary = attrs["ai_description"] || item.description || "";
+    if (!secondary && attrs["color"]) {
+      // Dựng description từ các trường có sẵn
+      const descParts: string[] = [];
+      if (attrs["color"]) descParts.push(attrs["color"]);
+      if (attrs["storage"]) descParts.push(attrs["storage"]);
+      if (attrs["model"]) descParts.push(attrs["model"]);
+      secondary = descParts.join(" - ");
+    }
+
+    // --- Serial masking: hiện 4 đầu + 3 cuối ---
+    const rawSerial: string | undefined = attrs["serial"] || attrs["imei"];
+    let maskedSerial: string | null = null;
+    if (rawSerial && rawSerial.length > 7) {
+      maskedSerial = `${rawSerial.substring(0, 4)}...${rawSerial.substring(rawSerial.length - 3)}`;
+    } else if (rawSerial) {
+      maskedSerial = rawSerial; // Quá ngắn, hiện toàn bộ
+    }
+
+    // --- ai_visual_tags: Ưu tiên từ JSONB, fallback sinh từ color + storage ---
+    let aiVisualTags: string[] = [];
+    if (Array.isArray(attrs["ai_visual_tags"])) {
+      aiVisualTags = attrs["ai_visual_tags"] as unknown as string[];
+    } else if (typeof attrs["ai_visual_tags"] === "string") {
+      try { aiVisualTags = JSON.parse(attrs["ai_visual_tags"]); } catch { /* ignore */ }
+    }
+    if (aiVisualTags.length === 0 && attrs["color"]) {
+      aiVisualTags = [attrs["color"]];
+      if (attrs["storage"]) aiVisualTags.push(attrs["storage"]);
+    }
+
+    // --- Insurance badge ---
+    const hasInsurance = item.hasInsurance ?? false;
+    const badge = hasInsurance
+      ? { label: "CÓ BẢO HIỂM", color_theme: "SUCCESS" as const }
+      : { label: "STANDARD PROTECTION", color_theme: "STANDARD" as const };
+
+    return {
+      id: item.id,
+      name: item.name,
+      category: item.category,
+      image_url: item.imagePublicUrl ?? undefined,
+      display_text: {
+        primary,
+        secondary,
+        serial_number: maskedSerial,
+      },
+      status_badges: {
+        has_insurance: hasInsurance,
+        label: badge.label,
+        color_theme: badge.color_theme,
+      },
+      ai_visual_tags: aiVisualTags,
     };
   }
 

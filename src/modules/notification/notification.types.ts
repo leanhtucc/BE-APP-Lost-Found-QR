@@ -19,7 +19,8 @@ export interface NotificationListQuery {
 }
 
 export interface NotificationListResponse {
-  notifications: NotificationDTO[];
+  data: NotificationDTO[];
+  total_unread: number;
   pagination: {
     page: number;
     limit: number;
@@ -27,6 +28,10 @@ export interface NotificationListResponse {
     totalPages: number;
     hasNextPage: boolean;
   };
+}
+
+export interface MarkAllReadResponse {
+  updated_count: number;
 }
 
 export interface CreateNotificationInput {
