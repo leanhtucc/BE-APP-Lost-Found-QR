@@ -3,14 +3,8 @@ import { z } from "zod";
 // POST /v1/radar/simulate
 export const radarSimulateSchema = z.object({
   body: z.object({
-    lat: z
-      .number({ required_error: "lat is required" })
-      .min(-90)
-      .max(90),
-    lng: z
-      .number({ required_error: "lng is required" })
-      .min(-180)
-      .max(180),
+    lat: z.number({ required_error: "lat is required" }).min(-90).max(90),
+    lng: z.number({ required_error: "lng is required" }).min(-180).max(180),
     radius: z
       .number()
       .int()

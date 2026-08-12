@@ -24,10 +24,7 @@ const itemController = new ItemController();
 router.get("/scan/:itemId", validate(scanQRSchema), itemController.scanQRCode);
 
 // POST /api/scan/guest-init - Khởi tạo chat ẩn danh (Guest Flow B+)
-router.post(
-  "/scan/guest-init",
-  itemController.initGuestChat
-);
+router.post("/scan/guest-init", itemController.initGuestChat);
 
 // Protected routes (cần authentication)
 // POST /api/items - Tạo item mới

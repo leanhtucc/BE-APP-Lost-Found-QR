@@ -1,36 +1,71 @@
 generator client {
-  provider = "prisma-client-js"
+  provider     = "prisma-client"
+  output       = "../src/generated/prisma"
+  moduleFormat = "cjs"
 }
 
 datasource db {
   provider = "postgresql"
-  url      = env("DATABASE_URL")
+}
+
+enum ItemStatus {
+  SAFE
+  PENDING_PAYMENT
+  LOST
+  FOUND
+  RESOLVED
+}
+
+enum PostStatus {
+  PENDING_PAYMENT
+  SEARCHING
+  FOUND
+  EXPIRED_REFUNDED
+  CANCELLED
+  RESOLVED
+}
+
+enum EscrowStatus {
+  HOLDING
+  RELEASED
+  REFUNDED
+}
+
+enum PaymentProvider {
+  VNPAY
+  MOMO
+}
+
+enum AiMessageRole {
+  USER
+  ASSISTANT
+  SYSTEM
 }
 
 model User {
-  id                     String    @id @default(cuid())
-  uid                    String    @unique
-  memberId               String    @unique @default(cuid()) // Định danh người dùng toàn hệ thống
-  displayName            String
-  email                  String    @unique
-  photoURL               String?
-  pushToken              String?
-  phoneNumber            String?
+  id          String  @id @default(cuid())
+  uid         String  @unique
+  memberId    String  @unique @default(cuid()) // Định danh người dùng toàn hệ thống
+  displayName String
+  email       String  @unique
+  photoURL    String?
+  pushToken   String?
+  phoneNumber String?
 
   // Trust & Reputation
-  trustScore             Float     @default(5.0) // Mức độ uy tín (0-5)
-  totalReturned          Int       @default(0)   // Số đồ đã trả
-  itemsLost              Int       @default(0)   // Số đồ bị mất
+  trustScore    Float @default(5.0) // Mức độ uy tín (0-5)
+  totalReturned Int   @default(0) // Số đồ đã trả
+  itemsLost     Int   @default(0) // Số đồ bị mất
 
   // Thông tin cá nhân mở rộng
-  addressCity            String?   // Địa chỉ thành phố
-  bio                    String?   // Tiểu sử
+  addressCity String? // Địa chỉ thành phố
+  bio         String? // Tiểu sử
 
   // Xác thực
-  isVerified             Boolean   @default(false) // Đánh dấu tài khoản đã xác minh
+  isVerified Boolean @default(false) // Đánh dấu tài khoản đã xác minh
 
   // Cài đặt riêng tư (JSONB)
-  privacySettings        Json?     @default("{}") // {"showPhone": true, "showEmail": false}
+  privacySettings Json? @default("{}") // {"showPhone": true, "showEmail": false}
 
   // Auth fields
   password               String?
@@ -43,14 +78,15 @@ model User {
   role                   String    @default("user")
 
   // Timestamps
-  createdAt              DateTime  @default(now())
-  updatedAt              DateTime  @updatedAt
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
 
   // Relations
-  ownedItems             Item[]    @relation("ItemOwner")
-  locations              UserLocation[]
-  posts                  Post[]
-  notifications          Notification[]
+  ownedItems      Item[]           @relation("ItemOwner")
+  locations       UserLocation[]
+  posts           Post[]
+  notifications   Notification[]
+  aiConversations AiConversation[]
 
   @@index([uid])
   @@index([email])
@@ -86,35 +122,35 @@ model Notification {
 }
 
 model Item {
-  id                String   @id @default(cuid())
-  itemId            String   @unique @default(cuid())
+  id                String                                @id @default(cuid())
+  itemId            String                                @unique @default(cuid())
   ownerId           String
   name              String
   category          String
   description       String?
-  status            String   @default("SAFE") // SAFE, PENDING_PAYMENT, LOST, FOUND, RESOLVED
+  status            ItemStatus                            @default(SAFE)
   lostMessage       String?
   qrCodeUrl         String?
-  securityToken     String   @unique
+  securityToken     String                                @unique
   latitude          Float?
   longitude         Float?
-  locationGeoHash   String?  @map("location_geohash") @db.VarChar(16)
+  locationGeoHash   String?                               @map("location_geohash") @db.VarChar(16)
   location          Unsupported("geography(Point,4326)")?
-  locationUpdatedAt DateTime? @map("location_updated_at")
-  createdAt         DateTime @default(now())
-  updatedAt         DateTime @updatedAt
+  locationUpdatedAt DateTime?                             @map("location_updated_at")
+  createdAt         DateTime                              @default(now())
+  updatedAt         DateTime                              @updatedAt
   imagePublicUrl    String?
   lastSeenLocation  String?
   securityPin       String?
   // Guardian fields
-  qrCodeId          String   @unique @map("qr_code_id") @default(cuid())
-  details           Json?    // {"color": "Titan Đen", "storage": "256GB", "serial": "48A..."}
-  hasInsurance      Boolean  @default(false) @map("has_insurance")
+  qrCodeId          String                                @unique @default(cuid()) @map("qr_code_id")
+  details           Json? // {"color": "Titan Đen", "storage": "256GB", "serial": "48A..."}
+  hasInsurance      Boolean                               @default(false) @map("has_insurance")
   // Lost item coordinates
   lostLat           Float?
   lostLng           Float?
   lostAddress       String?
-  owner             User     @relation("ItemOwner", fields: [ownerId], references: [id], onDelete: Cascade)
+  owner             User                                  @relation("ItemOwner", fields: [ownerId], references: [id], onDelete: Cascade)
   posts             Post[]
 
   @@index([itemId])
@@ -136,24 +172,24 @@ model UserLocation {
 }
 
 model Post {
-  id            String   @id @default(cuid())
-  ownerId       String   @map("owner_id")
-  itemId        String   @map("item_id")
-  lat           Float
-  lng           Float
-  address       String?
-  bountyAmount  Int      @map("bounty_amount")
-  totalPaid     Int      @default(0) @map("total_paid")
+  id           String     @id @default(cuid())
+  ownerId      String     @map("owner_id")
+  itemId       String     @map("item_id")
+  lat          Float
+  lng          Float
+  address      String?
+  bountyAmount Int        @map("bounty_amount")
+  totalPaid    Int        @default(0) @map("total_paid")
   // PENDING_PAYMENT → SEARCHING → FOUND | EXPIRED_REFUNDED | CANCELLED | RESOLVED
-  status        String   @default("PENDING_PAYMENT")
-  description   String?
+  status       PostStatus @default(PENDING_PAYMENT)
+  description  String?
   // Guardian Radar fields
-  radarConfig   Json?    @map("radar_config")    // {"radius": 500, "duration_hours": 24}
-  createdAt     DateTime @default(now())
-  updatedAt     DateTime @updatedAt
+  radarConfig  Json?      @map("radar_config") // {"radius": 500, "duration_hours": 24}
+  createdAt    DateTime   @default(now())
+  updatedAt    DateTime   @updatedAt
 
-  owner   User   @relation(fields: [ownerId], references: [id])
-  item    Item   @relation(fields: [itemId], references: [id])
+  owner User @relation(fields: [ownerId], references: [id], onDelete: Cascade)
+  item  Item @relation(fields: [itemId], references: [id], onDelete: Cascade)
 
   escrowTransactions EscrowTransaction[]
 
@@ -165,17 +201,44 @@ model Post {
 }
 
 model EscrowTransaction {
-  id              String   @id @default(cuid())
-  postId          String   @map("post_id")
+  id              String          @id @default(cuid())
+  postId          String          @map("post_id")
   amount          Int
-  provider        String   // VNPAY, MOMO
-  status          String   @default("HOLDING") // HOLDING, RELEASED, REFUNDED
-  transactionCode String?  @map("transaction_code")
-  createdAt       DateTime @default(now())
-  updatedAt       DateTime @updatedAt
+  provider        PaymentProvider
+  status          EscrowStatus    @default(HOLDING)
+  transactionCode String?         @map("transaction_code")
+  createdAt       DateTime        @default(now())
+  updatedAt       DateTime        @updatedAt
 
-  post Post @relation(fields: [postId], references: [id])
+  post Post @relation(fields: [postId], references: [id], onDelete: Cascade)
 
+  @@unique([provider, transactionCode])
   @@index([postId])
   @@index([status])
+}
+
+model AiConversation {
+  id        String      @id @default(cuid())
+  userId    String      @map("user_id")
+  title     String?
+  createdAt DateTime    @default(now()) @map("created_at")
+  updatedAt DateTime    @updatedAt @map("updated_at")
+  user      User        @relation(fields: [userId], references: [id], onDelete: Cascade)
+  messages  AiMessage[]
+
+  @@index([userId, updatedAt])
+}
+
+model AiMessage {
+  id             String         @id @default(cuid())
+  conversationId String         @map("conversation_id")
+  role           AiMessageRole
+  content        String
+  inputTokens    Int?           @map("input_tokens")
+  outputTokens   Int?           @map("output_tokens")
+  metadata       Json?
+  createdAt      DateTime       @default(now()) @map("created_at")
+  conversation   AiConversation @relation(fields: [conversationId], references: [id], onDelete: Cascade)
+
+  @@index([conversationId, createdAt])
 }

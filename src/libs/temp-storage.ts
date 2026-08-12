@@ -10,6 +10,7 @@ interface PendingRegistration {
   photoURL?: string;
   phoneNumber?: string;
   verificationCode: string;
+  verificationAttempts: number;
   expiresAt: Date;
   createdAt: Date;
 }

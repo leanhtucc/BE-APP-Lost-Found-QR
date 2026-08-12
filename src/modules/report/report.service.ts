@@ -70,7 +70,8 @@ export class ReportService {
     // Verify item ownership and eligibility
     const item = await prisma.item.findUnique({ where: { id: itemId } });
     if (!item) throw new AppError("Item not found", 404);
-    if (item.ownerId !== userId) throw new AppError("You do not own this item", 403);
+    if (item.ownerId !== userId)
+      throw new AppError("You do not own this item", 403);
     if (item.status !== "SAFE") {
       throw new AppError(
         `Item cannot be reported: current status is ${item.status}`,
@@ -234,7 +235,12 @@ export class ReportService {
 
       await tx.item.update({
         where: { id: itemId },
-        data: { status: "SAFE", lostLat: null, lostLng: null, lostAddress: null },
+        data: {
+          status: "SAFE",
+          lostLat: null,
+          lostLng: null,
+          lostAddress: null,
+        },
       });
     });
 
@@ -309,14 +315,20 @@ export class ReportService {
     );
 
     await prisma.$transaction(async (tx: any) => {
-      await tx.post.update({ where: { id: post.id }, data: { status: "RESOLVED" } });
+      await tx.post.update({
+        where: { id: post.id },
+        data: { status: "RESOLVED" },
+      });
       if (holdingTx) {
         await tx.escrowTransaction.update({
           where: { id: holdingTx.id },
           data: { status: "RELEASED" },
         });
       }
-      await tx.item.update({ where: { id: itemId }, data: { status: "RESOLVED" } });
+      await tx.item.update({
+        where: { id: itemId },
+        data: { status: "RESOLVED" },
+      });
     });
 
     const finder = await prisma.user.findUnique({
@@ -371,7 +383,9 @@ export class ReportService {
     radiusMeters: number
   ): Promise<void> {
     if (!admin.apps.length) {
-      logger.warn("Firebase Admin SDK not initialised – skipping FCM broadcast");
+      logger.warn(
+        "Firebase Admin SDK not initialised – skipping FCM broadcast"
+      );
       return;
     }
 

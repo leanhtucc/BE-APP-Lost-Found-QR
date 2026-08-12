@@ -19,12 +19,14 @@ dist/
 
 # Prisma generated files
 /generated/prisma
+/src/generated/prisma/
 
 # Uploads folder
 uploads/
 public/uploads/
 
-firebase/api-phone-number-for-firebase-adminsdk-fbsvc-6472cb491d.json
+# Firebase service-account private keys
+firebase/*.json
 
 # OS files
 .DS_Store

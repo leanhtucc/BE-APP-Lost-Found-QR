@@ -22,12 +22,6 @@ function overwriteMutableObject(target: unknown, source: unknown): void {
 export function validate(schema: ZodSchema) {
   return async (req: Request, res: Response, next: NextFunction) => {
     try {
-      console.log("[VALIDATION] Incoming request data:", {
-        body: req.body,
-        query: req.query,
-        params: req.params,
-      });
-
       const parsedParams = await schema.parseAsync({
         body: req.body,
         query: req.query,
@@ -54,16 +48,9 @@ export function validate(schema: ZodSchema) {
         }
       }
 
-      console.log("[VALIDATION] ✅ Validation passed");
       next();
     } catch (error: any) {
       const issues = error?.issues || error?.errors;
-
-      console.error("[VALIDATION] ❌ Validation failed:", {
-        errors: issues,
-        message: error.message,
-        receivedData: req.body,
-      });
 
       return ResponseUtil.badRequest(
         res,

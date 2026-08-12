@@ -1,12 +1,5 @@
 import jwt from "jsonwebtoken";
-
-/**
- * JWT UTILITY
- * - Tạo và verify JWT tokens
- */
-
-const JWT_SECRET = process.env.JWT_SECRET || "your-secret-key";
-const JWT_EXPIRES_IN = process.env.JWT_EXPIRES_IN || "7d";
+import { ENV } from "../config/env";
 
 export function generateToken(payload: {
   id: string;
@@ -15,17 +8,13 @@ export function generateToken(payload: {
 }): string {
   return jwt.sign(
     payload,
-    JWT_SECRET as jwt.Secret,
+    ENV.JWT_SECRET as jwt.Secret,
     {
-      expiresIn: JWT_EXPIRES_IN,
+      expiresIn: ENV.JWT_EXPIRES_IN,
     } as jwt.SignOptions
   );
 }
 
 export function verifyToken(token: string) {
-  try {
-    return jwt.verify(token, JWT_SECRET);
-  } catch (error) {
-    throw new Error("Invalid token");
-  }
+  return jwt.verify(token, ENV.JWT_SECRET);
 }

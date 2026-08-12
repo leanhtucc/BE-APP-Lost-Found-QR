@@ -230,11 +230,23 @@ export class ItemController {
       const { itemId, phoneNumber, lat, lng } = req.body;
 
       if (!itemId || !phoneNumber) {
-        return ResponseUtil.badRequest(res, "Item ID and Phone Number are required");
+        return ResponseUtil.badRequest(
+          res,
+          "Item ID and Phone Number are required"
+        );
       }
 
-      const result = await itemService.initGuestChat(itemId, phoneNumber, lat, lng);
-      return ResponseUtil.success(res, result, "Guest session created successfully");
+      const result = await itemService.initGuestChat(
+        itemId,
+        phoneNumber,
+        lat,
+        lng
+      );
+      return ResponseUtil.success(
+        res,
+        result,
+        "Guest session created successfully"
+      );
     } catch (error) {
       next(error);
     }

@@ -1,4 +1,5 @@
-import { prisma } from "../../libs/prisma"; // assuming a prisma client export
+import { ItemStatus, Prisma } from "../../generated/prisma/client";
+import { prisma } from "../../libs/prisma";
 import { NearbyMapItemPublic, NearbyMapQuery } from "./map.types";
 
 /**
@@ -8,10 +9,24 @@ import { NearbyMapItemPublic, NearbyMapQuery } from "./map.types";
 export async function findNearbyLostItems(
   query: NearbyMapQuery
 ): Promise<NearbyMapItemPublic[]> {
-  const { lat, lng, radius = 5000 } = query;
-  // Earth radius in metres
-  const earthRadius = 6371000;
-  const sql = `
+  const { lat, lng, radius = 5000, limit = 100 } = query;
+  const point = Prisma.sql`ST_SetSRID(ST_MakePoint(${lng}, ${lat}), 4326)::geography`;
+  const rows = await prisma.$queryRaw<
+    Array<{
+      itemId: string;
+      name: string;
+      category: string;
+      status: ItemStatus;
+      lostMessage: string | null;
+      imagePublicUrl: string | null;
+      latitude: number;
+      longitude: number;
+      updatedAt: Date;
+      ownerDisplayName: string;
+      ownerPhotoURL: string | null;
+      distanceMetres: number;
+    }>
+  >(Prisma.sql`
     SELECT
       i."itemId" as "itemId",
       i."name" as "name",
@@ -19,48 +34,37 @@ export async function findNearbyLostItems(
       i."status" as "status",
       i."lostMessage" as "lostMessage",
       i."imagePublicUrl" as "imagePublicUrl",
-      i."lostLat" as "lostLat",
-      i."lostLng" as "lostLng",
+      ST_Y(i."location"::geometry) as "latitude",
+      ST_X(i."location"::geometry) as "longitude",
+      i."updatedAt" as "updatedAt",
       u."displayName" as "ownerDisplayName",
       u."photoURL" as "ownerPhotoURL",
-      ${earthRadius} * acos(
-        cos(radians($1)) * cos(radians(i."lostLat")) *
-        cos(radians(i."lostLng") - radians($2)) +
-        sin(radians($1)) * sin(radians(i."lostLat"))
-      ) as "distanceMetres"
+      ST_Distance(i."location", ${point}) as "distanceMetres"
     FROM "Item" i
     JOIN "User" u ON u."id" = i."ownerId"
-    WHERE i."status" = 'lost'
-      AND i."lostLat" IS NOT NULL
-      AND i."lostLng" IS NOT NULL
-      AND ${earthRadius} * acos(
-        cos(radians($1)) * cos(radians(i."lostLat")) *
-        cos(radians(i."lostLng") - radians($2)) +
-        sin(radians($1)) * sin(radians(i."lostLat"))
-      ) <= $3
-    ORDER BY "distanceMetres" ASC
-    LIMIT 100;
-  `;
-  const rows = await prisma.$queryRawUnsafe(sql, lat, lng, radius);
-  // Prisma returns any[]; map to NearbyItem
-  return (rows as any[]).map(
-    (row): NearbyMapItemPublic => ({
-      itemId: row.itemId,
-      name: row.name,
-      category: row.category,
-      status: row.status,
-      lostMessage: row.lostMessage ?? null,
-      imagePublicUrl: row.imagePublicUrl ?? null,
-      latitude: Number(row.lostLat),
-      longitude: Number(row.lostLng),
-      distanceMeters: Number(row.distanceMetres),
-      reportedAt: row.updatedAt
-        ? new Date(row.updatedAt).toISOString()
-        : new Date().toISOString(),
-      ownerDisplayName: row.ownerDisplayName ?? "",
-      ownerPhotoURL: row.ownerPhotoURL ?? null,
-    })
-  );
+    WHERE i."status" = ${ItemStatus.LOST}::"ItemStatus"
+      AND i."location" IS NOT NULL
+      AND ST_DWithin(i."location", ${point}, ${radius})
+    ORDER BY i."location" <-> ${point}
+    LIMIT ${Math.min(limit, 100)};
+  `);
+
+  return rows.map((row): NearbyMapItemPublic => ({
+    itemId: row.itemId,
+    name: row.name,
+    category: row.category,
+    status: row.status,
+    lostMessage: row.lostMessage ?? null,
+    imagePublicUrl: row.imagePublicUrl ?? null,
+    latitude: Number(row.latitude),
+    longitude: Number(row.longitude),
+    distanceMeters: Number(row.distanceMetres),
+    reportedAt: row.updatedAt
+      ? new Date(row.updatedAt).toISOString()
+      : new Date().toISOString(),
+    ownerDisplayName: row.ownerDisplayName ?? "",
+    ownerPhotoURL: row.ownerPhotoURL ?? null,
+  }));
 }
 
 /**
@@ -71,18 +75,16 @@ export async function countActiveUsersNear(
   lng: number,
   radius: number = 2000
 ): Promise<number> {
-  const earthRadius = 6371000;
-  // count users active in last 1 hour
-  const sql = `
+  const point = Prisma.sql`ST_SetSRID(ST_MakePoint(${lng}, ${lat}), 4326)::geography`;
+  const rows = await prisma.$queryRaw<Array<{ count: bigint }>>(Prisma.sql`
     SELECT count(*) as count
     FROM "UserLocation"
     WHERE "updatedAt" >= NOW() - INTERVAL '1 hour'
-      AND ${earthRadius} * acos(
-        LEAST(1.0, cos(radians($1)) * cos(radians("lat")) *
-        cos(radians("lng") - radians($2)) +
-        sin(radians($1)) * sin(radians("lat")))
-      ) <= $3
-  `;
-  const rows = await prisma.$queryRawUnsafe(sql, lat, lng, radius);
-  return Number((rows as any[])[0]?.count || 0);
+      AND ST_DWithin(
+        ST_SetSRID(ST_MakePoint("lng", "lat"), 4326)::geography,
+        ${point},
+        ${radius}
+      )
+  `);
+  return Number(rows[0]?.count || 0);
 }

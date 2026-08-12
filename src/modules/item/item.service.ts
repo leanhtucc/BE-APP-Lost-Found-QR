@@ -426,7 +426,11 @@ export class ItemService {
     if (Array.isArray(attrs["ai_visual_tags"])) {
       aiVisualTags = attrs["ai_visual_tags"] as unknown as string[];
     } else if (typeof attrs["ai_visual_tags"] === "string") {
-      try { aiVisualTags = JSON.parse(attrs["ai_visual_tags"]); } catch { /* ignore */ }
+      try {
+        aiVisualTags = JSON.parse(attrs["ai_visual_tags"]);
+      } catch {
+        /* ignore */
+      }
     }
     if (aiVisualTags.length === 0 && attrs["color"]) {
       aiVisualTags = [attrs["color"]];

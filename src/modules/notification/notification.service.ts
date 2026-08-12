@@ -1,4 +1,4 @@
-import { Notification } from "@prisma/client";
+import { Notification } from "../../generated/prisma/client";
 import admin from "../../config/firebaseAdmin";
 import { logger } from "../../libs/logger";
 import { prisma } from "../../libs/prisma";

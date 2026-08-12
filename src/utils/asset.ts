@@ -1,5 +1,6 @@
 import * as fs from "fs";
 import * as path from "path";
+import { ENV } from "../config/env";
 
 /**
  * Asset utility for handling static assets (images, logos, etc.)
@@ -18,7 +19,7 @@ export class AssetUtil {
    * @returns Full URL to the asset
    */
   static getAssetUrl(assetPath: string, baseUrl?: string): string {
-    const base = baseUrl || process.env.APP_URL || "http://localhost:3000";
+    const base = baseUrl || ENV.APP_URL;
     return `${base}/public/assets/${assetPath}`;
   }
 

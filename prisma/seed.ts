@@ -1,287 +1,257 @@
-import { PrismaClient } from "@prisma/client";
 import { nanoid } from "nanoid";
+import { ItemStatus, PostStatus } from "../src/generated/prisma/enums";
+import { prisma } from "../src/libs/prisma";
 
-const prisma = new PrismaClient();
+const owner = {
+  uid: "seed-owner-hanoi",
+  email: "owner@example.test",
+  displayName: "Nguyễn Minh Anh",
+  phoneNumber: "+84900000001",
+  photoURL: "https://api.dicebear.com/9.x/avataaars/png?seed=MinhAnh",
+};
 
-const categories = [
-  "tech",
-  "pets",
-  "wallet",
-  "audio",
-  "keys",
-  "documents",
-  "jewelry",
-  "bags",
-  "watches",
+const mapUsers = [
+  {
+    uid: "seed-map-hoan-kiem",
+    email: "map.hoankiem@example.test",
+    displayName: "Trần Hoàng",
+    lat: 21.0285,
+    lng: 105.8542,
+  },
+  {
+    uid: "seed-map-hai-ba-trung",
+    email: "map.hbt@example.test",
+    displayName: "Lê Hà",
+    lat: 21.0157,
+    lng: 105.8414,
+  },
+  {
+    uid: "seed-map-cau-giay",
+    email: "map.caugiay@example.test",
+    displayName: "Phạm Nam",
+    lat: 21.0376,
+    lng: 105.781,
+  },
 ];
 
 const items = [
   {
     name: "iPhone 15 Pro Max",
-    category: "tech",
-    description: "Màu titan xanh, có ốp lưng trong suốt, dán kính cường lực",
-    status: "lost",
-    lostMessage:
-      "Mình làm rơi điện thoại ở khu vực thư viện trường, rất cần gấp vì có dữ liệu quan trọng. Xin hậu tạ!",
+    category: "electronics",
+    description: "Màu titan xanh, ốp lưng trong suốt.",
+    lostMessage: "Làm rơi gần thư viện Đại học Bách Khoa Hà Nội.",
     imagePublicUrl:
       "https://images.unsplash.com/photo-1592286927505-2fd0dc900a12",
     lostLat: 21.0077,
     lostLng: 105.8434,
-    lostAddress: "Khu vực thư viện ĐH Bách Khoa Hà Nội",
-    securityPin: "1234",
+    lostAddress: "Đại học Bách Khoa Hà Nội",
+    bountyAmount: 1_000_000,
   },
   {
     name: "MacBook Pro 14 inch",
-    category: "tech",
-    description:
-      "MacBook Pro M3, màu Space Gray, có sticker Apple trắng sau lưng",
-    status: "lost",
-    lostMessage:
-      "Để quên laptop ở quán cafe phố Bà Triệu. Có toàn bộ công việc quan trọng bên trong!",
+    category: "electronics",
+    description: "MacBook Pro màu Space Gray, có sticker Apple trắng.",
+    lostMessage: "Để quên ở quán cà phê trên phố Bà Triệu.",
     imagePublicUrl:
       "https://images.unsplash.com/photo-1517336714731-489689fd1ca8",
     lostLat: 21.0186,
     lostLng: 105.8482,
     lostAddress: "Phố Bà Triệu, Hai Bà Trưng, Hà Nội",
-    securityPin: "5678",
+    bountyAmount: 1_500_000,
   },
   {
-    name: "Tai nghe AirPods Pro 2",
-    category: "audio",
-    description: "AirPods Pro thế hệ 2, hộp có khắc tên 'Minh Tuấn' phía sau",
-    status: "safe",
-    lostMessage: null,
-    imagePublicUrl:
-      "https://images.unsplash.com/photo-1606841837239-c5a1a4a07af7",
-    securityPin: null,
-  },
-  {
-    name: "Chó Corgi 6 tháng tuổi",
+    name: "Chó Corgi tên Lucky",
     category: "pets",
-    description:
-      "Chó Corgi lông vàng, đeo vòng cổ màu đỏ có tên 'Lucky', rất thân thiện",
-    status: "lost",
-    lostMessage:
-      "Bé Lucky bị thất lạc ở công viên Thống Nhất chiều hôm qua. Gia đình rất lo lắng, mong mọi người giúp đỡ!",
+    description: "Corgi lông vàng, đeo vòng cổ màu đỏ.",
+    lostMessage: "Thất lạc ở công viên Thống Nhất.",
     imagePublicUrl:
       "https://images.unsplash.com/photo-1612536616558-c2c8ab3e1f3e",
     lostLat: 21.0157,
     lostLng: 105.8414,
-    lostAddress: "Công viên Thống Nhất, Hai Bà Trưng, Hà Nội",
-    securityPin: "0000",
+    lostAddress: "Công viên Thống Nhất, Hà Nội",
+    bountyAmount: 800_000,
   },
   {
-    name: "Ví da Louis Vuitton",
+    name: "Ví da màu nâu",
     category: "wallet",
-    description:
-      "Ví nam màu nâu, bên trong có CMND, thẻ ATM và một số tiền mặt",
-    status: "lost",
-    lostMessage:
-      "Làm rơi ví khi đi taxi từ Hoàn Kiếm về Cầu Giấy. Bên trong có giấy tờ quan trọng, mong người nhặt được liên hệ!",
+    description: "Ví nam màu nâu, bên trong có giấy tờ tùy thân.",
+    lostMessage: "Làm rơi khi di chuyển quanh hồ Hoàn Kiếm.",
     imagePublicUrl:
       "https://images.unsplash.com/photo-1627123424574-724758594e93",
     lostLat: 21.0279,
     lostLng: 105.8524,
-    lostAddress: "Hoàn Kiếm, Hà Nội",
-    securityPin: "9999",
+    lostAddress: "Hồ Hoàn Kiếm, Hà Nội",
+    bountyAmount: 500_000,
   },
   {
-    name: "Chìa khóa xe SH 2023",
+    name: "Chìa khóa xe Honda SH",
     category: "keys",
-    description: "Chìa khóa smartkey Honda SH màu đỏ, có móc khóa hình con gấu",
-    status: "lost",
-    lostMessage:
-      "Làm rơi chìa khóa xe ở bãi giữ xe Vincom Trần Duy Hưng. Không có chìa dự phòng, rất cần gấp!",
+    description: "Smartkey Honda có móc khóa hình gấu.",
+    lostMessage: "Làm rơi tại bãi xe Vincom Trần Duy Hưng.",
     imagePublicUrl:
       "https://images.unsplash.com/photo-1582139329536-e7284fece509",
     lostLat: 21.0071,
     lostLng: 105.8018,
     lostAddress: "Vincom Trần Duy Hưng, Cầu Giấy, Hà Nội",
-    securityPin: "2468",
+    bountyAmount: 300_000,
   },
   {
-    name: "Thẻ sinh viên ĐH Bách Khoa",
+    name: "Thẻ sinh viên",
     category: "documents",
-    description: "Thẻ sinh viên có ảnh, tên Nguyễn Văn A, MSV: 2012345",
-    status: "lost",
-    lostMessage:
-      "Mất thẻ sinh viên khi đi thi cuối kỳ. Đang cần gấp để thi các môn tiếp theo. Xin cảm ơn!",
+    description: "Thẻ sinh viên để trong bao nhựa trong suốt.",
+    lostMessage: "Đánh rơi gần Đại học Quốc gia Hà Nội.",
     imagePublicUrl: "https://images.unsplash.com/photo-1553729459-efe14ef6055d",
     lostLat: 21.0376,
     lostLng: 105.781,
-    lostAddress: "Đại học Quốc gia, Cầu Giấy, Hà Nội",
-    securityPin: "1357",
-  },
-  {
-    name: "Apple Watch Series 9",
-    category: "watches",
-    description:
-      "Apple Watch màu đen, dây cao su xanh navy, có khắc tên sau lưng",
-    status: "safe",
-    lostMessage: null,
-    imagePublicUrl:
-      "https://images.unsplash.com/photo-1579586337278-3befd40fd17a",
-    securityPin: null,
+    lostAddress: "Đại học Quốc gia Hà Nội, Cầu Giấy",
+    bountyAmount: 200_000,
   },
   {
     name: "Balo Adidas màu đen",
     category: "bags",
-    description: "Balo Adidas 3 sọc trắng, bên trong có laptop và sách vở",
-    status: "lost",
-    lostMessage:
-      "Để quên balo trên xe bus tuyến 32. Bên trong có laptop và tài liệu quan trọng!",
+    description: "Balo ba sọc trắng, bên trong có sách và sạc laptop.",
+    lostMessage: "Để quên trên xe buýt tuyến 32.",
     imagePublicUrl: "https://images.unsplash.com/photo-1553062407-98eeb64c6a62",
     lostLat: 21.0285,
     lostLng: 105.8542,
-    lostAddress: "Xe bus tuyến 32, Hà Nội",
-    securityPin: "7890",
-  },
-  {
-    name: "Sony WH-1000XM5",
-    category: "audio",
-    description: "Tai nghe chụp tai Sony màu bạc, có hộp đựng màu đen",
-    status: "safe",
-    lostMessage: null,
-    imagePublicUrl:
-      "https://images.unsplash.com/photo-1618366712010-f4ae9c647dcb",
-    securityPin: null,
+    lostAddress: "Khu vực Nhà hát Lớn Hà Nội",
+    bountyAmount: 400_000,
   },
   {
     name: "Vòng tay Pandora",
     category: "jewelry",
-    description:
-      "Vòng tay bạc có charm hình trái tim và ngôi sao, rất có ý nghĩa",
-    status: "lost",
-    lostMessage:
-      "Vòng tay này là quà sinh nhật từ người yêu, mình làm rơi ở Hồ Tây. Mong được tìm lại!",
+    description: "Vòng bạc có charm hình trái tim và ngôi sao.",
+    lostMessage: "Làm rơi khi đi bộ quanh Hồ Tây.",
     imagePublicUrl:
       "https://images.unsplash.com/photo-1599643478518-a784e5dc4c8f",
     lostLat: 21.0478,
     lostLng: 105.8213,
     lostAddress: "Hồ Tây, Hà Nội",
-    securityPin: "1111",
-  },
-  {
-    name: "Passport Việt Nam",
-    category: "documents",
-    description: "Hộ chiếu Việt Nam, tên Trần Thị B, còn hạn đến 2028",
-    status: "lost",
-    lostMessage:
-      "Làm rơi hộ chiếu ở sân bay Nội Bài. Sắp có chuyến bay, rất gấp! Xin hậu tạ hậu hĩnh!",
-    imagePublicUrl:
-      "https://images.unsplash.com/photo-1578575437130-527eed3abbec",
-    lostLat: 21.2187,
-    lostLng: 105.8042,
-    lostAddress: "Sân bay Nội Bài, Hà Nội",
-    securityPin: "2222",
+    bountyAmount: 700_000,
   },
   {
     name: "iPad Pro 12.9 inch",
-    category: "tech",
-    description:
-      "iPad Pro màu bạc, có Apple Pencil 2, ốp lưng Smart Folio xanh dương",
-    status: "lost",
-    lostMessage:
-      "Để quên iPad tại quán Highlands Coffee Lotte Liễu Giai. Có dự án quan trọng chưa backup!",
+    category: "electronics",
+    description: "iPad màu bạc, kèm Apple Pencil và ốp xanh.",
+    lostMessage: "Để quên tại quán cà phê trong Lotte Center.",
     imagePublicUrl: "https://images.unsplash.com/photo-1544244015-0df4b3ffc6b0",
     lostLat: 21.0338,
     lostLng: 105.8133,
-    lostAddress: "Lotte Center Liễu Giai, Ba Đình, Hà Nội",
-    securityPin: "3333",
+    lostAddress: "Lotte Center Liễu Giai, Hà Nội",
+    bountyAmount: 1_200_000,
   },
   {
-    name: "Mèo Anh lông ngắn",
+    name: "Mèo Anh lông ngắn tên Miu",
     category: "pets",
-    description: "Mèo Anh lông xám xanh, mắt vàng, đeo vòng cổ hồng có chuông",
-    status: "lost",
-    lostMessage:
-      "Bé mèo tên Miu bị lạc gần khu vực Times City. Rất nhút nhát, mong được giúp đỡ!",
+    description: "Mèo lông xám, mắt vàng, đeo vòng cổ hồng.",
+    lostMessage: "Thất lạc gần khu đô thị Times City.",
     imagePublicUrl:
       "https://images.unsplash.com/photo-1574158622682-e40e69881006",
     lostLat: 20.9958,
     lostLng: 105.8692,
-    lostAddress: "Khu đô thị Times City, Hai Bà Trưng, Hà Nội",
-    securityPin: "4444",
-  },
-  {
-    name: "Samsung Galaxy Buds 2 Pro",
-    category: "audio",
-    description:
-      "Tai nghe true wireless màu trắng, hộp sạc có vết xước nhỏ ở mặt trước",
-    status: "safe",
-    lostMessage: null,
-    imagePublicUrl:
-      "https://images.unsplash.com/photo-1590658268037-6bf12165a8df",
-    securityPin: null,
+    lostAddress: "Times City, Hai Bà Trưng, Hà Nội",
+    bountyAmount: 600_000,
   },
 ];
 
+async function clearDatabase() {
+  await prisma.aiMessage.deleteMany();
+  await prisma.aiConversation.deleteMany();
+  await prisma.escrowTransaction.deleteMany();
+  await prisma.post.deleteMany();
+  await prisma.notification.deleteMany();
+  await prisma.userLocation.deleteMany();
+  await prisma.item.deleteMany();
+  await prisma.user.deleteMany();
+}
+
 async function main() {
-  console.log("🌱 Starting seed...");
+  console.log("Resetting database and creating fake Hanoi map data...");
+  await clearDatabase();
 
-  // Lấy user đầu tiên để gán làm owner, nếu không có thì tự tạo 1 Dummy User
-  let user = await prisma.user.findFirst();
+  const createdOwner = await prisma.user.create({
+    data: {
+      ...owner,
+      isVerified: true,
+      role: "user",
+    },
+  });
 
-  if (!user) {
-    console.log("⚠️ No user found! Creating a default user...");
-    user = await prisma.user.create({
+  for (const fakeUser of mapUsers) {
+    const user = await prisma.user.create({
       data: {
-        id: "dummy_user_123",
-        uid: "firebase_dummy_uid",
-        email: "dummySeed@gmail.com",
-        displayName: "Guardian Bot",
-        photoURL: "https://api.dicebear.com/7.x/avataaars/png?seed=Guardian",
-      }
-    });
-  }
-
-  console.log(`✅ Found user: ${user.email}`);
-
-  // Xóa các items cũ (optional)
-  await prisma.item.deleteMany({});
-  console.log("🗑️  Cleared old items");
-
-  // Tạo fake items
-  for (const itemData of items) {
-    const qtyId = nanoid(16);
-    const securityToken = nanoid(32);
-
-    await prisma.item.create({
-      data: {
-        qrCodeId: qtyId,
-        securityToken,
-        ownerId: user.id,
-        name: itemData.name,
-        category: itemData.category,
-        status: itemData.status.toUpperCase(),
-        lostMessage: itemData.lostMessage,
-        imagePublicUrl: itemData.imagePublicUrl,
-        lostLat: itemData.lostLat,
-        lostLng: itemData.lostLng,
-        lostAddress: itemData.lostAddress,
-        hasInsurance: itemData.name.includes("iPhone"),
-        details: {
-          description: itemData.description,
-          securityPin: itemData.securityPin,
-          color: "N/A"
-        }
+        uid: fakeUser.uid,
+        email: fakeUser.email,
+        displayName: fakeUser.displayName,
+        isVerified: true,
       },
     });
 
-    console.log(`✅ Created item: ${itemData.name}`);
+    await prisma.userLocation.create({
+      data: {
+        userId: user.id,
+        lat: fakeUser.lat,
+        lng: fakeUser.lng,
+      },
+    });
   }
 
-  console.log(`\n🎉 Seed completed! Created ${items.length} items`);
-  console.log(`\n📊 Test pagination:`);
-  console.log(`   GET /api/items?page=1&limit=5`);
-  console.log(`   GET /api/items?page=2&limit=5`);
-  console.log(`   GET /api/items?status=lost&page=1&limit=5`);
+  for (const [index, fakeItem] of items.entries()) {
+    const itemId = nanoid(16);
+    const createdItem = await prisma.item.create({
+      data: {
+        itemId,
+        qrCodeId: nanoid(16),
+        ownerId: createdOwner.id,
+        name: fakeItem.name,
+        category: fakeItem.category,
+        description: fakeItem.description,
+        status: ItemStatus.LOST,
+        lostMessage: fakeItem.lostMessage,
+        imagePublicUrl: fakeItem.imagePublicUrl,
+        lostLat: fakeItem.lostLat,
+        lostLng: fakeItem.lostLng,
+        lostAddress: fakeItem.lostAddress,
+        latitude: fakeItem.lostLat,
+        longitude: fakeItem.lostLng,
+        locationUpdatedAt: new Date(),
+        securityToken: nanoid(32),
+        qrCodeUrl: `https://findback.app/scan/${itemId}`,
+        hasInsurance: index < 2,
+        details: { source: "seed", color: "N/A" },
+      },
+    });
+
+    await prisma.post.create({
+      data: {
+        ownerId: createdOwner.id,
+        itemId: createdItem.id,
+        lat: fakeItem.lostLat,
+        lng: fakeItem.lostLng,
+        address: fakeItem.lostAddress,
+        bountyAmount: fakeItem.bountyAmount,
+        status: PostStatus.SEARCHING,
+        description: fakeItem.lostMessage,
+        radarConfig: { radius: 5000, durationHours: 72 },
+      },
+    });
+  }
+
+  await prisma.$executeRaw`
+    UPDATE "Item"
+    SET "location" = ST_SetSRID(ST_MakePoint("lostLng", "lostLat"), 4326)::geography
+    WHERE "lostLat" IS NOT NULL AND "lostLng" IS NOT NULL
+  `;
+
+  console.log(
+    `Seed complete: ${items.length} lost items, ${items.length} searching posts, ${mapUsers.length} active map users.`
+  );
 }
 
 main()
-  .catch((e) => {
-    console.error(e);
-    process.exit(1);
+  .catch((error) => {
+    console.error("Seed failed", error);
+    process.exitCode = 1;
   })
   .finally(async () => {
     await prisma.$disconnect();

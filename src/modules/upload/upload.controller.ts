@@ -1,14 +1,12 @@
 import { NextFunction, Request, Response } from "express";
 import { AppError } from "../../middlewares/error.middleware";
 import { ResponseUtil } from "../../utils/response";
-import { UploadService } from "./upload.service";
+import { uploadService } from "./upload.service";
 
 /**
  * Upload Controller
  * Handle file upload requests
  */
-
-const uploadService = new UploadService();
 
 export class UploadController {
   async uploadImage(req: Request, res: Response, next: NextFunction) {
@@ -17,7 +15,7 @@ export class UploadController {
         throw new AppError("No file uploaded", 400);
       }
 
-      const userId = req.user?.id ?? "anonymous";
+      const userId = req.user!.id;
       const file = req.file;
 
       const result = await uploadService.uploadImage(file, userId);

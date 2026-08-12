@@ -7,7 +7,8 @@ export class MapController {
       const lat = Number(req.query.lat);
       const lng = Number(req.query.lng);
       const radius = req.query.radius ? Number(req.query.radius) : undefined;
-      const result = await mapService.getNearby({ lat, lng, radius });
+      const limit = req.query.limit ? Number(req.query.limit) : undefined;
+      const result = await mapService.getNearby({ lat, lng, radius, limit });
       res.json({ success: true, data: result });
     } catch (err) {
       next(err);

@@ -1,4 +1,4 @@
-import { NotificationCategory, Prisma } from "@prisma/client";
+import { NotificationCategory, Prisma } from "../../generated/prisma/client";
 
 export interface NotificationDTO {
   id: string;

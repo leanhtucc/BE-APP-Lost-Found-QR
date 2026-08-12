@@ -5,6 +5,7 @@ export const nearbySchema = z.object({
     lat: z.coerce.number().min(-90).max(90),
     lng: z.coerce.number().min(-180).max(180),
     radius: z.coerce.number().min(100).max(50000).default(5000),
+    limit: z.coerce.number().int().min(1).max(100).default(100),
   }),
 });
 

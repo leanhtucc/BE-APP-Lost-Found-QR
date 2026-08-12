@@ -1,30 +1,19 @@
 version: "3.8"
 
 services:
-  db:
-    image: postgres:15
-    container_name: todolist-db
-    restart: unless-stopped
-    environment:
-      POSTGRES_USER: todolist_user
-      POSTGRES_PASSWORD: todolist_pass
-      POSTGRES_DB: todolist_db
-    volumes:
-      - todolist-data:/var/lib/postgresql/data
-
   api:
     build:
       context: .
       dockerfile: Dockerfile
-    container_name: todolist-api
+    container_name: backend-api
     restart: unless-stopped
-    depends_on:
-      - db
-    environment:
-      DATABASE_URL: postgresql://todolist_user:todolist_pass@db:5432/todolist_db
-      NODE_ENV: production
+    env_file:
+      - .env
     ports:
       - "3000:3000"
-
-volumes:
-  todolist-data:
+    command: sh -c "npx prisma migrate deploy && npm start"
+    healthcheck:
+      test: ["CMD", "wget", "--spider", "-q", "http://localhost:3000/health/live"]
+      interval: 30s
+      timeout: 5s
+      retries: 3

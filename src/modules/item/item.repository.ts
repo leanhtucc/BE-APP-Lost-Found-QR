@@ -71,7 +71,7 @@ export class ItemRepository {
           },
         },
         posts: {
-          where: { status: "ACTIVE" },
+          where: { status: { in: ["SEARCHING", "FOUND"] } },
           orderBy: { createdAt: "desc" },
           take: 1,
         },

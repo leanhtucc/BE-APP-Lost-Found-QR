@@ -1,12 +1,6 @@
-import { Resend } from "resend";
+import nodemailer, { type Transporter } from "nodemailer";
 import { ENV } from "../config/env";
-import { TemplateUtil } from "../utils/template";
 import { logger } from "./logger";
-
-/**
- * Email Service
- * Gửi email thông qua Resend API
- */
 
 interface SendEmailOptions {
   to: string;
@@ -15,59 +9,113 @@ interface SendEmailOptions {
   text?: string;
 }
 
+function escapeHtml(value: string): string {
+  return value.replace(/[&<>'"]/g, (character) => {
+    const entities: Record<string, string> = {
+      "&": "&amp;",
+      "<": "&lt;",
+      ">": "&gt;",
+      "'": "&#39;",
+      '"': "&quot;",
+    };
+    return entities[character] || character;
+  });
+}
+
+function emailLayout(title: string, content: string): string {
+  return `<!doctype html>
+  <html lang="vi">
+    <head><meta charset="utf-8"><meta name="viewport" content="width=device-width"></head>
+    <body style="margin:0;background:#f3f4f6;font-family:Arial,sans-serif;color:#111827">
+      <table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="padding:32px 16px">
+        <tr><td align="center">
+          <table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="max-width:560px;background:#fff;border-radius:16px;overflow:hidden">
+            <tr><td style="padding:28px;background:#4f46e5;color:#fff;text-align:center"><h1 style="margin:0;font-size:24px">${title}</h1></td></tr>
+            <tr><td style="padding:32px;line-height:1.6">${content}</td></tr>
+            <tr><td style="padding:20px 32px;background:#f9fafb;color:#6b7280;text-align:center;font-size:12px">Lost &amp; Found · ${new Date().getFullYear()}</td></tr>
+          </table>
+        </td></tr>
+      </table>
+    </body>
+  </html>`;
+}
+
 class EmailService {
-  private resend: Resend | null = null;
+  private transporter: Transporter | null = null;
 
   constructor() {
-    this.initialize();
+    if (!ENV.SMTP_HOST || !ENV.SMTP_USER || !ENV.SMTP_PASS) {
+      logger.warn(
+        "SMTP email is disabled. Set SMTP_HOST, SMTP_USER and SMTP_PASS."
+      );
+      return;
+    }
+
+    this.transporter = nodemailer.createTransport({
+      host: ENV.SMTP_HOST,
+      port: ENV.SMTP_PORT,
+      secure: ENV.SMTP_SECURE,
+      requireTLS: !ENV.SMTP_SECURE,
+      pool: true,
+      maxConnections: 3,
+      maxMessages: 100,
+      auth: {
+        user: ENV.SMTP_USER,
+        pass: ENV.SMTP_PASS,
+      },
+      connectionTimeout: 10_000,
+      greetingTimeout: 10_000,
+      socketTimeout: 20_000,
+      tls: {
+        rejectUnauthorized: true,
+      },
+    });
+
+    logger.info(
+      `Email service configured with SMTP (${ENV.SMTP_HOST}:${ENV.SMTP_PORT})`
+    );
   }
 
-  private initialize() {
-    try {
-      if (!ENV.RESEND_API_KEY) {
-        logger.warn(
-          "Resend API key not configured. Email sending will be disabled."
-        );
-        return;
-      }
+  isConfigured(): boolean {
+    return this.transporter !== null;
+  }
 
-      this.resend = new Resend(ENV.RESEND_API_KEY);
-      logger.info("Email service initialized successfully with Resend");
+  async verifyConnection(): Promise<boolean> {
+    if (!this.transporter) return false;
+
+    try {
+      await this.transporter.verify();
+      logger.info("SMTP connection verified successfully");
+      return true;
     } catch (error) {
-      logger.error("Failed to initialize email service:", error);
+      logger.error("SMTP connection verification failed", error);
+      return false;
     }
   }
 
   async sendEmail(options: SendEmailOptions): Promise<boolean> {
-    if (!this.resend) {
-      logger.warn("Resend not initialized. Skipping email send.");
-      // Log email content cho development
-      logger.info("Email would be sent:", {
-        to: options.to,
-        subject: options.subject,
-        preview: options.text || options.html.substring(0, 100),
-      });
+    if (!this.transporter) {
+      logger.warn(
+        `Email to ${options.to} was skipped because SMTP is disabled`
+      );
       return false;
     }
 
     try {
-      const { data, error } = await this.resend.emails.send({
-        from: ENV.EMAIL_FROM,
+      const info = await this.transporter.sendMail({
+        from: ENV.SMTP_FROM,
         to: options.to,
         subject: options.subject,
         html: options.html,
         text: options.text,
       });
 
-      if (error) {
-        logger.error("Failed to send email:", error);
-        return false;
-      }
-
-      logger.info(`Email sent successfully to ${options.to}: ${data?.id}`);
+      logger.info(
+        `Email sent successfully to ${options.to}: ${info.messageId}`
+      );
       return true;
     } catch (error) {
-      logger.error("Failed to send email:", error);
+      logger.error(`Failed to send email to ${options.to}`, error);
       return false;
     }
   }
@@ -77,63 +125,37 @@ class EmailService {
     displayName: string,
     code: string
   ): Promise<boolean> {
-    const subject = "🔐 Xác thực tài khoản của bạn - Lost & Found";
-
-    // Load and render template with variables
-    const html = TemplateUtil.loadAndRender(
-      "verification",
-      {
-        displayName,
-        code,
-        year: new Date().getFullYear(),
-      },
-      {
-        useBase64Images: false,
-      }
+    const safeName = escapeHtml(displayName);
+    const safeCode = escapeHtml(code);
+    const html = emailLayout(
+      "Xác thực tài khoản",
+      `<p>Xin chào <strong>${safeName}</strong>,</p>
+       <p>Mã OTP xác thực tài khoản của bạn là:</p>
+       <div style="margin:24px 0;padding:18px;background:#eef2ff;border-radius:12px;text-align:center;font-size:32px;font-weight:700;letter-spacing:8px;color:#4338ca">${safeCode}</div>
+       <p>Mã có hiệu lực trong <strong>15 phút</strong>. Không chia sẻ mã này với bất kỳ ai.</p>
+       <p>Nếu bạn không thực hiện đăng ký, hãy bỏ qua email này.</p>`
     );
-
-    const text = `
-      Xin chào ${displayName},
-
-      Cảm ơn bạn đã đăng ký tài khoản Lost & Found!
-
-      Mã xác thực của bạn là: ${code}
-
-      Mã này có hiệu lực trong 15 phút.
-
-      Nếu bạn không yêu cầu đăng ký, vui lòng bỏ qua email này.
-
-      Trân trọng,
-      Lost & Found Team
-    `;
 
     return this.sendEmail({
       to: email,
-      subject,
+      subject: "Mã OTP xác thực tài khoản Lost & Found",
       html,
-      text,
+      text: `Xin chào ${displayName}. Mã OTP của bạn là ${code}. Mã có hiệu lực trong 15 phút.`,
     });
   }
 
   async sendWelcomeEmail(email: string, displayName: string): Promise<boolean> {
-    const subject = "🎉 Chào mừng bạn đến với Lost & Found!";
-
-    // Load and render template with variables
-    const html = TemplateUtil.loadAndRender(
-      "welcome",
-      {
-        displayName,
-        year: new Date().getFullYear(),
-      },
-      {
-        useBase64Images: false,
-      }
+    const html = emailLayout(
+      "Chào mừng đến với Lost & Found",
+      `<p>Xin chào <strong>${escapeHtml(displayName)}</strong>,</p>
+       <p>Tài khoản của bạn đã được xác thực thành công. Bạn có thể bắt đầu đăng và tìm kiếm đồ thất lạc.</p>`
     );
 
     return this.sendEmail({
       to: email,
-      subject,
+      subject: "Chào mừng bạn đến với Lost & Found",
       html,
+      text: `Xin chào ${displayName}. Tài khoản Lost & Found của bạn đã được xác thực thành công.`,
     });
   }
 
@@ -142,107 +164,21 @@ class EmailService {
     displayName: string,
     resetToken: string
   ): Promise<boolean> {
-    const subject = "🔑 Đặt lại mật khẩu - Lost & Found";
-
-    // Create reset link (Frontend will handle this URL)
-    const resetLink = `${ENV.FRONTEND_URL}/reset-password?token=${resetToken}`;
-
-    const html = `
-      <!DOCTYPE html>
-      <html lang="vi">
-        <head>
-          <meta charset="UTF-8">
-          <meta name="viewport" content="width=device-width, initial-scale=1.0">
-        </head>
-        <body style="margin: 0; padding: 0; font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif; background: linear-gradient(135deg, #667eea 0%, #764ba2 100%); min-height: 100vh;">
-          <table width="100%" cellpadding="0" cellspacing="0" style="padding: 40px 20px;">
-            <tr>
-              <td align="center">
-                <table width="100%" cellpadding="0" cellspacing="0" style="max-width: 520px; background: #ffffff; border-radius: 24px; overflow: hidden; box-shadow: 0 25px 50px -12px rgba(0, 0, 0, 0.25);">
-                  <!-- Header với gradient -->
-                  <tr>
-                    <td style="background: linear-gradient(135deg, #f093fb 0%, #f5576c 100%); padding: 40px 30px; text-align: center;">
-                      <div style="width: 80px; height: 80px; background: rgba(255,255,255,0.2); border-radius: 50%; margin: 0 auto 20px; display: flex; align-items: center; justify-content: center; backdrop-filter: blur(10px);">
-                        <span style="font-size: 40px;">🔑</span>
-                      </div>
-                      <h1 style="color: #ffffff; margin: 0; font-size: 26px; font-weight: 700; text-shadow: 0 2px 4px rgba(0,0,0,0.1);">Đặt lại mật khẩu</h1>
-                      <p style="color: rgba(255,255,255,0.9); margin: 10px 0 0; font-size: 14px;">Bảo mật tài khoản của bạn</p>
-                    </td>
-                  </tr>
-
-                  <!-- Nội dung -->
-                  <tr>
-                    <td style="padding: 40px 35px;">
-                      <p style="font-size: 16px; color: #374151; margin: 0 0 20px; line-height: 1.6;">
-                        Xin chào <strong style="color: #7c3aed;">${displayName}</strong>,
-                      </p>
-
-                      <p style="font-size: 15px; color: #6b7280; margin: 0 0 25px; line-height: 1.6;">
-                        Chúng tôi nhận được yêu cầu đặt lại mật khẩu cho tài khoản của bạn. Nhấn vào nút bên dưới để tiếp tục:
-                      </p>
-
-                      <div style="text-align: center; margin: 30px 0;">
-                        <a href="${resetLink}" style="display: inline-block; padding: 16px 40px; background: linear-gradient(135deg, #667eea 0%, #764ba2 100%); color: #ffffff; text-decoration: none; border-radius: 50px; font-weight: 600; font-size: 15px; box-shadow: 0 10px 25px -5px rgba(102, 126, 234, 0.5); transition: all 0.3s ease;">
-                          ✨ Đặt lại mật khẩu
-                        </a>
-                      </div>
-
-                      <!-- Link backup -->
-                      <div style="background: #f9fafb; border-radius: 12px; padding: 16px; margin: 25px 0;">
-                        <p style="font-size: 12px; color: #9ca3af; margin: 0 0 8px;">Hoặc sao chép link này:</p>
-                        <p style="font-size: 11px; color: #6366f1; margin: 0; word-break: break-all; font-family: monospace;">${resetLink}</p>
-                      </div>
-
-                      <!-- Lưu ý -->
-                      <div style="background: linear-gradient(135deg, #fef3c7 0%, #fde68a 100%); border-radius: 12px; padding: 16px; border-left: 4px solid #f59e0b;">
-                        <p style="font-size: 13px; color: #92400e; margin: 0; font-weight: 600;">⚠️ Lưu ý quan trọng:</p>
-                        <ul style="margin: 10px 0 0; padding-left: 20px; color: #92400e; font-size: 12px; line-height: 1.8;">
-                          <li>Link có hiệu lực trong <strong>30 phút</strong></li>
-                          <li>Chỉ sử dụng được <strong>1 lần</strong></li>
-                          <li>Nếu không phải bạn yêu cầu, vui lòng bỏ qua email này</li>
-                        </ul>
-                      </div>
-                    </td>
-                  </tr>
-
-                  <!-- Footer -->
-                  <tr>
-                    <td style="background: #f9fafb; padding: 25px 35px; text-align: center; border-top: 1px solid #e5e7eb;">
-                      <p style="margin: 0 0 5px; font-size: 13px; color: #6b7280;">Trân trọng,</p>
-                      <p style="margin: 0; font-size: 14px; color: #7c3aed; font-weight: 600;">Lost & Found Team 💜</p>
-                      <p style="margin: 15px 0 0; font-size: 11px; color: #9ca3af;">© ${new Date().getFullYear()} Lost & Found. All rights reserved.</p>
-                    </td>
-                  </tr>
-                </table>
-              </td>
-            </tr>
-          </table>
-        </body>
-      </html>
-    `;
-
-    const text = `
-      Xin chào ${displayName},
-
-      Chúng tôi nhận được yêu cầu đặt lại mật khẩu cho tài khoản của bạn.
-
-      Vui lòng truy cập link sau để đặt lại mật khẩu:
-      ${resetLink}
-
-      ⚠️ Lưu ý:
-      - Link này chỉ có hiệu lực trong 30 phút
-      - Chỉ sử dụng được 1 lần
-      - Nếu bạn không yêu cầu đặt lại mật khẩu, vui lòng bỏ qua email này
-
-      Trân trọng,
-      Lost & Found Team
-    `;
+    const resetLink = `${ENV.FRONTEND_URL}/reset-password?token=${encodeURIComponent(resetToken)}`;
+    const html = emailLayout(
+      "Đặt lại mật khẩu",
+      `<p>Xin chào <strong>${escapeHtml(displayName)}</strong>,</p>
+       <p>Bạn vừa yêu cầu đặt lại mật khẩu. Liên kết dưới đây có hiệu lực trong 30 phút:</p>
+       <p style="text-align:center;margin:28px 0"><a href="${escapeHtml(resetLink)}" style="display:inline-block;padding:14px 24px;border-radius:10px;background:#4f46e5;color:#fff;text-decoration:none;font-weight:600">Đặt lại mật khẩu</a></p>
+       <p style="font-size:12px;word-break:break-all;color:#6b7280">${escapeHtml(resetLink)}</p>
+       <p>Nếu bạn không yêu cầu thao tác này, hãy bỏ qua email.</p>`
+    );
 
     return this.sendEmail({
       to: email,
-      subject,
+      subject: "Đặt lại mật khẩu Lost & Found",
       html,
-      text,
+      text: `Xin chào ${displayName}. Đặt lại mật khẩu tại: ${resetLink}. Liên kết có hiệu lực trong 30 phút.`,
     });
   }
 }

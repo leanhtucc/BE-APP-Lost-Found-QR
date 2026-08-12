@@ -1,4 +1,5 @@
-import { User } from "@prisma/client";
+import { User } from "../../generated/prisma/client";
+import { randomInt } from "crypto";
 import { nanoid } from "nanoid";
 import { ENV } from "../../config/env";
 import admin from "../../config/firebaseAdmin";
@@ -10,7 +11,6 @@ import {
   verifyRefreshToken,
 } from "../../libs/jwt";
 import { logger } from "../../libs/logger";
-import { smsService } from "../../libs/sms";
 import { createStreamUserToken } from "../../libs/stream-chat";
 import { tempStorage } from "../../libs/temp-storage";
 import { AppError } from "../../middlewares/error.middleware";
@@ -83,7 +83,7 @@ export class AuthService {
   }
 
   private generateVerificationCode(): string {
-    return Math.floor(100000 + Math.random() * 900000).toString();
+    return randomInt(100000, 1_000_000).toString();
   }
 
   private getCodeExpiry(): Date {
@@ -137,7 +137,7 @@ export class AuthService {
     // Check if phone has pending registration
     if (tempStorage.has(data.phoneNumber)) {
       throw new AppError(
-        "Verification code already sent. Please check your SMS or wait to resend.",
+        "Verification code already sent. Please check your email or wait to resend.",
         400
       );
     }
@@ -157,13 +157,28 @@ export class AuthService {
       photoURL: data.photoURL,
       phoneNumber: data.phoneNumber,
       verificationCode,
+      verificationAttempts: 0,
       expiresAt,
     });
 
-    // Giả lập lưu thành công mà không gọi SMS backend vì Mobile tự dùng Firebase SDK để gửi SMS
+    const emailSent = await emailService.sendVerificationEmail(
+      data.email,
+      data.displayName,
+      verificationCode
+    );
+
+    if (
+      !emailSent &&
+      (!ENV.SKIP_EMAIL_VERIFICATION || emailService.isConfigured())
+    ) {
+      tempStorage.delete(data.phoneNumber);
+      throw new AppError("Failed to send verification email", 502);
+    }
+
     return {
-      message:
-        "Thông tin đã được lưu tạm. Vui lòng gửi OTP từ Mobile để xác thực.",
+      message: emailSent
+        ? "Mã OTP đã được gửi đến email của bạn."
+        : "SMTP chưa được cấu hình; email OTP đã được bỏ qua trong chế độ development.",
       email: data.email,
     };
   }
@@ -265,6 +280,14 @@ export class AuthService {
 
     // Verify code
     if (pendingReg.verificationCode !== data.code) {
+      pendingReg.verificationAttempts += 1;
+      if (pendingReg.verificationAttempts >= 5) {
+        tempStorage.delete(data.phoneNumber);
+        throw new AppError(
+          "Too many invalid OTP attempts. Please register again.",
+          429
+        );
+      }
       throw new AppError("Invalid OTP code", 400);
     }
 
@@ -283,7 +306,7 @@ export class AuthService {
       displayName: pendingReg.displayName,
       photoURL: pendingReg.photoURL || undefined,
       phoneNumber: pendingReg.phoneNumber || undefined,
-      isVerified: true, // Already verified via SMS
+      isVerified: true,
       verificationCode: undefined,
       verificationCodeExpiry: undefined,
     });
@@ -292,7 +315,7 @@ export class AuthService {
     tempStorage.delete(data.phoneNumber);
 
     logger.info(
-      `User ${user.phoneNumber} created successfully after SMS verification`
+      `User ${user.email} created successfully after email verification`
     );
 
     // Send welcome email (optional, since registered successfully)
@@ -316,7 +339,7 @@ export class AuthService {
     });
 
     return {
-      message: "Phone verified successfully! Account created.",
+      message: "Email verified successfully. Account created.",
       accessToken,
       refreshToken,
     };
@@ -333,27 +356,41 @@ export class AuthService {
       );
     }
 
+    if (Date.now() - pendingReg.createdAt.getTime() < 60_000) {
+      throw new AppError(
+        "Please wait 60 seconds before requesting another OTP.",
+        429
+      );
+    }
+
     // Generate new code
     const verificationCode = this.generateVerificationCode();
     const expiresAt = this.getCodeExpiry();
 
-    // Update temp storage with new code
+    const emailSent = await emailService.sendVerificationEmail(
+      pendingReg.email,
+      pendingReg.displayName,
+      verificationCode
+    );
+    if (
+      !emailSent &&
+      (!ENV.SKIP_EMAIL_VERIFICATION || emailService.isConfigured())
+    ) {
+      throw new AppError("Failed to resend verification email", 502);
+    }
+
     tempStorage.set(data.phoneNumber, {
       ...pendingReg,
       verificationCode,
+      verificationAttempts: 0,
       expiresAt,
     });
 
-    // Send SMS
-    const smsSent = await smsService.sendOTP(
-      data.phoneNumber,
-      verificationCode
-    );
-    if (!smsSent && !ENV.SKIP_EMAIL_VERIFICATION) {
-      throw new AppError("Failed to send SMS OTP", 500);
-    }
-
-    return { message: "Mã OTP mới đã được gửi." };
+    return {
+      message: emailSent
+        ? "Mã OTP mới đã được gửi đến email của bạn."
+        : "SMTP chưa được cấu hình; email OTP đã được bỏ qua trong chế độ development.",
+    };
   }
 
   async updateProfile(

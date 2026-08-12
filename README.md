@@ -15,9 +15,7 @@ API backend cho ứng dụng Lost & Found với TypeScript, Express, Prisma, Pos
 
 **Deploy lên Render.com miễn phí trong 10 phút:**
 
-- 📖 [RENDER_DEPLOY_GUIDE.md](RENDER_DEPLOY_GUIDE.md) - Hướng dẫn chi tiết
-- ✅ [RENDER_CHECKLIST.md](RENDER_CHECKLIST.md) - Checklist đầy đủ
-- 🧪 Test deployment: `.\test-render-deployment.ps1 https://your-app.onrender.com`
+- 📖 [DOCKER_DEPLOY.md](docs/DOCKER_DEPLOY.md) - Hướng dẫn deploy
 
 ## 📁 Cấu trúc Project
 
@@ -276,10 +274,7 @@ Authorization: Bearer {token}
 
 **📚 Chi tiết đầy đủ:**
 
-- [CHAT_API_DOCS.md](CHAT_API_DOCS.md) - API Documentation
-- [CHAT_QUICK_REFERENCE.md](CHAT_QUICK_REFERENCE.md) - Quick Reference
-- [CHAT_IMPLEMENTATION_GUIDE.md](CHAT_IMPLEMENTATION_GUIDE.md) - Implementation Guide
-- [CHAT_OVERVIEW.md](CHAT_OVERVIEW.md) - System Overview
+- [CHAT_API.md](docs/CHAT_API.md) - API Documentation
 
 ## 🛠️ Tech Stack
 
@@ -316,20 +311,20 @@ npm run prisma:studio    # Mở Prisma Studio
 
 ### General
 
-- [GUIDE.md](GUIDE.md) - Hướng dẫn chi tiết cách code API
+- [GUIDE.md](docs/GUIDE.md) - Hướng dẫn chi tiết cách code API
 - [Prisma Docs](https://www.prisma.io/docs)
 - [Express Docs](https://expressjs.com/)
 
 ### Authentication
 
-- [AUTH_API_EXAMPLES.md](AUTH_API_EXAMPLES.md) - Auth API Examples
-- [EMAIL_VERIFICATION.md](EMAIL_VERIFICATION.md) - Email Verification Guide
-- [PASSWORD_RESET_API.md](PASSWORD_RESET_API.md) - 🔐 **Password Reset API Guide**
+- [AUTH_API_EXAMPLES.md](docs/AUTH_API_EXAMPLES.md) - Auth API Examples
+- [EMAIL_VERIFICATION.md](docs/EMAIL_VERIFICATION.md) - Email Verification Guide
+- [PASSWORD_RESET_API.md](docs/PASSWORD_RESET_API.md) - 🔐 **Password Reset API Guide**
 - [GOOGLE_AUTH.md](docs/GOOGLE_AUTH.md) - Google OAuth Setup
 
 ### Chat System
 
-- [STREAM_CHAT_GUIDE.md](STREAM_CHAT_GUIDE.md) - 🔥 **Stream Chat Integration Guide**
+- [CHAT_API.md](docs/CHAT_API.md) - 🔥 **Stream Chat Integration Guide**
 
 ## 💬 Stream Chat Features
 

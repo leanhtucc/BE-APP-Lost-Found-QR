@@ -61,7 +61,7 @@ export class AuthRepository {
   async updateLastLogin(id: string) {
     return prisma.user.update({
       where: { id },
-      data: { lastLogin: new Date() }
+      data: { lastLogin: new Date() },
     });
   }
 

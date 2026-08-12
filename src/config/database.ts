@@ -1,21 +1,19 @@
-import { PrismaClient } from "@prisma/client";
-import { ENV, isDevelopment } from "./env";
+import { logger } from "../libs/logger";
+import { prisma } from "../libs/prisma";
 
-export const prisma = new PrismaClient({
-  log: isDevelopment ? ["query", "error", "warn"] : ["error"],
-});
+export { prisma };
 
 export async function connectDatabase() {
   try {
     await prisma.$connect();
-    console.log("✅ Database connected successfully");
+    logger.success("Database connected successfully");
   } catch (error) {
-    console.error("❌ Database connection failed:", error);
-    process.exit(1);
+    logger.error("Database connection failed", error);
+    throw error;
   }
 }
 
 export async function disconnectDatabase() {
   await prisma.$disconnect();
-  console.log("🔌 Database disconnected");
+  logger.info("Database disconnected");
 }

@@ -9,6 +9,8 @@ import notificationRoutes from "./modules/notification/notification.routes";
 import reportRoutes from "./modules/report/report.routes";
 import streamRoutes from "./modules/stream/stream.routes";
 import uploadRoutes from "./modules/upload/upload.routes";
+import radarRoutes from "./modules/radar/radar.routes";
+import { prisma } from "./libs/prisma";
 
 /**
  * Application Routes
@@ -26,6 +28,23 @@ router.get("/", (req: Request, res: Response) => {
   });
 });
 
+router.get("/health/live", (_req: Request, res: Response) => {
+  res.json({ success: true, status: "alive" });
+});
+
+router.get("/health/ready", async (_req: Request, res: Response) => {
+  try {
+    await prisma.$queryRaw`SELECT 1`;
+    res.json({ success: true, status: "ready", database: "connected" });
+  } catch {
+    res.status(503).json({
+      success: false,
+      status: "not_ready",
+      database: "disconnected",
+    });
+  }
+});
+
 // API Routes
 router.use(`${ENV.API_PREFIX}/auth`, authRoutes);
 router.use(`${ENV.API_PREFIX}/upload`, uploadRoutes);
@@ -34,6 +53,7 @@ router.use(`${ENV.API_PREFIX}/map`, mapRoutes);
 router.use(`${ENV.API_PREFIX}/notifications`, notificationRoutes);
 router.use(`${ENV.API_PREFIX}/home`, homeRoutes);
 router.use(`${ENV.API_PREFIX}/reports`, reportRoutes);
+router.use(`${ENV.API_PREFIX}/radar`, radarRoutes);
 router.use(ENV.API_PREFIX, itemRoutes); // Item routes (/items, /scan)
 
 // v1 contract routes
@@ -41,5 +61,6 @@ router.use("/v1/ai", aiRoutes);
 router.use("/v1/reports", reportRoutes);
 router.use("/v1/map", mapRoutes);
 router.use("/v1/notifications", notificationRoutes);
+router.use("/v1/radar", radarRoutes);
 
 export default router;

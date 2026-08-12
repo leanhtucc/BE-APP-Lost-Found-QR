@@ -14,8 +14,6 @@ export class AuthController {
   // POST /api/auth/register - Đăng ký tài khoản mới
   async register(req: Request, res: Response, next: NextFunction) {
     try {
-      console.log("[AUTH CONTROLLER] Register request received:", req.body);
-
       const { email, password, displayName, photoURL, phoneNumber } =
         req.body as any;
 
@@ -27,10 +25,8 @@ export class AuthController {
         phoneNumber,
       });
 
-      console.log("[AUTH CONTROLLER] ✅ Register successful:", result);
       return ResponseUtil.created(res, result, result.message);
     } catch (error) {
-      console.error("[AUTH CONTROLLER] ❌ Register error:", error);
       next(error);
     }
   }
@@ -128,7 +124,7 @@ export class AuthController {
     }
   }
 
-  // POST /api/auth/verify-otp - Xác thực SĐT qua SMS code
+  // POST /api/auth/verify-otp - Xác thực đăng ký bằng OTP email
   async verifyOtp(req: Request, res: Response, next: NextFunction) {
     try {
       const { phoneNumber, code } = req.body as any;
@@ -141,7 +137,7 @@ export class AuthController {
     }
   }
 
-  // POST /api/auth/resend-otp - Gửi lại mã SMS OTP
+  // POST /api/auth/resend-otp - Gửi lại OTP qua email đã đăng ký
   async resendOtp(req: Request, res: Response, next: NextFunction) {
     try {
       const { phoneNumber } = req.body as any;

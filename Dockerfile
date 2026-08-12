@@ -1,4 +1,4 @@
-FROM node:20-alpine
+FROM node:22-alpine
 
 # Install system dependencies + build tools for native modules (bcrypt)
 RUN apk add --no-cache libc6-compat openssl python3 make g++
@@ -10,7 +10,7 @@ COPY package*.json ./
 COPY prisma ./prisma/
 
 # Install dependencies
-RUN npm install
+RUN npm ci
 
 # Copy source code
 COPY . .

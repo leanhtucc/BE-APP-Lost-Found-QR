@@ -44,7 +44,9 @@ export const updateItemSchema = z.object({
       .max(500, "Description must be less than 500 characters")
       .optional()
       .or(z.literal("")),
-    status: z.enum(["SAFE", "PENDING_PAYMENT", "LOST", "FOUND", "RESOLVED"]).optional(),
+    status: z
+      .enum(["SAFE", "PENDING_PAYMENT", "LOST", "FOUND", "RESOLVED"])
+      .optional(),
     lostMessage: z
       .string()
       .max(500, "Lost message must be less than 500 characters")
@@ -140,7 +142,9 @@ export const listItemsSchema = z.object({
     status: z
       .string()
       .transform((val) => val.toUpperCase())
-      .pipe(z.enum(["SAFE", "PENDING_PAYMENT", "LOST", "FOUND", "RESOLVED", "ALL"]))
+      .pipe(
+        z.enum(["SAFE", "PENDING_PAYMENT", "LOST", "FOUND", "RESOLVED", "ALL"])
+      )
       .optional(),
     category: z.enum(ITEM_CATEGORIES).optional(),
     page: z
@@ -175,7 +179,9 @@ export const searchItemsSchema = z.object({
       .string()
       .min(1, "Search query is required")
       .max(100, "Search query must be less than 100 characters"),
-    status: z.enum(["SAFE", "PENDING_PAYMENT", "LOST", "FOUND", "RESOLVED", "ALL"]).optional(),
+    status: z
+      .enum(["SAFE", "PENDING_PAYMENT", "LOST", "FOUND", "RESOLVED", "ALL"])
+      .optional(),
     category: z.enum(ITEM_CATEGORIES).optional(),
     page: z
       .string()

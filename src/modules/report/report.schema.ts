@@ -22,10 +22,7 @@ export const createReportSchema = z.object({
         .max(168, "duration cannot exceed 7 days"),
     }),
     reward: z.object({
-      base_amount: z
-        .number()
-        .int()
-        .min(10000, "Minimum reward is 10,000đ"),
+      base_amount: z.number().int().min(10000, "Minimum reward is 10,000đ"),
       is_custom: z.boolean().default(false),
     }),
   }),

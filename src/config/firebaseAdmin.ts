@@ -1,62 +1,121 @@
-import * as admin from "firebase-admin";
+import {
+  cert,
+  getApps,
+  initializeApp,
+  type ServiceAccount,
+} from "firebase-admin/app";
+import { getAuth } from "firebase-admin/auth";
+import { getMessaging } from "firebase-admin/messaging";
 import fs from "fs";
 import path from "path";
+import { logger } from "../libs/logger";
+import { ENV } from "./env";
 
-const loadServiceAccountFromFile = (
-  serviceAccountPath: string
-): admin.ServiceAccount | null => {
-  const candidatePaths = [
-    path.resolve(process.cwd(), serviceAccountPath),
-    path.resolve(process.cwd(), "firebase", serviceAccountPath),
-    path.resolve(__dirname, "../../", serviceAccountPath),
-    path.resolve(__dirname, "../../firebase", serviceAccountPath),
-  ];
-
-  const existingPath = candidatePaths.find((candidate) =>
-    fs.existsSync(candidate)
-  );
-  if (!existingPath) {
-    console.error(
-      "❌ Firebase service account file not found. Checked paths:",
-      candidatePaths.join(", ")
-    );
-    return null;
-  }
-
-  try {
-    const content = fs.readFileSync(existingPath, "utf8");
-    return JSON.parse(content) as admin.ServiceAccount;
-  } catch (error: any) {
-    console.error(
-      "❌ Failed to read Firebase service account file:",
-      error.message
-    );
-    return null;
-  }
+type RawServiceAccount = {
+  project_id?: string;
+  projectId?: string;
+  client_email?: string;
+  clientEmail?: string;
+  private_key?: string;
+  privateKey?: string;
 };
 
-// Đảm bảo không bị khởi tạo nhiều lần (lỗi phổ biến khi code re-compile)
-if (!admin.apps.length) {
-  const serviceAccountPath =
-    process.env.FIREBASE_CONFIG_PATH ||
-    "firebase/api-phone-number-for-firebase-adminsdk-fbsvc-6472cb491d.json";
+function normalizeServiceAccount(raw: RawServiceAccount): ServiceAccount {
+  const projectId = raw.projectId || raw.project_id;
+  const clientEmail = raw.clientEmail || raw.client_email;
+  const privateKey = (raw.privateKey || raw.private_key || "").replace(
+    /\\n/g,
+    "\n"
+  );
 
-  const serviceAccount = loadServiceAccountFromFile(serviceAccountPath);
+  if (!projectId || !clientEmail || !privateKey) {
+    throw new Error(
+      "Firebase service account must include project ID, client email and private key"
+    );
+  }
 
-  if (serviceAccount) {
-    try {
-      admin.initializeApp({
-        credential: admin.credential.cert(serviceAccount),
-      });
-      console.log("✅ Firebase Admin SDK initialized successfully.");
-    } catch (error: any) {
-      console.error("❌ Failed to initialize Firebase Admin:", error.message);
+  return { projectId, clientEmail, privateKey };
+}
+
+function resolveServiceAccountPath(configPath: string): string | null {
+  const candidates = path.isAbsolute(configPath)
+    ? [configPath]
+    : [
+        path.resolve(process.cwd(), configPath),
+        path.resolve(process.cwd(), "firebase", configPath),
+      ];
+
+  return (
+    [...new Set(candidates)].find((candidate) => fs.existsSync(candidate)) ??
+    null
+  );
+}
+
+function loadServiceAccount(): ServiceAccount | null {
+  if (ENV.FIREBASE_SERVICE_ACCOUNT_JSON) {
+    return normalizeServiceAccount(
+      JSON.parse(ENV.FIREBASE_SERVICE_ACCOUNT_JSON) as RawServiceAccount
+    );
+  }
+
+  if (
+    ENV.FIREBASE_PROJECT_ID &&
+    ENV.FIREBASE_CLIENT_EMAIL &&
+    ENV.FIREBASE_PRIVATE_KEY
+  ) {
+    return normalizeServiceAccount({
+      projectId: ENV.FIREBASE_PROJECT_ID,
+      clientEmail: ENV.FIREBASE_CLIENT_EMAIL,
+      privateKey: ENV.FIREBASE_PRIVATE_KEY,
+    });
+  }
+
+  if (!ENV.FIREBASE_CONFIG_PATH) return null;
+
+  const serviceAccountPath = resolveServiceAccountPath(
+    ENV.FIREBASE_CONFIG_PATH
+  );
+  if (!serviceAccountPath) {
+    throw new Error(
+      `Service account file was not found at ${ENV.FIREBASE_CONFIG_PATH}`
+    );
+  }
+
+  return normalizeServiceAccount(
+    JSON.parse(fs.readFileSync(serviceAccountPath, "utf8")) as RawServiceAccount
+  );
+}
+
+function initializeFirebaseAdmin(): void {
+  if (getApps().length) return;
+
+  try {
+    const serviceAccount = loadServiceAccount();
+    if (!serviceAccount) {
+      logger.info(
+        "Firebase Admin is disabled (no service account is configured)"
+      );
+      return;
     }
-  } else {
-    console.error(
-      "❌ Firebase Admin SDK not initialized. Check FIREBASE_CONFIG_PATH and service account file."
+
+    initializeApp({ credential: cert(serviceAccount) });
+    logger.info("Firebase Admin initialized successfully");
+  } catch (error) {
+    logger.warn(
+      "Firebase Admin is disabled",
+      error instanceof Error ? error.message : error
     );
   }
 }
 
-export default admin;
+initializeFirebaseAdmin();
+
+const firebaseAdmin = {
+  get apps() {
+    return getApps();
+  },
+  auth: getAuth,
+  messaging: getMessaging,
+};
+
+export default firebaseAdmin;

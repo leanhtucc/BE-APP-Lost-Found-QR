@@ -1,4 +1,5 @@
 import { NextFunction, Request, Response } from "express";
+import { ENV } from "../../config/env";
 import { prisma } from "../../libs/prisma";
 import {
   banUserFromChannel,
@@ -50,7 +51,7 @@ export class StreamChatController {
         res,
         {
           token,
-          apiKey: process.env.STREAM_API_KEY,
+          apiKey: ENV.STREAM_API_KEY,
           userId,
         },
         "Stream token generated successfully"
