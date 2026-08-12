@@ -5,7 +5,7 @@ services:
     runtime: node
     region: oregon # or singapore for closer to Vietnam
     plan: free
-    buildCommand: npm ci && npm run prisma:generate && npm run build
+    buildCommand: npm ci --include=dev && npm run build
     startCommand: npm run prisma:deploy && npm start
     healthCheckPath: /health/live
     envVars:
@@ -18,9 +18,13 @@ services:
       - key: DIRECT_URL
         sync: false
       - key: SUPABASE_URL
+        value: https://nbjalqpohrkooxlnrzof.supabase.co
+      - key: SUPABASE_PUBLISHABLE_KEY
+        value: sb_publishable_fpv2xfY1MbPwGOVSC_BWzQ_Nf9yH9yK
+      - key: SUPABASE_SECRET_KEY
         sync: false
-      - key: SUPABASE_SERVICE_ROLE_KEY
-        sync: false
+      - key: SUPABASE_JWKS_URL
+        value: https://nbjalqpohrkooxlnrzof.supabase.co/auth/v1/.well-known/jwks.json
       - key: SUPABASE_STORAGE_BUCKET
         value: item-images
       - key: GOOGLE_API_KEY

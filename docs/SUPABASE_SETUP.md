@@ -1,6 +1,6 @@
 # Supabase backend setup
 
-The backend now uses Supabase PostgreSQL through Prisma 7, Supabase Storage for uploaded images, PostGIS for map queries, and LangChain with Google Gemini for AI features.
+The backend uses Supabase PostgreSQL through Prisma 7, `@supabase/server` for Supabase Auth verification and server clients, Supabase Storage for uploaded images, PostGIS for map queries, and LangChain with Google Gemini for AI features.
 
 ## 1. Configure Supabase
 
@@ -13,8 +13,11 @@ In the Supabase dashboard:
 3. Open **Connect** and copy the session-pooler PostgreSQL URL to `DATABASE_URL`; change its user to `prisma`.
 4. Copy the direct database URL to `DIRECT_URL`; change its user to `prisma`. If the deployment host cannot use IPv6, use an appropriate Supavisor URL for migrations.
 5. Create a **public** Storage bucket named `item-images`.
-6. Copy the project URL and server-side service-role key to `SUPABASE_URL` and `SUPABASE_SERVICE_ROLE_KEY`.
-7. Never expose the service-role key to the mobile or web client.
+6. Copy the project URL to `SUPABASE_URL`.
+7. Copy the public `sb_publishable_...` key to `SUPABASE_PUBLISHABLE_KEY`.
+8. Create a server-side `sb_secret_...` key and store it as `SUPABASE_SECRET_KEY`.
+9. Set `SUPABASE_JWKS_URL` to `https://<project-ref>.supabase.co/auth/v1/.well-known/jwks.json`.
+10. Never expose `SUPABASE_SECRET_KEY` to a mobile/web client or commit it. The project URL, publishable key, and JWKS URL are public configuration.
 
 ```sql
 create user "prisma" with password 'replace-with-a-strong-password' bypassrls createdb;
@@ -30,13 +33,27 @@ alter default privileges for role postgres in schema public grant all on sequenc
 
 Copy `.env.example` to `.env`, then replace all placeholders. The PostgreSQL URLs should include `sslmode=verify-full` so future `pg` versions keep strict certificate verification without an SSL compatibility warning.
 
-## 2. Create the schema and fake map data
+For Render, add `SUPABASE_SECRET_KEY` and the database URLs manually in the service's **Environment** page. The project URL, publishable key, and JWKS URL are declared in `render.yaml`. Variables marked `sync: false` are not populated automatically for an existing Blueprint service.
+
+## 2. Supabase Auth migration behavior
+
+Protected Express routes now accept both token types during migration:
+
+- Existing application JWTs continue to use `JWT_SECRET`.
+- Supabase access tokens are detected by their project issuer and verified with `@supabase/server` against the configured JWKS.
+- A verified Supabase user is provisioned into the Prisma `User` table on the first protected request.
+- If the Supabase email already belongs to a different local user, the request is rejected instead of linking accounts automatically. Add an explicit account-linking flow before migrating those existing users.
+
+Clients send only `Authorization: Bearer <supabase_access_token>`. Do not send the publishable or secret key in place of a user access token.
+
+## 3. Create the schema and fake map data
 
 Run these commands from the repository root:
 
 ```bash
 npm ci
 npm run prisma:deploy
+npm run supabase:setup
 npm run seed
 ```
 
@@ -49,7 +66,7 @@ npm run seed
 
 PostGIS and its spatial index are created by the migrations.
 
-## 3. Configure AI
+## 4. Configure AI
 
 Set `GOOGLE_API_KEY` to a Google AI Studio API key. `AI_MODEL` defaults to `gemini-2.5-flash`.
 
@@ -64,10 +81,11 @@ AI endpoints:
 
 All AI endpoints require a bearer token. Conversation history is stored in Supabase PostgreSQL.
 
-## 4. Verify the backend
+## 5. Verify the backend
 
 ```bash
 npm run typecheck
+npm run supabase:verify
 npm test
 npm run build
 npm run dev

@@ -1,5 +1,5 @@
 import { Request, Response, NextFunction } from "express";
-import { verifyAccessToken } from "../libs/jwt";
+import { authenticateAccessToken } from "../libs/supabase-auth";
 import { ResponseUtil } from "../utils/response";
 import { logger } from "../libs/logger";
 
@@ -21,7 +21,10 @@ export async function authMiddleware(
 
     const token = authHeader.substring(7);
 
-    const decoded = verifyAccessToken(token);
+    const decoded = await authenticateAccessToken(token);
+    if (!decoded) {
+      return ResponseUtil.unauthorized(res, "User profile not found");
+    }
     req.user = decoded;
 
     next();
@@ -40,14 +43,20 @@ export async function authMiddleware(
   }
 }
 
-export function optionalAuth(req: Request, res: Response, next: NextFunction) {
+export async function optionalAuth(
+  req: Request,
+  res: Response,
+  next: NextFunction
+) {
   try {
     const authHeader = req.headers.authorization;
 
     if (authHeader && authHeader.startsWith("Bearer ")) {
       const token = authHeader.substring(7);
-      const decoded = verifyAccessToken(token);
-      req.user = decoded;
+      const decoded = await authenticateAccessToken(token, false);
+      if (decoded) {
+        req.user = decoded;
+      }
     }
 
     next();

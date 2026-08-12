@@ -38,7 +38,12 @@ const rawEnv = z
     FIREBASE_CLIENT_EMAIL: z.string().optional(),
     FIREBASE_PRIVATE_KEY: z.string().optional(),
     SUPABASE_URL: z.string().url().optional(),
-    SUPABASE_SERVICE_ROLE_KEY: z.string().optional(),
+    SUPABASE_PUBLISHABLE_KEY: z
+      .string()
+      .startsWith("sb_publishable_")
+      .optional(),
+    SUPABASE_SECRET_KEY: z.string().startsWith("sb_secret_").optional(),
+    SUPABASE_JWKS_URL: z.string().url().optional(),
     SUPABASE_STORAGE_BUCKET: z.string().default("item-images"),
     GOOGLE_API_KEY: z.string().optional(),
     GEMINI_API_KEY: z.string().optional(),
@@ -113,7 +118,9 @@ export const ENV = {
     "\n"
   ),
   SUPABASE_URL: rawEnv.SUPABASE_URL || "",
-  SUPABASE_SERVICE_ROLE_KEY: rawEnv.SUPABASE_SERVICE_ROLE_KEY || "",
+  SUPABASE_PUBLISHABLE_KEY: rawEnv.SUPABASE_PUBLISHABLE_KEY || "",
+  SUPABASE_SECRET_KEY: rawEnv.SUPABASE_SECRET_KEY || "",
+  SUPABASE_JWKS_URL: rawEnv.SUPABASE_JWKS_URL || "",
   SUPABASE_STORAGE_BUCKET: rawEnv.SUPABASE_STORAGE_BUCKET,
   GOOGLE_API_KEY: rawEnv.GOOGLE_API_KEY || rawEnv.GEMINI_API_KEY || "",
   AI_MODEL: rawEnv.AI_MODEL,

@@ -20,6 +20,8 @@
     "seed": "prisma db seed",
     "seed:radar": "tsx prisma/seed-radar.ts",
     "smtp:verify": "tsx scripts/verify-smtp.ts",
+    "supabase:verify": "tsx scripts/verify-supabase.ts",
+    "supabase:setup": "tsx scripts/setup-supabase.ts",
     "postinstall": "prisma generate"
   },
   "keywords": [],
@@ -27,7 +29,6 @@
   "license": "ISC",
   "description": "",
   "devDependencies": {
-    "@types/nodemailer": "^8.0.1",
     "@types/pg": "^8.21.0",
     "@types/supertest": "^7.2.1",
     "prettier": "^3.9.6",
@@ -41,6 +42,7 @@
     "@langchain/google": "^0.2.1",
     "@prisma/adapter-pg": "^7.9.1",
     "@prisma/client": "^7.9.1",
+    "@supabase/server": "^1.4.1",
     "@supabase/supabase-js": "^2.112.2",
     "@types/bcrypt": "^6.0.0",
     "@types/cors": "^2.8.19",
@@ -50,6 +52,7 @@
     "@types/ngeohash": "^0.6.1",
     "@types/node": "^22.20.1",
     "@types/node-cron": "^3.0.11",
+    "@types/nodemailer": "^8.0.1",
     "bcrypt": "^6.0.0",
     "cors": "^2.8.6",
     "dotenv": "^17.2.3",
