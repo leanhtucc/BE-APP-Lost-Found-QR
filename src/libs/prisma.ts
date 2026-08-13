@@ -10,10 +10,7 @@ import { ENV } from "../config/env";
 
 const globalForPrisma = globalThis as unknown as { prisma?: PrismaClient };
 
-const databaseUrl = ENV.DATABASE_URL.replace(
-  /([?&])sslmode=(prefer|require|verify-ca)(?=&|$)/,
-  "$1sslmode=verify-full"
-);
+const databaseUrl = ENV.DATABASE_URL;
 
 const adapter = new PrismaPg({
   connectionString: databaseUrl,
