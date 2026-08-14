@@ -14,18 +14,22 @@ export class AuthController {
   // POST /api/auth/register - Đăng ký tài khoản mới
   async register(req: Request, res: Response, next: NextFunction) {
     try {
-      const { email, password, displayName, photoURL, phoneNumber } =
-        req.body as any;
+      const { email, password, displayName } = req.body as any;
 
       const result = await authService.register({
         email,
         password,
         displayName,
-        photoURL,
-        phoneNumber,
       });
 
-      return ResponseUtil.created(res, result, result.message);
+      return ResponseUtil.success(
+        res,
+        {
+          email: result.email,
+          otp_expires_in: result.otpExpiresIn,
+        },
+        result.message
+      );
     } catch (error) {
       next(error);
     }
@@ -127,11 +131,16 @@ export class AuthController {
   // POST /api/auth/verify-otp - Xác thực đăng ký bằng OTP email
   async verifyOtp(req: Request, res: Response, next: NextFunction) {
     try {
-      const { phoneNumber, code } = req.body as any;
+      const { email, code } = req.body as any;
 
-      const result = await authService.verifyOtp({ phoneNumber, code });
+      const result = await authService.verifyOtp({ email, code });
 
-      return ResponseUtil.success(res, result, result.message);
+      return res.status(200).json({
+        status: 200,
+        success: true,
+        message: "OK",
+        data: result,
+      });
     } catch (error) {
       next(error);
     }
@@ -140,9 +149,9 @@ export class AuthController {
   // POST /api/auth/resend-otp - Gửi lại OTP qua email đã đăng ký
   async resendOtp(req: Request, res: Response, next: NextFunction) {
     try {
-      const { phoneNumber } = req.body as any;
+      const { email } = req.body as any;
 
-      const result = await authService.resendOtp({ phoneNumber });
+      const result = await authService.resendOtp({ email });
 
       return ResponseUtil.success(res, result, result.message);
     } catch (error) {

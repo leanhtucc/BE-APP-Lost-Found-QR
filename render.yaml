@@ -36,7 +36,7 @@ services:
       - key: JWT_REFRESH_SECRET
         generateValue: true
       - key: JWT_EXPIRES_IN
-        value: 7d
+        value: 1d
       - key: JWT_REFRESH_EXPIRES_IN
         value: 30d
       - key: API_PREFIX

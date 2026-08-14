@@ -77,8 +77,16 @@ SMTP_FROM_NAME="Lost & Found Team"
 
 2. **Gửi request đăng ký:**
 
-   ```
-   POST http://localhost:3000/api/auth/register?email=test@gmail.com&password=Test1234&displayName=Test User
+   ```http
+   POST http://localhost:3000/api/auth/register
+   Content-Type: application/json
+
+   {
+     "full_name": "Test User",
+     "email": "test@gmail.com",
+     "password": "Test1234",
+     "password_confirmation": "Test1234"
+   }
    ```
 
 3. **Kiểm tra email:**
@@ -87,8 +95,14 @@ SMTP_FROM_NAME="Lost & Found Team"
    - Lấy verification code (6 chữ số)
 
 4. **Verify email:**
-   ```
-   POST http://localhost:3000/api/auth/verify-email?email=test@gmail.com&code=123456
+   ```http
+   POST http://localhost:3000/api/auth/verify-otp
+   Content-Type: application/json
+
+   {
+     "email": "test@gmail.com",
+     "code": "123456"
+   }
    ```
 
 ---

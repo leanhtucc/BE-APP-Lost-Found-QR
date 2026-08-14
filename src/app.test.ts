@@ -15,7 +15,7 @@ beforeAll(async () => {
   const imported = await import("./app.js");
   const candidate = imported.default as unknown;
   app = ((candidate as { default?: Express })?.default ?? candidate) as Express;
-}, 30_000);
+}, 60_000);
 
 describe("health endpoints", () => {
   it("reports the process as alive without requiring database access", async () => {

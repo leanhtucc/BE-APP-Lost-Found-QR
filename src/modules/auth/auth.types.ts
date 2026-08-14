@@ -6,15 +6,12 @@ export interface RegisterDTO {
   email: string;
   password: string;
   displayName: string;
-  photoURL?: string;
-  phoneNumber: string; // Đã bắt buộc cho app FindBack
 }
 
 export interface RegisterResponse {
   message: string;
   email: string;
-  accessToken?: string; // Available in dev mode
-  refreshToken?: string; // Available in dev mode
+  otpExpiresIn: number;
 }
 
 export interface LoginDTO {
@@ -77,18 +74,20 @@ export interface UpdateProfileDTO {
 }
 
 export interface VerifyOtpDTO {
-  phoneNumber: string;
+  email: string;
   code: string;
 }
 
 export interface VerifyOtpResponse {
-  message: string;
-  accessToken: string;
-  refreshToken: string;
+  access_token: string;
+  expire_in: number;
+  refresh_token: string;
+  refresh_token_expire_in: number;
+  auth_type: "Bearer Token";
 }
 
 export interface ResendOtpDTO {
-  phoneNumber: string;
+  email: string;
 }
 
 export interface GoogleAuthDTO {

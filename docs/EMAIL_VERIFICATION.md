@@ -1,54 +1,44 @@
-# 📧 Email Verification API
+# Email registration and OTP verification
 
-## Tính năng mới
+The email registration flow has two public steps. A phone number is not
+required and is not used to identify a pending registration.
 
-Khi user đăng ký, hệ thống sẽ:
-1. ✅ Tạo tài khoản với mã xác thực 6 số
-2. 📧 Gửi email chứa mã xác thực (hiệu lực 15 phút)
-3. ⏳ User cần verify email để sử dụng đầy đủ tính năng
+## 1. Send the registration OTP
 
----
-
-## API Endpoints
-
-### 1. Đăng ký (đã cập nhật)
-
-```bash
-POST http://localhost:3000/api/auth/register
+```http
+POST /api/auth/register
 Content-Type: application/json
 
 {
+  "full_name": "Nguyen Van An",
   "email": "user@example.com",
-  "password": "password123",
-  "displayName": "John Doe"
+  "password": "Password123",
+  "password_confirmation": "Password123"
 }
 ```
 
-**Response:**
+The API also accepts the camelCase aliases `fullName` and
+`confirmPassword`. The existing `displayName` name alias remains accepted,
+but every registration must include a matching password confirmation.
+
+Successful response:
+
 ```json
 {
   "success": true,
-  "message": "Registration successful",
+  "message": "OTP code has been sent to your email.",
   "data": {
-    "accessToken": "eyJhbGciOiJIUzI1NiIs...",
-    "refreshToken": "eyJhbGciOiJIUzI1NiIs...",
-    "user": {
-      "id": "clx123",
-      "email": "user@example.com",
-      "isVerified": false
-    }
-  }
+    "email": "user@example.com",
+    "otp_expires_in": 900
+  },
+  "timestamp": "2026-08-13T00:00:00.000Z"
 }
 ```
 
-> 📧 Email chứa mã xác thực 6 số sẽ được gửi đến `user@example.com`
+## 2. Verify the OTP and create the account
 
----
-
-### 2. Xác thực email
-
-```bash
-POST http://localhost:3000/api/auth/verify-email
+```http
+POST /api/auth/verify-otp
 Content-Type: application/json
 
 {
@@ -57,41 +47,31 @@ Content-Type: application/json
 }
 ```
 
-**Response (thành công):**
+Successful response:
+
 ```json
 {
+  "status": 200,
   "success": true,
-  "message": "Email verified successfully",
+  "message": "OK",
   "data": {
-    "message": "Email verified successfully"
+    "access_token": "<jwt>",
+    "expire_in": 86400,
+    "refresh_token": "<jwt>",
+    "refresh_token_expire_in": 2592000,
+    "auth_type": "Bearer Token"
   }
 }
 ```
 
-**Response (mã sai):**
-```json
-{
-  "success": false,
-  "message": "Invalid verification code",
-  "timestamp": "2026-01-10T10:00:00.000Z"
-}
-```
+The account is created only after the six-digit OTP is valid. An OTP expires
+after 15 minutes and a pending registration is removed after five invalid
+attempts.
 
-**Response (mã hết hạn):**
-```json
-{
-  "success": false,
-  "message": "Verification code expired",
-  "timestamp": "2026-01-10T10:00:00.000Z"
-}
-```
+## Resend the OTP
 
----
-
-### 3. Gửi lại mã xác thực
-
-```bash
-POST http://localhost:3000/api/auth/resend-verification
+```http
+POST /api/auth/resend-otp
 Content-Type: application/json
 
 {
@@ -99,170 +79,21 @@ Content-Type: application/json
 }
 ```
 
-**Response:**
-```json
-{
-  "success": true,
-  "message": "Verification code sent successfully",
-  "data": {
-    "message": "Verification code sent successfully"
-  }
-}
-```
+The resend endpoint has a 60-second cooldown.
 
----
+## SMTP
 
-## Cấu hình SMTP
-
-### 1. Thêm vào file `.env`:
+Configure these variables locally and in Render:
 
 ```env
-# Email (SMTP) - Gmail example
-SMTP_HOST="smtp.gmail.com"
+SMTP_HOST=smtp.gmail.com
 SMTP_PORT=587
 SMTP_SECURE=false
-SMTP_USER="your-email@gmail.com"
-SMTP_PASS="your-app-password"
-SMTP_FROM_EMAIL="noreply@lostfound.com"
-SMTP_FROM_NAME="Lost & Found"
+SMTP_USER=your-account@gmail.com
+SMTP_PASS=your-app-password
+SMTP_FROM="Lost & Found <your-account@gmail.com>"
+SKIP_EMAIL_VERIFICATION=false
 ```
 
-### 2. Cách lấy App Password từ Gmail:
-
-1. Vào [Google Account Settings](https://myaccount.google.com/)
-2. Chọn **Security** → **2-Step Verification** (bật nếu chưa có)
-3. Tìm **App passwords**
-4. Tạo password mới cho "Mail"
-5. Copy password và paste vào `SMTP_PASS`
-
-### 3. SMTP providers khác:
-
-#### **SendGrid**
-```env
-SMTP_HOST="smtp.sendgrid.net"
-SMTP_PORT=587
-SMTP_USER="apikey"
-SMTP_PASS="your-sendgrid-api-key"
-```
-
-#### **Mailgun**
-```env
-SMTP_HOST="smtp.mailgun.org"
-SMTP_PORT=587
-SMTP_USER="postmaster@your-domain.mailgun.org"
-SMTP_PASS="your-mailgun-password"
-```
-
-#### **Amazon SES**
-```env
-SMTP_HOST="email-smtp.us-east-1.amazonaws.com"
-SMTP_PORT=587
-SMTP_USER="your-ses-smtp-username"
-SMTP_PASS="your-ses-smtp-password"
-```
-
----
-
-## Database Migration
-
-Chạy migration để thêm các trường mới:
-
-```bash
-npm run prisma:migrate
-npm run prisma:generate
-```
-
-**Các trường mới trong User model:**
-- `isVerified` (Boolean) - Trạng thái xác thực email
-- `verificationCode` (String?) - Mã xác thực 6 số
-- `verificationCodeExpiry` (DateTime?) - Thời gian hết hạn mã
-
----
-
-## Luồng hoạt động
-
-```mermaid
-sequenceDiagram
-    User->>Backend: POST /register
-    Backend->>Database: Tạo user (isVerified=false)
-    Backend->>Email Service: Gửi mã 123456
-    Email Service->>User: 📧 Email chứa mã
-    Backend->>User: Response (token + user info)
-    
-    User->>Backend: POST /verify-email (code=123456)
-    Backend->>Database: Kiểm tra code & expiry
-    Backend->>Database: Update isVerified=true
-    Backend->>Email Service: Gửi welcome email
-    Backend->>User: Success response
-```
-
----
-
-## Test với cURL
-
-### Đăng ký
-```bash
-curl -X POST http://localhost:3000/api/auth/register \
-  -H "Content-Type: application/json" \
-  -d '{
-    "email": "test@example.com",
-    "password": "password123",
-    "displayName": "Test User"
-  }'
-```
-
-### Xác thực email
-```bash
-curl -X POST http://localhost:3000/api/auth/verify-email \
-  -H "Content-Type: application/json" \
-  -d '{
-    "email": "test@example.com",
-    "code": "123456"
-  }'
-```
-
-### Gửi lại mã
-```bash
-curl -X POST http://localhost:3000/api/auth/resend-verification \
-  -H "Content-Type: application/json" \
-  -d '{
-    "email": "test@example.com"
-  }'
-```
-
----
-
-## Development Mode
-
-Nếu không cấu hình SMTP, email sẽ được log vào console:
-
-```
-[INFO] Email would be sent: {
-  to: 'user@example.com',
-  subject: 'Xác thực tài khoản',
-  preview: 'Mã xác thực của bạn là: 123456'
-}
-```
-
----
-
-## Security Notes
-
-- ✅ Mã xác thực có hiệu lực 15 phút
-- ✅ Mã là số ngẫu nhiên 6 chữ số
-- ✅ User có thể request mã mới bất cứ lúc nào
-- ✅ Mã sẽ bị xóa sau khi verify thành công
-- 🔒 Nên thêm rate limiting cho `/resend-verification`
-- 🔒 Có thể thêm max attempts cho verify
-
----
-
-## Next Steps
-
-1. ✅ Install dependencies: `npm install`
-2. ✅ Cấu hình SMTP trong `.env`
-3. ✅ Run migration: `npm run prisma:migrate`
-4. ✅ Start server: `npm run dev`
-5. ✅ Test registration flow
-
-🎉 Done!
+For Gmail, `SMTP_PASS` must be a Google App Password rather than the normal
+account password.

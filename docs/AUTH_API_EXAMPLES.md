@@ -13,7 +13,7 @@ POST http://localhost:3000/api/auth/register
 **Bước 3: Xác thực email với mã code**
 
 ```bash
-POST http://localhost:3000/api/auth/verify-email
+POST http://localhost:3000/api/auth/verify-otp
 ```
 
 **Bước 4: Nhận token và có thể login**
@@ -143,59 +143,41 @@ GET http://localhost:3000/api/auth/google/callback?code=...
 3. **Welcome email** được gửi cho user mới
 4. **Không cần password** cho Google users
 
-## 1. Đăng ký tài khoản (Bước 1)
+## 1. Đăng ký tài khoản và gửi OTP
 
-```bash
+```http
 POST http://localhost:3000/api/auth/register
 Content-Type: application/json
 
 {
+  "full_name": "Nguyen Van An",
   "email": "user@example.com",
   "password": "Password123",
-  "displayName": "John Doe",
-  "photoURL": "https://example.com/avatar.jpg",
-  "phoneNumber": "0912345678"
+  "password_confirmation": "Password123"
 }
 ```
 
-**Validation Rules:**
+Không cần `phoneNumber`. Mật khẩu phải có ít nhất 8 ký tự, gồm chữ hoa,
+chữ thường và chữ số. `password_confirmation` phải giống `password`.
 
-- ✅ **email**: Bắt buộc, phải đúng format email
-- ✅ **password**:
-  - Tối thiểu 8 ký tự
-  - Phải có ít nhất 1 chữ HOA
-  - Phải có ít nhất 1 chữ thường
-  - Phải có ít nhất 1 số
-- ✅ **displayName**:
-  - Tối thiểu 2 ký tự, tối đa 50 ký tự
-  - Chỉ chứa chữ cái, số, khoảng trắng (hỗ trợ tiếng Việt)
-- ✅ **photoURL**: Optional, nếu có phải là URL hợp lệ
-
-**Response (Không có token):**
+Response thành công chưa có token vì tài khoản chỉ được tạo sau khi xác nhận OTP:
 
 ```json
 {
   "success": true,
-  "message": "Registration successful! Please check your email for verification code.",
+  "message": "OTP code has been sent to your email.",
   "data": {
-    "message": "Registration successful! Please check your email for verification code.",
-    "email": "user@example.com"
-  }
+    "email": "user@example.com",
+    "otp_expires_in": 900
+  },
+  "timestamp": "2026-08-13T00:00:00.000Z"
 }
 ```
 
-**⚠️ Lưu ý:**
+## 2. Xác nhận OTP và hoàn tất đăng ký
 
-- Không trả về token ngay
-- User cần check email để lấy mã 6 chữ số
-- Mã có hiệu lực 15 phút
-
----
-
-## 2. Xác thực email (Bước 2)
-
-```bash
-POST http://localhost:3000/api/auth/verify-email
+```http
+POST http://localhost:3000/api/auth/verify-otp
 Content-Type: application/json
 
 {
@@ -204,44 +186,25 @@ Content-Type: application/json
 }
 ```
 
-**Response (Có token):**
-
 ```json
 {
+  "status": 200,
   "success": true,
-  "message": "Email verified successfully! You can now use the app.",
+  "message": "OK",
   "data": {
-    "message": "Email verified successfully! You can now use the app.",
-    "accessToken": "eyJhbGciOiJIUzI1NiIs...",
-    "refreshToken": "eyJhbGciOiJIUzI1NiIs...",
-    "user": {
-      "id": "clx1234567890",
-      "uid": "user_abc123xyz",
-      "email": "user@example.com",
-      "displayName": "John Doe",
-      "photoURL": "https://example.com/avatar.jpg",
-      "phoneNumber": "0912345678",
-      "totalReturned": 0,
-      "createdAt": "2026-01-10T10:00:00.000Z"
-    }
+    "access_token": "<jwt>",
+    "expire_in": 86400,
+    "refresh_token": "<jwt>",
+    "refresh_token_expire_in": 2592000,
+    "auth_type": "Bearer Token"
   }
 }
 ```
 
-**✅ Sau bước này:**
+## 3. Gửi lại OTP
 
-- User đã có token để sử dụng app
-- Có thể gọi các API protected
-- Welcome email được gửi tự động
-
----
-
-## 3. Gửi lại mã xác thực
-
-Nếu mã hết hạn hoặc không nhận được email:
-
-```bash
-POST http://localhost:3000/api/auth/resend-verification
+```http
+POST http://localhost:3000/api/auth/resend-otp
 Content-Type: application/json
 
 {
@@ -249,17 +212,7 @@ Content-Type: application/json
 }
 ```
 
-**Response:**
-
-```json
-{
-  "success": true,
-  "message": "Verification code sent successfully",
-  "data": {
-    "message": "Verification code sent successfully"
-  }
-}
-```
+OTP có hiệu lực 15 phút và API gửi lại có cooldown 60 giây.
 
 ---
 

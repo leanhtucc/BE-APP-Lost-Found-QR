@@ -89,17 +89,17 @@ SMTP connection verified successfully
 
 ### OTP API flow
 
-Registering sends the OTP to the submitted `email`. The existing mobile contract is preserved: verification and resend still identify the pending registration with `phoneNumber`.
+Registration is email-only. Use these requests:
 
 ```http
 POST /api/auth/register
 Content-Type: application/json
 
 {
+  "full_name": "Test User",
   "email": "user@example.com",
   "password": "Password123",
-  "displayName": "Test User",
-  "phoneNumber": "0900000000"
+  "password_confirmation": "Password123"
 }
 ```
 
@@ -108,7 +108,7 @@ POST /api/auth/verify-otp
 Content-Type: application/json
 
 {
-  "phoneNumber": "0900000000",
+  "email": "user@example.com",
   "code": "123456"
 }
 ```
@@ -118,8 +118,9 @@ POST /api/auth/resend-otp
 Content-Type: application/json
 
 {
-  "phoneNumber": "0900000000"
+  "email": "user@example.com"
 }
 ```
 
-Resend requests have a 60-second cooldown. Gmail is suitable for development and small-volume use; use a dedicated SMTP provider for production volume.
+Resend requests have a 60-second cooldown. Gmail is suitable for development
+and small-volume use; use a dedicated SMTP provider for production volume.

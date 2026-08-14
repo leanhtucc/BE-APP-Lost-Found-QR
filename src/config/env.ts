@@ -11,7 +11,7 @@ const rawEnv = z
     DIRECT_URL: z.string().min(1).optional(),
     JWT_SECRET: z.string().min(16),
     JWT_REFRESH_SECRET: z.string().min(16),
-    JWT_EXPIRES_IN: z.string().default("7d"),
+    JWT_EXPIRES_IN: z.string().default("1d"),
     JWT_REFRESH_EXPIRES_IN: z.string().default("30d"),
     REDIS_URL: z.string().optional(),
     API_PREFIX: z.string().default("/api"),
