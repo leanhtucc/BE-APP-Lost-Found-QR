@@ -176,7 +176,7 @@ export async function fetchLostFeed(
       u."photoURL"    as "ownerPhotoURL"
     FROM "Item" i
     JOIN "User" u ON u."id" = i."ownerId"
-    WHERE UPPER(i."status") = 'LOST'
+    WHERE i."status" = 'LOST'::"ItemStatus"
       AND i."ownerId" = $1
     ORDER BY i."updatedAt" DESC;
   `;
@@ -204,7 +204,7 @@ export async function fetchLostFeed(
       u."photoURL"    as "ownerPhotoURL"
     FROM "Item" i
     JOIN "User" u ON u."id" = i."ownerId"
-    WHERE UPPER(i."status") = 'LOST'
+    WHERE i."status" = 'LOST'::"ItemStatus"
       AND i."ownerId" != $1
     ORDER BY i."updatedAt" DESC
     LIMIT ${MAX_NEARBY_CANDIDATES};
