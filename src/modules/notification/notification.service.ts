@@ -38,20 +38,24 @@ export class NotificationService {
     return `${(meters / 1000).toFixed(1)}km`;
   }
 
-  private formatNotification(notification: Notification): NotificationDTO {
+  private formatNotification(notification: any): NotificationDTO {
     return {
-      id: notification.id,
-      receiver_id: notification.receiverId,
+      id: String(notification.id || ""),
+      receiver_id: String(notification.receiverId || ""),
       category: notification.category,
-      type: notification.type,
-      title: notification.title,
-      content: notification.content,
-      metadata: notification.metadata,
-      is_read: notification.isRead,
-      dedupe_key: notification.dedupeKey,
-      delivery_status: notification.deliveryStatus,
-      opened_at: notification.openedAt ? notification.openedAt.toISOString() : null,
-      created_at: notification.createdAt.toISOString(),
+      type: String(notification.type || ""),
+      title: String(notification.title || ""),
+      content: String(notification.content || ""),
+      metadata: notification.metadata ?? null,
+      is_read: Boolean(notification.isRead),
+      dedupe_key: notification.dedupeKey ?? null,
+      delivery_status: notification.deliveryStatus || "SENT",
+      opened_at: notification.openedAt
+        ? new Date(notification.openedAt).toISOString()
+        : null,
+      created_at: notification.createdAt
+        ? new Date(notification.createdAt).toISOString()
+        : new Date().toISOString(),
     };
   }
 
