@@ -1,9 +1,12 @@
+import { redis } from "./redis";
+
 /**
  * Temporary Storage for Pending Registrations
- * Store registration data before email verification
+ * Backed by Redis (with automatic in-memory fallback when REDIS_URL is not set).
+ * TTL = 15 minutes — entries expire automatically via Redis key expiry.
  */
 
-interface PendingRegistration {
+export interface PendingRegistration {
   email: string;
   password: string; // hashed
   displayName: string;
@@ -11,44 +14,45 @@ interface PendingRegistration {
   phoneNumber?: string;
   verificationCode: string;
   verificationAttempts: number;
-  expiresAt: Date;
-  createdAt: Date;
+  expiresAt: string; // ISO string
+  createdAt: string; // ISO string
 }
 
+const OTP_TTL_SECONDS = 15 * 60; // 15 minutes
+const KEY_PREFIX = "otp:pending:";
+
 class TempStorage {
-  private storage = new Map<string, PendingRegistration>();
-  private cleanupInterval: NodeJS.Timeout;
-
-  constructor() {
-    // Auto cleanup expired entries every 5 minutes
-    this.cleanupInterval = setInterval(
-      () => {
-        this.cleanup();
-      },
-      5 * 60 * 1000
-    );
+  private key(identifier: string): string {
+    return `${KEY_PREFIX}${identifier.toLowerCase()}`;
   }
 
   /**
-   * Save pending registration
+   * Save pending registration with TTL.
+   * @param identifier email or phoneNumber used as lookup key
    */
-  set(email: string, data: Omit<PendingRegistration, "createdAt">): void {
-    this.storage.set(email.toLowerCase(), {
+  async set(
+    identifier: string,
+    data: Omit<PendingRegistration, "createdAt">
+  ): Promise<void> {
+    const payload: PendingRegistration = {
       ...data,
-      createdAt: new Date(),
-    });
+      expiresAt: data.expiresAt, // already ISO string
+      createdAt: new Date().toISOString(),
+    };
+    await redis.set(this.key(identifier), payload, OTP_TTL_SECONDS);
   }
 
   /**
-   * Get pending registration
+   * Retrieve pending registration.
+   * Returns null when not found or already expired.
    */
-  get(email: string): PendingRegistration | null {
-    const data = this.storage.get(email.toLowerCase());
+  async get(identifier: string): Promise<PendingRegistration | null> {
+    const data = await redis.get<PendingRegistration>(this.key(identifier));
     if (!data) return null;
 
-    // Check if expired
-    if (new Date() > data.expiresAt) {
-      this.delete(email);
+    // Belt-and-suspenders expiry check (Redis TTL is the primary guard)
+    if (new Date() > new Date(data.expiresAt)) {
+      await this.delete(identifier);
       return null;
     }
 
@@ -56,51 +60,25 @@ class TempStorage {
   }
 
   /**
-   * Delete pending registration
+   * Delete pending registration.
    */
-  delete(email: string): void {
-    this.storage.delete(email.toLowerCase());
+  async delete(identifier: string): Promise<void> {
+    await redis.del(this.key(identifier));
   }
 
   /**
-   * Check if email has pending registration
+   * Check whether a pending registration exists.
    */
-  has(email: string): boolean {
-    return this.storage.has(email.toLowerCase());
+  async has(identifier: string): Promise<boolean> {
+    const data = await this.get(identifier);
+    return data !== null;
   }
 
   /**
-   * Cleanup expired entries
+   * No-op – kept for interface compatibility.
+   * Redis handles cleanup automatically via key TTL.
    */
-  private cleanup(): void {
-    const now = new Date();
-    for (const [email, data] of this.storage.entries()) {
-      if (now > data.expiresAt) {
-        this.storage.delete(email);
-      }
-    }
-  }
-
-  /**
-   * Get storage size
-   */
-  size(): number {
-    return this.storage.size;
-  }
-
-  /**
-   * Clear all data (for testing)
-   */
-  clear(): void {
-    this.storage.clear();
-  }
-
-  /**
-   * Stop cleanup interval
-   */
-  destroy(): void {
-    clearInterval(this.cleanupInterval);
-  }
+  destroy(): void {}
 }
 
 export const tempStorage = new TempStorage();

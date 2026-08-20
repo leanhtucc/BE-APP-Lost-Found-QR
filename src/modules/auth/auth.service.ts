@@ -144,7 +144,7 @@ export class AuthService {
       throw new AppError("Email already registered", 400);
     }
 
-    if (tempStorage.has(email)) {
+    if (await tempStorage.has(email)) {
       throw new AppError(
         "Verification code already sent. Please check your email or wait to resend.",
         400
@@ -155,13 +155,13 @@ export class AuthService {
     const verificationCode = this.generateVerificationCode();
     const expiresAt = this.getCodeExpiry();
 
-    tempStorage.set(email, {
+    await tempStorage.set(email, {
       email,
       password: hashedPassword,
       displayName: data.displayName,
       verificationCode,
       verificationAttempts: 0,
-      expiresAt,
+      expiresAt: expiresAt.toISOString(),
     });
 
     const emailSent = await emailService.sendVerificationEmail(
@@ -174,7 +174,7 @@ export class AuthService {
       !emailSent &&
       (!ENV.SKIP_EMAIL_VERIFICATION || emailService.isConfigured())
     ) {
-      tempStorage.delete(email);
+      await tempStorage.delete(email);
       throw new AppError("Failed to send verification email", 502);
     }
 
@@ -274,7 +274,7 @@ export class AuthService {
 
   async verifyOtp(data: VerifyOtpDTO): Promise<VerifyOtpResponse> {
     const email = data.email.trim().toLowerCase();
-    const pendingReg = tempStorage.get(email);
+    const pendingReg = await tempStorage.get(email);
 
     if (!pendingReg) {
       throw new AppError(
@@ -287,7 +287,7 @@ export class AuthService {
       pendingReg.verificationAttempts += 1;
 
       if (pendingReg.verificationAttempts >= 5) {
-        tempStorage.delete(email);
+        await tempStorage.delete(email);
         throw new AppError(
           "Too many invalid OTP attempts. Please register again.",
           429
@@ -297,14 +297,14 @@ export class AuthService {
       throw new AppError("Invalid OTP code", 400);
     }
 
-    if (new Date() > pendingReg.expiresAt) {
-      tempStorage.delete(email);
+    if (new Date() > new Date(pendingReg.expiresAt)) {
+      await tempStorage.delete(email);
       throw new AppError("OTP expired. Please register again.", 400);
     }
 
     const existingUser = await authRepository.findByEmail(email);
     if (existingUser) {
-      tempStorage.delete(email);
+      await tempStorage.delete(email);
       throw new AppError("Email already registered", 400);
     }
 
@@ -319,7 +319,7 @@ export class AuthService {
       verificationCodeExpiry: undefined,
     });
 
-    tempStorage.delete(email);
+    await tempStorage.delete(email);
     logger.info(
       `User ${user.email} created successfully after email verification`
     );
@@ -352,7 +352,7 @@ export class AuthService {
 
   async resendOtp(data: ResendOtpDTO): Promise<{ message: string }> {
     const email = data.email.trim().toLowerCase();
-    const pendingReg = tempStorage.get(email);
+    const pendingReg = await tempStorage.get(email);
 
     if (!pendingReg) {
       throw new AppError(
@@ -361,7 +361,8 @@ export class AuthService {
       );
     }
 
-    if (Date.now() - pendingReg.createdAt.getTime() < 60_000) {
+    // createdAt is stored as ISO string from Redis; parse before arithmetic
+    if (Date.now() - new Date(pendingReg.createdAt).getTime() < 60_000) {
       throw new AppError(
         "Please wait 60 seconds before requesting another OTP.",
         429
@@ -383,11 +384,11 @@ export class AuthService {
       throw new AppError("Failed to resend verification email", 502);
     }
 
-    tempStorage.set(email, {
+    await tempStorage.set(email, {
       ...pendingReg,
       verificationCode,
       verificationAttempts: 0,
-      expiresAt,
+      expiresAt: expiresAt.toISOString(),
     });
 
     return {
@@ -714,7 +715,7 @@ export class AuthService {
         let matchedPendingPhone = phone_number;
 
         for (const candidate of phoneCandidates) {
-          const foundPending = tempStorage.get(candidate);
+          const foundPending = await tempStorage.get(candidate);
           if (foundPending) {
             pendingReg = foundPending;
             matchedPendingPhone = candidate;
@@ -736,7 +737,7 @@ export class AuthService {
         isNewUser = true;
 
         // Xóa thông tin tạm sau khi đã đăng ký thành công
-        if (pendingReg) tempStorage.delete(matchedPendingPhone);
+        if (pendingReg) await tempStorage.delete(matchedPendingPhone);
       } else {
         // If found: Update the lastLogin timestamp
         await authRepository.updateLastLogin(user.id);
