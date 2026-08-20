@@ -57,22 +57,27 @@ export class NotificationRepository {
       where.category = options.category;
     }
 
-    const [notifications, total, totalUnread] = await Promise.all([
-      prisma.notification.findMany({
-        where,
-        orderBy: {
-          createdAt: "desc",
-        },
-        skip: options.skip,
-        take: options.take,
-      }),
-      prisma.notification.count({ where }),
-      prisma.notification.count({
-        where: { receiverId, isRead: false },
-      }),
-    ]);
+    try {
+      const [notifications, total, totalUnread] = await Promise.all([
+        prisma.notification.findMany({
+          where,
+          orderBy: {
+            createdAt: "desc",
+          },
+          skip: options.skip,
+          take: options.take,
+        }),
+        prisma.notification.count({ where }),
+        prisma.notification.count({
+          where: { receiverId, isRead: false },
+        }),
+      ]);
 
-    return { notifications, total, totalUnread };
+      return { notifications, total, totalUnread };
+    } catch (error: any) {
+      logger.error("[NotificationRepo] Error fetching notifications:", error);
+      return { notifications: [], total: 0, totalUnread: 0 };
+    }
   }
 
   async findByIdForReceiver(id: string, receiverId: string) {
