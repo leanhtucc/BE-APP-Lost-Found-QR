@@ -14,6 +14,8 @@ const rawEnv = z
     JWT_EXPIRES_IN: z.string().default("1d"),
     JWT_REFRESH_EXPIRES_IN: z.string().default("30d"),
     REDIS_URL: z.string().optional(),
+    UPSTASH_REDIS_REST_URL: z.string().url().optional(),
+    UPSTASH_REDIS_REST_TOKEN: z.string().optional(),
     API_PREFIX: z.string().default("/api"),
     SMTP_HOST: z.string().optional(),
     SMTP_PORT: z.coerce.number().int().positive().default(587),
@@ -67,6 +69,8 @@ export const ENV = {
 
   // Redis (optional)
   REDIS_URL: rawEnv.REDIS_URL || "",
+  UPSTASH_REDIS_REST_URL: rawEnv.UPSTASH_REDIS_REST_URL || "",
+  UPSTASH_REDIS_REST_TOKEN: rawEnv.UPSTASH_REDIS_REST_TOKEN || "",
 
   // App
   API_PREFIX: rawEnv.API_PREFIX,
