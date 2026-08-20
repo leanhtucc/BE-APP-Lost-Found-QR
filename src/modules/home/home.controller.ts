@@ -9,7 +9,7 @@ export class HomeController {
     next: NextFunction
   ): Promise<void> => {
     try {
-      const userId = req.user!.id; // set by authMiddleware
+      const userId = req.user?.id || "";
       const lat =
         req.query.lat !== undefined && req.query.lat !== ""
           ? Number(req.query.lat)
@@ -29,14 +29,16 @@ export class HomeController {
         radius,
       });
 
-      const user = await prisma.user.findUnique({
-        where: { id: userId },
-        select: {
-          id: true,
-          displayName: true,
-          photoURL: true,
-        },
-      });
+      const user = userId
+        ? await prisma.user.findUnique({
+            where: { id: userId },
+            select: {
+              id: true,
+              displayName: true,
+              photoURL: true,
+            },
+          })
+        : null;
 
       res.json({
         success: true,
