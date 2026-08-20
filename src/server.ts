@@ -2,6 +2,7 @@ import { createServer } from "http";
 import app from "./app";
 import { connectDatabase, disconnectDatabase } from "./config/database";
 import { ENV } from "./config/env";
+import { startDailyNotificationJob } from "./jobs/daily-notification.job";
 import { startRefundJob } from "./jobs/refund.job";
 import { logger } from "./libs/logger";
 import { redis } from "./libs/redis";
@@ -21,6 +22,7 @@ async function startServer() {
     initializeSocketServer(httpServer);
     notificationService.startCleanupJob();
     startRefundJob();
+    startDailyNotificationJob();
 
     const server = httpServer.listen(ENV.PORT, "0.0.0.0", () => {
       logger.success(`Server is running on port ${ENV.PORT}`);

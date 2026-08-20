@@ -1,5 +1,6 @@
 import { NotificationCategory, Prisma } from "../../generated/prisma/client";
 import { prisma } from "../../libs/prisma";
+import { logger } from "../../libs/logger";
 
 export class NotificationRepository {
   async create(data: {
@@ -9,10 +10,32 @@ export class NotificationRepository {
     title: string;
     content: string;
     metadata?: Prisma.InputJsonValue;
+    dedupeKey?: string;
+    scheduledAt?: Date;
+    sentAt?: Date;
+    deliveryStatus?: string;
   }) {
-    return prisma.notification.create({
-      data,
-    });
+    try {
+      return await prisma.notification.create({
+        data,
+      });
+    } catch (error: any) {
+      // Prisma P2002: Unique constraint failed (receiverId, dedupeKey)
+      if (error?.code === "P2002" && data.dedupeKey) {
+        logger.info(
+          `[NotificationRepo] Deduplicated notification for receiver=${data.receiverId}, dedupeKey=${data.dedupeKey}`
+        );
+        return prisma.notification.findUnique({
+          where: {
+            receiverId_dedupeKey: {
+              receiverId: data.receiverId,
+              dedupeKey: data.dedupeKey,
+            },
+          },
+        });
+      }
+      throw error;
+    }
   }
 
   async findByReceiverId(
@@ -70,6 +93,35 @@ export class NotificationRepository {
     });
   }
 
+  async markAsOpened(id: string, receiverId: string) {
+    const notification = await this.findByIdForReceiver(id, receiverId);
+    if (!notification) return null;
+
+    return prisma.notification.update({
+      where: { id },
+      data: {
+        isRead: true,
+        openedAt: new Date(),
+        deliveryStatus: "OPENED",
+      },
+    });
+  }
+
+  async updateDeliveryStatus(
+    id: string,
+    deliveryStatus: string,
+    pushMessageId?: string
+  ) {
+    return prisma.notification.update({
+      where: { id },
+      data: {
+        deliveryStatus,
+        sentAt: new Date(),
+        ...(pushMessageId && { pushMessageId }),
+      },
+    });
+  }
+
   async markAllAsRead(receiverId: string): Promise<number> {
     const result = await prisma.notification.updateMany({
       where: {
@@ -110,3 +162,5 @@ export class NotificationRepository {
     return result.count;
   }
 }
+
+export const notificationRepository = new NotificationRepository();

@@ -31,6 +31,8 @@ function parsePositiveInt(
   return Math.min(parsed, maxValue);
 }
 
+const timeRegex = /^([01]\d|2[0-3]):[0-5]\d$/;
+
 export const listNotificationsSchema = z.object({
   query: z.object({
     category: z
@@ -51,6 +53,44 @@ export const listNotificationsSchema = z.object({
 });
 
 export const markNotificationReadSchema = z.object({
+  params: z.object({
+    id: z.string().min(1, "Notification ID is required"),
+  }),
+});
+
+export const updatePreferenceSchema = z.object({
+  body: z.object({
+    pushEnabled: z.boolean().optional(),
+    importantEnabled: z.boolean().optional(),
+    transactionEnabled: z.boolean().optional(),
+    itemEnabled: z.boolean().optional(),
+    socialEnabled: z.boolean().optional(),
+    dailyDigestEnabled: z.boolean().optional(),
+    nearbyAlertsEnabled: z.boolean().optional(),
+    quietHoursEnabled: z.boolean().optional(),
+    quietStart: z.string().regex(timeRegex, "quietStart must be in HH:mm format (e.g. 22:00)").optional(),
+    quietEnd: z.string().regex(timeRegex, "quietEnd must be in HH:mm format (e.g. 07:00)").optional(),
+    timezone: z.string().min(1).optional(),
+    dailyDigestTime: z.string().regex(timeRegex, "dailyDigestTime must be in HH:mm format (e.g. 19:30)").optional(),
+    nearbyRadius: z.number().int().min(100).max(50000).optional(),
+  }),
+});
+
+export const registerDeviceSchema = z.object({
+  body: z.object({
+    token: z.string().min(1, "FCM Push Token is required"),
+    platform: z.enum(["android", "ios", "web"]).default("android"),
+    deviceId: z.string().min(1, "Device ID is required"),
+  }),
+});
+
+export const unregisterDeviceSchema = z.object({
+  params: z.object({
+    deviceId: z.string().min(1, "Device ID is required"),
+  }),
+});
+
+export const markOpenedSchema = z.object({
   params: z.object({
     id: z.string().min(1, "Notification ID is required"),
   }),

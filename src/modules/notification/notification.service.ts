@@ -1,10 +1,12 @@
-import { Notification } from "../../generated/prisma/client";
+import { Notification, NotificationCategory } from "../../generated/prisma/client";
 import admin from "../../config/firebaseAdmin";
 import { logger } from "../../libs/logger";
 import { prisma } from "../../libs/prisma";
 import { AppError } from "../../middlewares/error.middleware";
 import { emitInAppNotificationToUser } from "../../socket/radar.socket";
+import { notificationPreferenceRepository } from "./notification.preference.repository";
 import { NotificationRepository } from "./notification.repository";
+import { userDeviceRepository } from "./user-device.repository";
 import {
   CreateNotificationInput,
   EscrowLockedNotificationInput,
@@ -15,8 +17,11 @@ import {
   NotificationDTO,
   NotificationListQuery,
   NotificationListResponse,
+  NotificationPreferenceDTO,
   ProximityNotificationInput,
+  RegisterDeviceInput,
   StatusUpdateNotificationInput,
+  UpdatePreferenceInput,
 } from "./notification.types";
 
 const SOCIAL_NOTIFICATION_RETENTION_DAYS = 30;
@@ -43,7 +48,31 @@ export class NotificationService {
       content: notification.content,
       metadata: notification.metadata,
       is_read: notification.isRead,
+      dedupe_key: notification.dedupeKey,
+      delivery_status: notification.deliveryStatus,
+      opened_at: notification.openedAt ? notification.openedAt.toISOString() : null,
       created_at: notification.createdAt.toISOString(),
+    };
+  }
+
+  private formatPreference(pref: any): NotificationPreferenceDTO {
+    return {
+      user_id: pref.userId,
+      push_enabled: pref.pushEnabled,
+      important_enabled: pref.importantEnabled,
+      transaction_enabled: pref.transactionEnabled,
+      item_enabled: pref.itemEnabled,
+      social_enabled: pref.socialEnabled,
+      daily_digest_enabled: pref.dailyDigestEnabled,
+      nearby_alerts_enabled: pref.nearbyAlertsEnabled,
+      quiet_hours_enabled: pref.quietHoursEnabled,
+      quiet_start: pref.quietStart,
+      quiet_end: pref.quietEnd,
+      timezone: pref.timezone,
+      daily_digest_time: pref.dailyDigestTime,
+      nearby_radius: pref.nearbyRadius,
+      created_at: pref.createdAt.toISOString(),
+      updated_at: pref.updatedAt.toISOString(),
     };
   }
 
@@ -59,27 +88,93 @@ export class NotificationService {
     };
   }
 
+  /**
+   * Check if current time falls within user's configured quiet hours.
+   */
+  private isWithinQuietHours(quietStart: string, quietEnd: string, now = new Date()): boolean {
+    const startParts = quietStart.split(":").map(Number);
+    const endParts = quietEnd.split(":").map(Number);
+    const startH = startParts[0] ?? 0;
+    const startM = startParts[1] ?? 0;
+    const endH = endParts[0] ?? 0;
+    const endM = endParts[1] ?? 0;
+
+    if (isNaN(startH) || isNaN(endH)) return false;
+
+    const currentMins = now.getHours() * 60 + now.getMinutes();
+    const startMins = startH * 60 + startM;
+    const endMins = endH * 60 + endM;
+
+    if (startMins < endMins) {
+      return currentMins >= startMins && currentMins < endMins;
+    }
+    return currentMins >= startMins || currentMins < endMins;
+  }
+
+  /**
+   * Multi-device FCM Push notification with quiet hours & invalid token cleanup.
+   */
   private async sendPushNotification(
     receiverId: string,
     notification: NotificationDTO,
-    priority: "normal" | "high"
+    priority: "normal" | "high",
+    collapseKey?: string
   ): Promise<void> {
     if (!admin.apps.length) {
       return;
     }
 
-    const receiver = await prisma.user.findUnique({
-      where: { id: receiverId },
-      select: { pushToken: true },
-    });
+    // 1. Check user notification preferences
+    const pref = await notificationPreferenceRepository.findByUserId(receiverId);
+    if (!pref.pushEnabled) {
+      return;
+    }
 
-    if (!receiver?.pushToken) {
+    // Check category level toggle
+    let categoryEnabled = true;
+    switch (notification.category) {
+      case "IMPORTANT": categoryEnabled = pref.importantEnabled; break;
+      case "TRANSACTION": categoryEnabled = pref.transactionEnabled; break;
+      case "ITEM": categoryEnabled = pref.itemEnabled; break;
+      case "SOCIAL": categoryEnabled = pref.socialEnabled; break;
+    }
+
+    if (!categoryEnabled) {
+      return;
+    }
+
+    // Check quiet hours (IMPORTANT & TRANSACTION bypass quiet hours)
+    if (
+      pref.quietHoursEnabled &&
+      notification.category !== "IMPORTANT" &&
+      notification.category !== "TRANSACTION" &&
+      this.isWithinQuietHours(pref.quietStart, pref.quietEnd)
+    ) {
+      logger.info(`[PushNotification] Skipped push for user=${receiverId} due to quiet hours (${pref.quietStart}-${pref.quietEnd})`);
+      return;
+    }
+
+    // 2. Fetch active device push tokens
+    let tokens = await userDeviceRepository.findActiveTokensByUserId(receiverId);
+
+    // Fallback: check User.pushToken column for legacy clients
+    if (!tokens.length) {
+      const user = await prisma.user.findUnique({
+        where: { id: receiverId },
+        select: { pushToken: true },
+      });
+      if (user?.pushToken) {
+        tokens = [user.pushToken];
+      }
+    }
+
+    if (!tokens.length) {
       return;
     }
 
     try {
-      await admin.messaging().send({
-        token: receiver.pushToken,
+      const response = await admin.messaging().sendEachForMulticast({
+        tokens,
         notification: {
           title: notification.title,
           body: notification.content,
@@ -87,21 +182,46 @@ export class NotificationService {
         data: this.toFcmData(notification),
         android: {
           priority,
+          ...(collapseKey && { collapseKey }),
         },
         apns: {
           headers: {
             "apns-priority": priority === "high" ? "10" : "5",
+            ...(collapseKey && { "apns-collapse-id": collapseKey }),
           },
         },
       });
+
+      // 3. Clean up invalid FCM tokens automatically
+      const invalidTokens: string[] = [];
+      response.responses.forEach((resp, idx) => {
+        if (!resp.success && resp.error) {
+          const code = resp.error.code;
+          if (
+            code === "messaging/registration-token-not-registered" ||
+            code === "messaging/invalid-registration-token"
+          ) {
+            const token = tokens[idx];
+            if (token) invalidTokens.push(token);
+          }
+        }
+      });
+
+      if (invalidTokens.length > 0) {
+        logger.warn(`[PushNotification] Deactivating ${invalidTokens.length} invalid FCM token(s) for user=${receiverId}`);
+        await userDeviceRepository.deactivateTokens(invalidTokens);
+      }
+
+      await this.repository.updateDeliveryStatus(notification.id, "SENT");
     } catch (error) {
-      logger.error("Failed to send push notification", error);
+      logger.error("Failed to send multicast push notification", error);
+      await this.repository.updateDeliveryStatus(notification.id, "FAILED");
     }
   }
 
   async createNotification(
     input: CreateNotificationInput
-  ): Promise<NotificationDTO> {
+  ): Promise<NotificationDTO | null> {
     const created = await this.repository.create({
       receiverId: input.receiverId,
       category: input.category,
@@ -109,7 +229,12 @@ export class NotificationService {
       title: input.title,
       content: input.content,
       metadata: input.metadata,
+      dedupeKey: input.dedupeKey,
     });
+
+    if (!created) {
+      return null;
+    }
 
     const formatted = this.formatNotification(created);
     const shouldEmitRealtime = input.emitRealtime !== false;
@@ -126,10 +251,12 @@ export class NotificationService {
           ? "high"
           : "normal");
 
-      await this.sendPushNotification(
+      // Fire-and-forget push notification to avoid blocking caller
+      void this.sendPushNotification(
         input.receiverId,
         formatted,
-        effectivePriority
+        effectivePriority,
+        input.collapseKey
       );
     }
 
@@ -185,6 +312,17 @@ export class NotificationService {
     return this.formatNotification(updated);
   }
 
+  async markNotificationAsOpened(
+    receiverId: string,
+    notificationId: string
+  ): Promise<NotificationDTO> {
+    const updated = await this.repository.markAsOpened(notificationId, receiverId);
+    if (!updated) {
+      throw new AppError("Notification not found", 404);
+    }
+    return this.formatNotification(updated);
+  }
+
   async getUnreadCount(receiverId: string): Promise<number> {
     return this.repository.countUnread(receiverId);
   }
@@ -193,6 +331,49 @@ export class NotificationService {
     const updatedCount = await this.repository.markAllAsRead(receiverId);
     return { updated_count: updatedCount };
   }
+
+  // ─── Preferences & Devices ─────────────────────────────────────────
+
+  async getPreferences(userId: string): Promise<NotificationPreferenceDTO> {
+    const pref = await notificationPreferenceRepository.findByUserId(userId);
+    return this.formatPreference(pref);
+  }
+
+  async updatePreferences(
+    userId: string,
+    input: UpdatePreferenceInput
+  ): Promise<NotificationPreferenceDTO> {
+    const updated = await notificationPreferenceRepository.upsert(userId, input);
+    return this.formatPreference(updated);
+  }
+
+  async registerDevice(userId: string, input: RegisterDeviceInput) {
+    const device = await userDeviceRepository.upsertDevice({
+      userId,
+      token: input.token,
+      platform: input.platform || "android",
+      deviceId: input.deviceId,
+    });
+
+    // Also sync User.pushToken for backward compatibility
+    await prisma.user.update({
+      where: { id: userId },
+      data: { pushToken: input.token },
+    }).catch(() => {/* ignore */});
+
+    return {
+      success: true,
+      device_id: device.deviceId,
+      platform: device.platform,
+    };
+  }
+
+  async unregisterDevice(userId: string, deviceId: string) {
+    const deleted = await userDeviceRepository.deleteByDeviceId(userId, deviceId);
+    return { success: deleted };
+  }
+
+  // ─── Helper Builders for Application Events ──────────────────────────
 
   async notifyEscrowLocked(input: EscrowLockedNotificationInput) {
     return this.createNotification({
@@ -207,6 +388,7 @@ export class NotificationService {
         status: "locked",
         post_id: input.postId,
       },
+      dedupeKey: `escrow:${input.transactionId}`,
       pushPriority: "high",
     });
   }
@@ -224,6 +406,7 @@ export class NotificationService {
         status: input.status,
         post_id: input.postId,
       },
+      dedupeKey: `refund:${input.transactionId}`,
       pushPriority: "high",
     });
   }
@@ -241,6 +424,7 @@ export class NotificationService {
         status: input.status,
         post_id: input.postId,
       },
+      dedupeKey: `bounty:${input.transactionId}`,
       pushPriority: "high",
     });
   }
@@ -293,6 +477,7 @@ export class NotificationService {
         message_preview: input.messagePreview,
         item_id: input.itemId,
       },
+      collapseKey: `chat:${input.roomId}`,
       pushPriority: "normal",
     });
   }
@@ -305,6 +490,7 @@ export class NotificationService {
       title: input.title,
       content: input.content,
       metadata: input.metadata,
+      dedupeKey: input.dedupeKey,
     });
   }
 
@@ -322,6 +508,7 @@ export class NotificationService {
     const executeCleanup = async () => {
       try {
         const deletedCount = await this.cleanupOldNonCriticalNotifications();
+        await userDeviceRepository.deleteOldInactiveDevices(60);
 
         if (deletedCount > 0) {
           logger.info("Old notifications cleaned up", { deletedCount });

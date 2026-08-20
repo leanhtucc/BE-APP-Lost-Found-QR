@@ -9,6 +9,9 @@ export interface NotificationDTO {
   content: string;
   metadata: Prisma.JsonValue | null;
   is_read: boolean;
+  dedupe_key?: string | null;
+  delivery_status?: string;
+  opened_at?: string | null;
   created_at: string;
 }
 
@@ -34,6 +37,58 @@ export interface MarkAllReadResponse {
   updated_count: number;
 }
 
+export interface NotificationPreferenceDTO {
+  user_id: string;
+  push_enabled: boolean;
+  important_enabled: boolean;
+  transaction_enabled: boolean;
+  item_enabled: boolean;
+  social_enabled: boolean;
+  daily_digest_enabled: boolean;
+  nearby_alerts_enabled: boolean;
+  quiet_hours_enabled: boolean;
+  quiet_start: string;
+  quiet_end: string;
+  timezone: string;
+  daily_digest_time: string;
+  nearby_radius: number;
+  created_at: string;
+  updated_at: string;
+}
+
+export interface UpdatePreferenceInput {
+  pushEnabled?: boolean;
+  importantEnabled?: boolean;
+  transactionEnabled?: boolean;
+  itemEnabled?: boolean;
+  socialEnabled?: boolean;
+  dailyDigestEnabled?: boolean;
+  nearbyAlertsEnabled?: boolean;
+  quietHoursEnabled?: boolean;
+  quietStart?: string;
+  quietEnd?: string;
+  timezone?: string;
+  dailyDigestTime?: string;
+  nearbyRadius?: number;
+}
+
+export interface UserDeviceDTO {
+  id: string;
+  user_id: string;
+  token: string;
+  platform: string;
+  device_id: string;
+  last_active_at: string;
+  is_active: boolean;
+  created_at: string;
+}
+
+export interface RegisterDeviceInput {
+  token: string;
+  platform?: "android" | "ios" | "web";
+  deviceId: string;
+}
+
 export interface CreateNotificationInput {
   receiverId: string;
   category: NotificationCategory;
@@ -41,9 +96,12 @@ export interface CreateNotificationInput {
   title: string;
   content: string;
   metadata?: Prisma.InputJsonValue;
+  dedupeKey?: string;
+  collapseKey?: string;
   emitRealtime?: boolean;
   sendPush?: boolean;
   pushPriority?: "normal" | "high";
+  tag?: string;
 }
 
 export interface EscrowLockedNotificationInput {
@@ -89,4 +147,5 @@ export interface StatusUpdateNotificationInput {
   title: string;
   content: string;
   metadata?: Prisma.InputJsonValue;
+  dedupeKey?: string;
 }

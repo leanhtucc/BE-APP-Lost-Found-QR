@@ -82,11 +82,13 @@ model User {
   updatedAt DateTime @updatedAt
 
   // Relations
-  ownedItems      Item[]           @relation("ItemOwner")
-  locations       UserLocation[]
-  posts           Post[]
-  notifications   Notification[]
-  aiConversations AiConversation[]
+  ownedItems             Item[]                  @relation("ItemOwner")
+  locations              UserLocation[]
+  posts                  Post[]
+  notifications          Notification[]
+  aiConversations        AiConversation[]
+  notificationPreference NotificationPreference?
+  devices                UserDevice[]
 
   @@index([uid])
   @@index([email])
@@ -102,23 +104,71 @@ enum NotificationCategory {
   SOCIAL
 }
 
+model NotificationPreference {
+  id                 String   @id @default(cuid())
+  userId             String   @unique @map("user_id")
+  pushEnabled        Boolean  @default(true) @map("push_enabled")
+  importantEnabled   Boolean  @default(true) @map("important_enabled")
+  transactionEnabled Boolean  @default(true) @map("transaction_enabled")
+  itemEnabled        Boolean  @default(true) @map("item_enabled")
+  socialEnabled      Boolean  @default(true) @map("social_enabled")
+  dailyDigestEnabled Boolean  @default(true) @map("daily_digest_enabled")
+  nearbyAlertsEnabled Boolean @default(true) @map("nearby_alerts_enabled")
+  quietHoursEnabled  Boolean  @default(true) @map("quiet_hours_enabled")
+  quietStart         String   @default("22:00") @map("quiet_start")
+  quietEnd           String   @default("07:00") @map("quiet_end")
+  timezone           String   @default("Asia/Ho_Chi_Minh")
+  dailyDigestTime    String   @default("19:30") @map("daily_digest_time")
+  nearbyRadius       Int      @default(5000) @map("nearby_radius")
+  createdAt          DateTime @default(now()) @map("created_at")
+  updatedAt          DateTime @updatedAt @map("updated_at")
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+}
+
+model UserDevice {
+  id           String   @id @default(cuid())
+  userId       String   @map("user_id")
+  token        String
+  platform     String   @default("android") // android, ios, web
+  deviceId     String   @map("device_id")
+  lastActiveAt DateTime @default(now()) @map("last_active_at")
+  isActive     Boolean  @default(true) @map("is_active")
+  createdAt    DateTime @default(now()) @map("created_at")
+  updatedAt    DateTime @updatedAt @map("updated_at")
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@unique([userId, deviceId])
+  @@index([userId, isActive])
+  @@index([token])
+}
+
 model Notification {
-  id         String               @id @default(cuid())
-  receiverId String               @map("receiver_id")
-  category   NotificationCategory
-  type       String
-  title      String
-  content    String
-  metadata   Json?
-  isRead     Boolean              @default(false) @map("is_read")
-  createdAt  DateTime             @default(now()) @map("created_at")
+  id             String               @id @default(cuid())
+  receiverId     String               @map("receiver_id")
+  category       NotificationCategory
+  type           String
+  title          String
+  content        String
+  metadata       Json?
+  isRead         Boolean              @default(false) @map("is_read")
+  dedupeKey      String?              @map("dedupe_key")
+  scheduledAt    DateTime?            @map("scheduled_at")
+  sentAt         DateTime?            @map("sent_at")
+  openedAt       DateTime?            @map("opened_at")
+  deliveryStatus String               @default("SENT") @map("delivery_status") // PENDING, SENT, FAILED, OPENED
+  pushMessageId  String?              @map("push_message_id")
+  createdAt      DateTime             @default(now()) @map("created_at")
 
   receiver User @relation(fields: [receiverId], references: [id], onDelete: Cascade)
 
+  @@unique([receiverId, dedupeKey])
   @@index([receiverId, createdAt])
   @@index([receiverId, isRead])
   @@index([category])
   @@index([type])
+  @@index([deliveryStatus])
 }
 
 model Item {
