@@ -64,23 +64,62 @@ export class AuthService {
       logger.warn("Failed to generate stream token:", error);
     }
 
+    const id = String(user.id || user.uid || "");
+    const rawUid = user.uid ? String(user.uid).replace("user_", "") : id;
+    const memberId = String(user.memberId || `USER_${rawUid}`);
+    const displayName = String(user.displayName || user.full_name || user.name || "");
+    const email = String(user.email || "");
+    const phoneNumber = user.phoneNumber || user.phone || null;
+    const photoURL = user.photoURL || user.avatar_url || user.avatar || null;
+    const address = user.addressCity || user.address || null;
+    const bio = user.bio || null;
+    const isVerified = Boolean(user.isVerified);
+
+    let trustScore = 50;
+    if (typeof user.trustScore === "number") {
+      trustScore = user.trustScore <= 5 ? Math.round(user.trustScore * 20) : user.trustScore;
+    }
+
+    const totalReturned = typeof user.totalReturned === "number" ? user.totalReturned : 0;
+    const itemsLost = typeof user.itemsLost === "number" ? user.itemsLost : 0;
+
+    const createdAtIso =
+      user.createdAt instanceof Date
+        ? user.createdAt.toISOString()
+        : typeof user.createdAt === "string"
+        ? user.createdAt
+        : new Date().toISOString();
+
     return {
-      member_id: user.memberId || `USER_${user.uid}`,
-      full_name: user.displayName,
-      email: user.email,
-      phone: user.phoneNumber || null,
-      avatar_url: user.photoURL || null,
-      is_verified: user.isVerified || false,
+      // Exact fields expected by Frontend (ProfileScreen, UserInfoCard, OwnerInfoCard)
+      id,
+      memberId,
+      displayName,
+      email,
+      phoneNumber,
+      photoURL,
+      address,
+      bio,
+      isVerified,
+      trustScore,
+      totalReturned,
+      itemsLost,
+      createdAt: createdAtIso,
+
+      // Backward compatibility aliases
+      member_id: memberId,
+      full_name: displayName,
+      phone: phoneNumber,
+      avatar_url: photoURL,
+      is_verified: isVerified,
       stats: {
-        trust_score: user.trustScore || 5.0,
-        items_lost: user.itemsLost || 0,
-        items_returned: user.totalReturned || 0,
+        trust_score: trustScore,
+        items_lost: itemsLost,
+        items_returned: totalReturned,
       },
-      address: user.addressCity || null,
-      bio: user.bio || null,
       stream_token: streamToken,
       privacy_settings: privacySettings,
-      created_at: user.createdAt,
+      created_at: createdAtIso,
     };
   }
 
@@ -227,6 +266,7 @@ export class AuthService {
     return {
       accessToken,
       refreshToken,
+      user: this.formatUserResponse(user),
     };
   }
 
@@ -257,6 +297,7 @@ export class AuthService {
       return {
         accessToken: newAccessToken,
         refreshToken: newRefreshToken,
+        user: this.formatUserResponse(user),
       };
     } catch (error) {
       throw new AppError("Invalid refresh token", 401);
@@ -294,18 +335,16 @@ export class AuthService {
         );
       }
 
+      await tempStorage.set(email, pendingReg);
       throw new AppError("Invalid OTP code", 400);
     }
 
     if (new Date() > new Date(pendingReg.expiresAt)) {
       await tempStorage.delete(email);
-      throw new AppError("OTP expired. Please register again.", 400);
-    }
-
-    const existingUser = await authRepository.findByEmail(email);
-    if (existingUser) {
-      await tempStorage.delete(email);
-      throw new AppError("Email already registered", 400);
+      throw new AppError(
+        "Verification code has expired. Please register again.",
+        400
+      );
     }
 
     const uid = `user_${nanoid(16)}`;
@@ -347,6 +386,7 @@ export class AuthService {
       refresh_token: refreshToken,
       refresh_token_expire_in: this.getTokenLifetimeSeconds(refreshToken),
       auth_type: "Bearer Token",
+      user: this.formatUserResponse(user),
     };
   }
 
@@ -407,7 +447,12 @@ export class AuthService {
       throw new AppError("User not found", 404);
     }
 
-    const updated = await authRepository.updateUser(userId, data);
+    const payload: any = { ...data };
+    if (data.address && !payload.addressCity) {
+      payload.addressCity = data.address;
+    }
+
+    const updated = await authRepository.updateUser(userId, payload);
     return this.formatUserResponse(updated);
   }
 
