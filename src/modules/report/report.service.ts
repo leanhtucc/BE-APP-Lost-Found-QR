@@ -36,7 +36,11 @@ function canonicalSignaturePayload(values: Record<string, unknown>): string {
     .filter(([key, value]) => value !== undefined && value !== null && key !== "signature" && key !== "vnp_SecureHash" && key !== "vnp_SecureHashType")
     .filter(([key]) => key.startsWith("vnp_") || !Object.keys(values).some((candidate) => candidate.startsWith("vnp_")))
     .sort(([a], [b]) => a.localeCompare(b))
-    .map(([key, value]) => `${encodeURIComponent(key)}=${encodeURIComponent(String(value))}`)
+    // VNPay's official SDK signs the sorted query string with spaces encoded
+    // as '+', not '%20'. Use the same representation in the URL and HMAC.
+    .map(([key, value]) =>
+      `${encodeURIComponent(key)}=${encodeURIComponent(String(value)).replace(/%20/g, "+")}`
+    )
     .join("&");
 }
 
