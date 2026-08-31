@@ -12,6 +12,7 @@ import {
   verifyRefreshToken,
 } from "../../libs/jwt";
 import { logger } from "../../libs/logger";
+import { redis } from "../../libs/redis";
 import { createStreamUserToken } from "../../libs/stream-chat";
 import { tempStorage } from "../../libs/temp-storage";
 import { AppError } from "../../middlewares/error.middleware";
@@ -33,6 +34,9 @@ import {
   UserResponse,
   VerifyOtpDTO,
   VerifyOtpResponse,
+  ProfileStatistics,
+  ChangePasswordDTO,
+  ConfirmAccountDeletionDTO,
 } from "./auth.types";
 
 /**
@@ -43,7 +47,10 @@ import {
 const authRepository = new AuthRepository();
 
 export class AuthService {
-  private formatUserResponse(user: any): UserResponse {
+  private formatUserResponse(
+    user: any,
+    profileStatistics?: ProfileStatistics
+  ): UserResponse {
     // Parse privacy settings from JSON
     let privacySettings: PrivacySettings = { showPhone: true, showEmail: true };
     try {
@@ -82,6 +89,44 @@ export class AuthService {
 
     const totalReturned = typeof user.totalReturned === "number" ? user.totalReturned : 0;
     const itemsLost = typeof user.itemsLost === "number" ? user.itemsLost : 0;
+    trustScore = Math.max(0, Math.min(100, Math.round(trustScore)));
+    const trustLevel =
+      trustScore >= 90
+        ? "PLATINUM"
+        : trustScore >= 70
+        ? "GOLD"
+        : trustScore >= 50
+        ? "SILVER"
+        : "BRONZE";
+
+    const authProvider = user.password
+      ? "password"
+      : user.googleId
+      ? "google"
+      : user.phoneNumber
+      ? "firebase_phone"
+      : "apple";
+
+    const preference = user.notificationPreference;
+    const preferences = {
+      pushEnabled: preference?.pushEnabled ?? true,
+      emailEnabled: preference?.emailEnabled ?? false,
+      proximityEnabled: preference?.proximityEnabled ?? true,
+      notificationRadiusMeters:
+        preference?.notificationRadiusMeters ?? 3000,
+      language: (preference?.language === "en" ? "en" : "vi") as
+        | "vi"
+        | "en",
+    };
+
+    const statistics: ProfileStatistics = profileStatistics || {
+      protectedItems: 0,
+      safeItems: 0,
+      lostItems: itemsLost,
+      activeLostReports: 0,
+      completedReturns: totalReturned,
+      qrScans: 0,
+    };
 
     const createdAtIso =
       user.createdAt instanceof Date
@@ -89,6 +134,12 @@ export class AuthService {
         : typeof user.createdAt === "string"
         ? user.createdAt
         : new Date().toISOString();
+    const updatedAtIso =
+      user.updatedAt instanceof Date
+        ? user.updatedAt.toISOString()
+        : typeof user.updatedAt === "string"
+        ? user.updatedAt
+        : createdAtIso;
 
     return {
       // Exact fields expected by Frontend (ProfileScreen, UserInfoCard, OwnerInfoCard)
@@ -100,11 +151,21 @@ export class AuthService {
       photoURL,
       address,
       bio,
+      authProvider,
+      emailVerified: isVerified,
       isVerified,
       trustScore,
       totalReturned,
       itemsLost,
       createdAt: createdAtIso,
+      updatedAt: updatedAtIso,
+      trust: {
+        score: trustScore,
+        level: trustLevel,
+        isVerified,
+        completedReturns: statistics.completedReturns,
+      },
+      preferences,
 
       // Backward compatibility aliases
       member_id: memberId,
@@ -116,6 +177,7 @@ export class AuthService {
         trust_score: trustScore,
         items_lost: itemsLost,
         items_returned: totalReturned,
+        ...statistics,
       },
       stream_token: streamToken,
       privacy_settings: privacySettings,
@@ -232,6 +294,9 @@ export class AuthService {
     if (!user) {
       throw new AppError("Invalid email or password", 401);
     }
+    if (user.scheduledDeletionAt) {
+      throw new AppError("Account is not active", 401, true, "UNAUTHORIZED");
+    }
 
     // Verify password
     if (!user.password) {
@@ -255,12 +320,14 @@ export class AuthService {
       id: user.id,
       uid: user.uid,
       email: user.email,
+      tokenVersion: user.tokenVersion,
     });
 
     const refreshToken = generateRefreshToken({
       id: user.id,
       uid: user.uid,
       email: user.email,
+      tokenVersion: user.tokenVersion,
     });
 
     return {
@@ -277,8 +344,11 @@ export class AuthService {
 
       // Get user
       const user = await authRepository.findById(decoded.id);
-      if (!user) {
+      if (!user || user.scheduledDeletionAt) {
         throw new AppError("User not found", 404);
+      }
+      if ((decoded.tokenVersion ?? 0) !== user.tokenVersion) {
+        throw new AppError("Session has been revoked", 401);
       }
 
       // Generate new tokens
@@ -286,12 +356,14 @@ export class AuthService {
         id: user.id,
         uid: user.uid,
         email: user.email,
+        tokenVersion: user.tokenVersion,
       });
 
       const newRefreshToken = generateRefreshToken({
         id: user.id,
         uid: user.uid,
         email: user.email,
+        tokenVersion: user.tokenVersion,
       });
 
       return {
@@ -305,12 +377,12 @@ export class AuthService {
   }
 
   async getProfile(userId: string): Promise<UserResponse> {
-    const user = await authRepository.findById(userId);
-    if (!user) {
-      throw new AppError("User not found", 404);
+    const profile = await authRepository.findProfileById(userId);
+    if (!profile) {
+      throw new AppError("Profile not found", 404, true, "PROFILE_NOT_FOUND");
     }
 
-    return this.formatUserResponse(user);
+    return this.formatUserResponse(profile.user, profile.statistics);
   }
 
   async verifyOtp(data: VerifyOtpDTO): Promise<VerifyOtpResponse> {
@@ -373,11 +445,13 @@ export class AuthService {
       id: user.id,
       uid: user.uid,
       email: user.email,
+      tokenVersion: user.tokenVersion,
     });
     const refreshToken = generateRefreshToken({
       id: user.id,
       uid: user.uid,
       email: user.email,
+      tokenVersion: user.tokenVersion,
     });
 
     return {
@@ -444,16 +518,139 @@ export class AuthService {
   ): Promise<UserResponse> {
     const user = await authRepository.findById(userId);
     if (!user) {
-      throw new AppError("User not found", 404);
+      throw new AppError("Profile not found", 404, true, "PROFILE_NOT_FOUND");
+    }
+
+    if (
+      data.phoneNumber &&
+      (await authRepository.findPhoneOwner(data.phoneNumber, userId))
+    ) {
+      throw new AppError(
+        "Phone number is already in use",
+        409,
+        true,
+        "PHONE_ALREADY_USED"
+      );
     }
 
     const payload: any = { ...data };
-    if (data.address && !payload.addressCity) {
+    if (data.address !== undefined && payload.addressCity === undefined) {
       payload.addressCity = data.address;
     }
+    delete payload.address;
 
-    const updated = await authRepository.updateUser(userId, payload);
-    return this.formatUserResponse(updated);
+    await authRepository.updateUser(userId, payload);
+    await authRepository.createAuditLog(userId, "PROFILE_UPDATED", {
+      fields: Object.entries(data)
+        .filter(([field, value]) => field !== "pushToken" && value !== undefined)
+        .map(([field]) => field),
+    });
+    return this.getProfile(userId);
+  }
+
+  async getProfileStatistics(userId: string): Promise<ProfileStatistics> {
+    const profile = await authRepository.findProfileById(userId);
+    if (!profile) {
+      throw new AppError("Profile not found", 404, true, "PROFILE_NOT_FOUND");
+    }
+    return profile.statistics;
+  }
+
+  async changePassword(userId: string, data: ChangePasswordDTO): Promise<void> {
+    const user = await authRepository.findById(userId);
+    if (!user) {
+      throw new AppError("Profile not found", 404, true, "PROFILE_NOT_FOUND");
+    }
+    if (!user.password) {
+      throw new AppError(
+        "This account does not use a password",
+        403,
+        true,
+        "PASSWORD_NOT_SUPPORTED_FOR_PROVIDER"
+      );
+    }
+    if (!(await comparePassword(data.currentPassword, user.password))) {
+      throw new AppError("Current password is incorrect", 401, true, "UNAUTHORIZED");
+    }
+
+    const hashedPassword = await hashPassword(data.newPassword);
+    await authRepository.updatePassword(userId, hashedPassword, true);
+    await emailService.sendPasswordChangedEmail(user.email, user.displayName);
+  }
+
+  async requestAccountDeletionOtp(userId: string): Promise<void> {
+    const user = await authRepository.findById(userId);
+    if (!user) {
+      throw new AppError("Profile not found", 404, true, "PROFILE_NOT_FOUND");
+    }
+
+    const otpCode = this.generateVerificationCode();
+    const otpHash = await hashPassword(otpCode);
+    const expiresAt = new Date(Date.now() + 10 * 60 * 1000).toISOString();
+    await redis.set(
+      `otp:account-deletion:${userId}`,
+      { otpHash, attempts: 0, expiresAt },
+      10 * 60
+    );
+    await authRepository.createAuditLog(
+      userId,
+      "ACCOUNT_DELETION_OTP_REQUESTED"
+    );
+    await emailService.sendAccountDeletionOtpEmail(
+      user.email,
+      user.displayName,
+      otpCode
+    );
+  }
+
+  async confirmAccountDeletion(
+    userId: string,
+    data: ConfirmAccountDeletionDTO
+  ): Promise<{ scheduledDeletionAt: string; recoverableUntil: string }> {
+    const key = `otp:account-deletion:${userId}`;
+    const stored = await redis.get<{
+      otpHash: string;
+      attempts: number;
+      expiresAt: string;
+    }>(key);
+    if (!stored || new Date(stored.expiresAt) <= new Date()) {
+      await redis.del(key);
+      throw new AppError(
+        "Deletion verification code is invalid or expired",
+        403,
+        true,
+        "REAUTHENTICATION_REQUIRED"
+      );
+    }
+
+    const valid = await comparePassword(data.otpCode, stored.otpHash);
+    if (!valid) {
+      const attempts = stored.attempts + 1;
+      if (attempts >= 5) {
+        await redis.del(key);
+      } else {
+        const remainingSeconds = Math.max(
+          1,
+          Math.ceil((new Date(stored.expiresAt).getTime() - Date.now()) / 1000)
+        );
+        await redis.set(key, { ...stored, attempts }, remainingSeconds);
+      }
+      throw new AppError(
+        "Deletion verification code is invalid or expired",
+        403,
+        true,
+        "REAUTHENTICATION_REQUIRED"
+      );
+    }
+
+    await redis.del(key);
+    const scheduledDeletionAt = new Date(Date.now() + 30 * 24 * 60 * 60 * 1000);
+    await authRepository.scheduleAccountDeletion(userId, scheduledDeletionAt);
+
+    return {
+      scheduledDeletionAt: scheduledDeletionAt.toISOString(),
+      recoverableUntil: scheduledDeletionAt.toISOString(),
+    };
   }
 
   async deleteAccount(userId: string): Promise<void> {
@@ -545,12 +742,14 @@ export class AuthService {
         id: user.id,
         uid: user.uid,
         email: user.email,
+        tokenVersion: user.tokenVersion,
       });
 
       const refreshToken = generateRefreshToken({
         id: user.id,
         uid: user.uid,
         email: user.email,
+        tokenVersion: user.tokenVersion,
       });
 
       // Provide isNewUser info via GoogleAuthResponse interface compatibility
@@ -636,12 +835,14 @@ export class AuthService {
       id: user.id,
       uid: user.uid,
       email: user.email,
+      tokenVersion: user.tokenVersion,
     });
 
     const refreshToken = generateRefreshToken({
       id: user.id,
       uid: user.uid,
       email: user.email,
+      tokenVersion: user.tokenVersion,
     });
 
     return {
@@ -659,6 +860,12 @@ export class AuthService {
     const user = await authRepository.findByEmail(data.email);
     if (!user) {
       // Don't reveal if email exists - security best practice
+      return {
+        message:
+          "If an account with that email exists, a password reset link has been sent.",
+      };
+    }
+    if (!user.password) {
       return {
         message:
           "If an account with that email exists, a password reset link has been sent.",
@@ -720,7 +927,7 @@ export class AuthService {
     const hashedPassword = await hashPassword(data.newPassword);
 
     // Update password and clear reset token
-    await authRepository.updatePassword(user.id, hashedPassword);
+    await authRepository.updatePassword(user.id, hashedPassword, true);
 
     logger.info(`Password reset successful for user: ${user.email}`);
 
@@ -796,12 +1003,14 @@ export class AuthService {
         id: user.id,
         uid: user.uid,
         email: user.email,
+        tokenVersion: user.tokenVersion,
       });
 
       const refreshToken = generateRefreshToken({
         id: user.id,
         uid: user.uid,
         email: user.email,
+        tokenVersion: user.tokenVersion,
       });
 
       const responseData = {

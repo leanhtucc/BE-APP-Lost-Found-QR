@@ -61,6 +61,10 @@ export const markNotificationReadSchema = z.object({
 export const updatePreferenceSchema = z.object({
   body: z.object({
     pushEnabled: z.boolean().optional(),
+    emailEnabled: z.boolean().optional(),
+    proximityEnabled: z.boolean().optional(),
+    notificationRadiusMeters: z.number().int().min(100).max(5000).optional(),
+    language: z.enum(["vi", "en"]).optional(),
     importantEnabled: z.boolean().optional(),
     transactionEnabled: z.boolean().optional(),
     itemEnabled: z.boolean().optional(),
@@ -72,16 +76,38 @@ export const updatePreferenceSchema = z.object({
     quietEnd: z.string().regex(timeRegex, "quietEnd must be in HH:mm format (e.g. 07:00)").optional(),
     timezone: z.string().min(1).optional(),
     dailyDigestTime: z.string().regex(timeRegex, "dailyDigestTime must be in HH:mm format (e.g. 19:30)").optional(),
-    nearbyRadius: z.number().int().min(100).max(50000).optional(),
-  }),
+    nearbyRadius: z.number().int().min(100).max(5000).optional(),
+  }).strict().refine(
+    (body) => Object.keys(body).length > 0,
+    "At least one preference field is required"
+  ),
 });
 
 export const registerDeviceSchema = z.object({
-  body: z.object({
-    token: z.string().min(1, "FCM Push Token is required"),
-    platform: z.enum(["android", "ios", "web"]).default("android"),
-    deviceId: z.string().min(1, "Device ID is required"),
-  }),
+  body: z
+    .object({
+      token: z.string().min(1, "Push token is required").optional(),
+      pushToken: z.string().min(1, "Push token is required").optional(),
+      platform: z.enum(["android", "ios", "web"]).default("android"),
+      deviceId: z.string().trim().min(1, "Device ID is required").max(255),
+      appVersion: z.string().trim().max(50).optional(),
+    })
+    .strict()
+    .superRefine((body, ctx) => {
+      if (!body.pushToken && !body.token) {
+        ctx.addIssue({
+          code: z.ZodIssueCode.custom,
+          path: ["pushToken"],
+          message: "Push token is required",
+        });
+      }
+    })
+    .transform((body) => ({
+      token: body.pushToken || body.token!,
+      platform: body.platform,
+      deviceId: body.deviceId,
+      appVersion: body.appVersion,
+    })),
 });
 
 export const unregisterDeviceSchema = z.object({

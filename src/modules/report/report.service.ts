@@ -1,57 +1,55 @@
-import admin from "../../config/firebaseAdmin";
-import { logger } from "../../libs/logger";
+import { createHmac, randomUUID, timingSafeEqual } from "crypto";
+import { ENV } from "../../config/env";
 import { prisma } from "../../libs/prisma";
 import { AppError } from "../../middlewares/error.middleware";
-import { notificationService } from "../notification/notification.service";
 import {
   CancelTransactionResult,
   CompleteTransactionResult,
+  PaymentSession,
   ReportLostItemParams,
   ReportLostItemResponse,
+  ReportStatusResponse,
   WebhookPaymentPayload,
 } from "./report.types";
 
-const SYSTEM_FEE_PERCENTAGE = 0.1; // 10% platform fee
-const EARTH_RADIUS_METERS = 6371000;
+const SYSTEM_FEE_PERCENTAGE = 0.1;
+const PAYMENT_SESSION_MS = 15 * 60 * 1000;
+const REPORT_PAYMENT_WINDOW_MS = 24 * 60 * 60 * 1000;
+const EARTH_RADIUS_METERS = 6_371_000;
+
+function guardianError(message: string, statusCode: number, code: string): AppError {
+  return new AppError(message, statusCode, true, code);
+}
+
+function normalizeAddress(address?: string): string | null {
+  if (!address) return null;
+  return address.trim().replace(/\s+/g, " ").toLocaleLowerCase("vi-VN");
+}
+
+function vnPayDate(value: Date): string {
+  const pad = (part: number) => String(part).padStart(2, "0");
+  return `${value.getUTCFullYear()}${pad(value.getUTCMonth() + 1)}${pad(value.getUTCDate())}${pad(value.getUTCHours())}${pad(value.getUTCMinutes())}${pad(value.getUTCSeconds())}`;
+}
+
+function canonicalSignaturePayload(values: Record<string, unknown>): string {
+  return Object.entries(values)
+    .filter(([key, value]) => value !== undefined && value !== null && key !== "signature" && key !== "vnp_SecureHash" && key !== "vnp_SecureHashType")
+    .filter(([key]) => key.startsWith("vnp_") || !Object.keys(values).some((candidate) => candidate.startsWith("vnp_")))
+    .sort(([a], [b]) => a.localeCompare(b))
+    .map(([key, value]) => `${encodeURIComponent(key)}=${encodeURIComponent(String(value))}`)
+    .join("&");
+}
 
 export class ReportService {
-  // ─── Helpers ──────────────────────────────────────────────────────────────
-
-  private parseItemChannelId(channelId: string): {
-    itemId: string;
-    finderId: string;
-  } | null {
-    if (!channelId.startsWith("item_")) return null;
-    const parts = channelId.split("_");
-    if (parts.length < 3) return null;
-    const itemId = parts[1] || "";
-    const finderId = parts.slice(2).join("_");
-    if (!itemId || !finderId) return null;
-    return { itemId, finderId };
-  }
-
-  /**
-   * Count active users within a given radius using Haversine SQL.
-   * Shared by both Radar simulate and FCM broadcast.
-   */
-  async countNearbyActiveUsers(
-    lat: number,
-    lng: number,
-    radiusMeters: number
-  ): Promise<number> {
+  async countNearbyActiveUsers(lat: number, lng: number, radiusMeters: number): Promise<number> {
     const rows = await prisma.$queryRawUnsafe<{ count: bigint }[]>(
-      `
-      SELECT COUNT(*)::bigint AS count
-      FROM "UserLocation" ul
-      WHERE ul."updatedAt" >= NOW() - INTERVAL '1 hour'
-        AND ${EARTH_RADIUS_METERS} * acos(
-          LEAST(1.0,
-            cos(radians($1)) * cos(radians(ul."lat")) *
-            cos(radians(ul."lng") - radians($2)) +
-            sin(radians($1)) * sin(radians(ul."lat"))
-          )
-        ) <= $3
-      `,
+      `SELECT COUNT(*)::bigint AS count
+       FROM "UserLocation" ul
+       WHERE ul."updatedAt" >= NOW() - INTERVAL '1 hour'
+         AND ${EARTH_RADIUS_METERS} * acos(LEAST(1.0,
+           cos(radians($1)) * cos(radians(ul."lat")) *
+           cos(radians(ul."lng") - radians($2)) + sin(radians($1)) * sin(radians(ul."lat"))
+         )) <= $3`,
       lat,
       lng,
       radiusMeters
@@ -59,374 +57,302 @@ export class ReportService {
     return Number(rows[0]?.count ?? 0);
   }
 
-  // ─── 1. Create Lost Report (POST /v1/reports) ─────────────────────────────
+  private assertPaymentConfiguration(): void {
+    if (!ENV.VNPAY_TMN_CODE || !ENV.VNPAY_HASH_SECRET) {
+      throw guardianError("Payment gateway is not configured", 503, "PAYMENT_GATEWAY_NOT_CONFIGURED");
+    }
+  }
 
-  async createLostReport(
-    userId: string,
-    params: ReportLostItemParams
-  ): Promise<ReportLostItemResponse> {
-    const { itemId, location, radar, reward } = params;
+  private buildPaymentUrl(input: {
+    providerOrderId: string;
+    amount: number;
+    requestIp: string;
+    expiresAt: Date;
+  }): string {
+    this.assertPaymentConfiguration();
+    const now = new Date();
+    const values: Record<string, string> = {
+      vnp_Amount: String(input.amount * 100),
+      vnp_Command: "pay",
+      vnp_CreateDate: vnPayDate(now),
+      vnp_CurrCode: "VND",
+      vnp_ExpireDate: vnPayDate(input.expiresAt),
+      vnp_IpAddr: input.requestIp || "127.0.0.1",
+      vnp_Locale: "vn",
+      vnp_OrderInfo: `Guardian payment ${input.providerOrderId}`,
+      vnp_OrderType: "other",
+      vnp_ReturnUrl: ENV.VNPAY_RETURN_URL,
+      vnp_TmnCode: ENV.VNPAY_TMN_CODE,
+      vnp_TxnRef: input.providerOrderId,
+      vnp_Version: "2.1.0",
+    };
+    const signedQuery = canonicalSignaturePayload(values);
+    const signature = createHmac("sha512", ENV.VNPAY_HASH_SECRET)
+      .update(signedQuery, "utf8")
+      .digest("hex");
+    const joiner = ENV.VNPAY_PAYMENT_URL.includes("?") ? "&" : "?";
+    return `${ENV.VNPAY_PAYMENT_URL}${joiner}${signedQuery}&vnp_SecureHash=${signature}`;
+  }
 
-    // Verify item ownership and eligibility
-    const item = await prisma.item.findUnique({ where: { id: itemId } });
-    if (!item) throw new AppError("Item not found", 404);
-    if (item.ownerId !== userId)
-      throw new AppError("You do not own this item", 403);
-    if (item.status !== "SAFE") {
-      throw new AppError(
-        `Item cannot be reported: current status is ${item.status}`,
-        409
-      );
+  private toPaymentSession(post: any, payment: any): PaymentSession {
+    return {
+      payment_id: payment.id,
+      payment_url: payment.paymentUrl,
+      base_reward: post.bountyAmount,
+      service_fee: post.serviceFee,
+      total_to_pay: payment.amount,
+      currency: "VND",
+      expires_at: payment.expiresAt.toISOString(),
+    };
+  }
+
+  private async lockItem(tx: any, itemId: string): Promise<void> {
+    await tx.$queryRawUnsafe('SELECT "id" FROM "Item" WHERE "id" = $1 FOR UPDATE', itemId);
+  }
+
+  async createLostReport(userId: string, params: ReportLostItemParams): Promise<ReportLostItemResponse> {
+    this.assertPaymentConfiguration();
+    const idempotencyKey = params.idempotencyKey.trim();
+    if (!/^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(idempotencyKey)) {
+      throw guardianError("Idempotency-Key must be a UUID", 400, "INVALID_IDEMPOTENCY_KEY");
     }
 
-    // Calculate total (bounty + 10% fee)
-    const systemFee = Math.round(reward.baseAmount * SYSTEM_FEE_PERCENTAGE);
-    const totalToPay = reward.baseAmount + systemFee;
+    const result = await prisma.$transaction(async (tx: any) => {
+      const retry = await tx.post.findUnique({
+        where: { idempotencyKey },
+        include: { payments: { orderBy: { createdAt: "desc" }, take: 1 } },
+      });
+      if (retry) {
+        if (retry.ownerId !== userId || retry.status !== "PENDING_PAYMENT" || !retry.payments[0]) {
+          throw guardianError("The idempotency key cannot be reused for this request", 409, "IDEMPOTENCY_KEY_REUSED");
+        }
+        return { post: retry, payment: retry.payments[0] };
+      }
 
-    // DB transaction: Post + EscrowTransaction + Item status
-    const post = await prisma.$transaction(async (tx: any) => {
-      const newPost = await tx.post.create({
+      await this.lockItem(tx, params.itemId);
+      // A concurrent request with the same key may have committed while this
+      // transaction waited for the item lock. Re-read it before creating work.
+      const concurrentRetry = await tx.post.findUnique({
+        where: { idempotencyKey },
+        include: { payments: { orderBy: { createdAt: "desc" }, take: 1 } },
+      });
+      if (concurrentRetry) {
+        if (concurrentRetry.ownerId !== userId || concurrentRetry.status !== "PENDING_PAYMENT" || !concurrentRetry.payments[0]) {
+          throw guardianError("The idempotency key cannot be reused for this request", 409, "IDEMPOTENCY_KEY_REUSED");
+        }
+        return { post: concurrentRetry, payment: concurrentRetry.payments[0] };
+      }
+      const item = await tx.item.findUnique({ where: { id: params.itemId } });
+      if (!item) {
+        const qrItem = await tx.item.findUnique({ where: { qrCodeId: params.itemId }, select: { id: true } });
+        throw guardianError(qrItem ? "item_id must be the database item id, not qr_code_id" : "Item not found", 404, qrItem ? "INVALID_ITEM_ID" : "ITEM_NOT_FOUND");
+      }
+      if (item.ownerId !== userId) throw guardianError("You do not own this item", 403, "ITEM_NOT_OWNED");
+      if (item.status !== "SAFE" && item.status !== "LOST") {
+        throw guardianError("Item is not eligible for a Guardian report", 409, "ITEM_NOT_ELIGIBLE");
+      }
+
+      const owner = await tx.user.findUnique({ where: { id: userId }, select: { isVerified: true } });
+      if (!owner?.isVerified) throw guardianError("User must verify their account before creating a report", 403, "USER_NOT_VERIFIED");
+
+      const existing = await tx.post.findFirst({
+        where: { itemId: item.id, status: { in: ["PENDING_PAYMENT", "ACTIVE"] } },
+        select: { id: true },
+      });
+      if (existing) throw guardianError(`Item already has an open Guardian report: ${existing.id}`, 409, "REPORT_ALREADY_EXISTS");
+
+      const serviceFee = Math.round(params.reward.baseAmount * SYSTEM_FEE_PERCENTAGE);
+      const totalToPay = params.reward.baseAmount + serviceFee;
+      const now = new Date();
+      const paymentExpiresAt = new Date(now.getTime() + PAYMENT_SESSION_MS);
+      const reportExpiresAt = new Date(now.getTime() + REPORT_PAYMENT_WINDOW_MS);
+      const providerOrderId = randomUUID();
+      const paymentUrl = this.buildPaymentUrl({
+        providerOrderId,
+        amount: totalToPay,
+        requestIp: params.requestIp,
+        expiresAt: paymentExpiresAt,
+      });
+      const post = await tx.post.create({
         data: {
           ownerId: userId,
-          itemId,
-          lat: location.lat,
-          lng: location.lng,
-          address: location.address,
-          bountyAmount: reward.baseAmount,
+          itemId: item.id,
+          lat: params.location.lat,
+          lng: params.location.lng,
+          address: params.location.address?.trim(),
+          normalizedAddress: normalizeAddress(params.location.address),
+          bountyAmount: params.reward.baseAmount,
           totalPaid: totalToPay,
+          serviceFee,
+          currency: "VND",
           status: "PENDING_PAYMENT",
-          description: `Báo mất ${item.name}`,
-          radarConfig: radar,
+          radarConfig: { radius: params.radar.radius, duration_hours: params.radar.durationHours },
+          radarRadius: params.radar.radius,
+          durationHours: params.radar.durationHours,
+          expiresAt: reportExpiresAt,
+          idempotencyKey,
+          description: `Guardian report for ${item.name}`,
         },
       });
-
-      await tx.escrowTransaction.create({
+      const payment = await tx.payment.create({
         data: {
-          postId: newPost.id,
+          reportId: post.id,
+          provider: "VNPAY",
+          providerOrderId,
           amount: totalToPay,
-          provider: "VNPAY", // default; FE can override via webhook
-          status: "HOLDING",
+          currency: "VND",
+          paymentUrl,
+          expiresAt: paymentExpiresAt,
         },
       });
-
-      await tx.item.update({
-        where: { id: itemId },
-        data: { status: "PENDING_PAYMENT" },
-      });
-
-      return newPost;
+      return { post, payment };
     });
 
-    const paymentUrl = `https://sandbox.vnpayment.vn/paymentv2/vpcpay.html?order_id=${post.id}&amount=${totalToPay}`;
-
-    return {
-      report_id: post.id,
-      status: "PENDING_PAYMENT",
-      payment: {
-        total_to_pay: totalToPay,
-        payment_url: paymentUrl,
-      },
-    };
+    return { report_id: result.post.id, status: "PENDING_PAYMENT", payment: this.toPaymentSession(result.post, result.payment) };
   }
 
-  // ─── 2. Payment Webhook ───────────────────────────────────────────────────
+  private signatureIsValid(payload: WebhookPaymentPayload): boolean {
+    if (!ENV.VNPAY_HASH_SECRET) return false;
+    const expected = createHmac("sha512", ENV.VNPAY_HASH_SECRET)
+      .update(canonicalSignaturePayload(payload.raw), "utf8")
+      .digest("hex");
+    const actual = payload.signature.toLowerCase();
+    if (actual.length !== expected.length) return false;
+    return timingSafeEqual(Buffer.from(actual, "hex"), Buffer.from(expected, "hex"));
+  }
 
-  /**
-   * Called by VNPay/MoMo webhook when payment succeeds.
-   * Transitions: PENDING_PAYMENT → SEARCHING
-   * Side effects: escrow locked notification + FCM broadcast to nearby users.
-   */
   async handlePaymentWebhook(payload: WebhookPaymentPayload): Promise<void> {
-    const { postId, amount, status, transactionCode } = payload;
-
-    if (status !== "success") {
-      throw new AppError("Payment failed or cancelled", 400);
+    if (!this.signatureIsValid(payload)) {
+      throw guardianError("Invalid payment signature", 400, "INVALID_PAYMENT_SIGNATURE");
     }
-
-    const post = await prisma.post.findUnique({
-      where: { id: postId },
-      include: { escrowTransactions: true, item: true },
-    });
-
-    if (!post) throw new AppError("Post not found", 404);
-    if (post.status === "SEARCHING") return; // Idempotent
-
-    const holdingTx = post.escrowTransactions.find(
-      (tx) => tx.status === "HOLDING"
-    );
-    if (!holdingTx || holdingTx.amount !== amount) {
-      throw new AppError("Invalid transaction amount or state", 400);
-    }
-
-    // Atomic state transition
-    await prisma.$transaction([
-      prisma.post.update({
-        where: { id: postId },
-        data: { status: "SEARCHING" },
-      }),
-      prisma.escrowTransaction.update({
-        where: { id: holdingTx.id },
-        data: { status: "HOLDING", transactionCode },
-      }),
-      prisma.item.update({
-        where: { id: post.itemId },
-        data: {
-          status: "LOST",
-          lostLat: post.lat,
-          lostLng: post.lng,
-          lostAddress: post.address,
-        },
-      }),
-    ]);
-
-    // Notify owner that escrow is locked
-    await notificationService.notifyEscrowLocked({
-      receiverId: post.ownerId,
-      amount,
-      transactionId: transactionCode || holdingTx.id,
-      postId,
-    });
-
-    // FCM broadcast to nearby users within the chosen radar radius (or 5 km fallback)
-    const radarConfigObj = post.radarConfig as any;
-    const radiusMeters = radarConfigObj?.radius ?? 5000;
-    await this.broadcastToNearbyUsers(
-      post.lat,
-      post.lng,
-      post.item.name,
-      radiusMeters
-    );
-  }
-
-  // ─── 3. Cancel Escrow ─────────────────────────────────────────────────────
-
-  async cancelEscrowForItem(
-    ownerId: string,
-    itemId: string
-  ): Promise<CancelTransactionResult | null> {
-    const post = await prisma.post.findFirst({
-      where: {
-        ownerId,
-        itemId,
-        status: { in: ["PENDING_PAYMENT", "SEARCHING"] },
-      },
-      orderBy: { createdAt: "desc" },
-      include: { escrowTransactions: { orderBy: { createdAt: "desc" } } },
-    });
-
-    if (!post) return null;
-
-    const holdingTx = post.escrowTransactions.find(
-      (tx) => tx.status === "HOLDING"
-    );
 
     await prisma.$transaction(async (tx: any) => {
-      await tx.post.update({
-        where: { id: post.id },
-        data: { status: "CANCELLED" },
-      });
+      const payment = await tx.payment.findUnique({ where: { providerOrderId: payload.providerOrderId } });
+      if (!payment) throw guardianError("Payment not found", 404, "PAYMENT_NOT_FOUND");
+      await tx.$queryRawUnsafe('SELECT "id" FROM "Payment" WHERE "id" = $1 FOR UPDATE', payment.id);
+      const report = await tx.post.findUnique({ where: { id: payment.reportId } });
+      if (!report) throw guardianError("Report not found", 404, "REPORT_NOT_FOUND");
+      await tx.$queryRawUnsafe('SELECT "id" FROM "Post" WHERE "id" = $1 FOR UPDATE', report.id);
 
-      if (holdingTx) {
-        await tx.escrowTransaction.update({
-          where: { id: holdingTx.id },
-          data: { status: "REFUNDED" },
-        });
+      if (payment.status === "PAID" && report.status === "ACTIVE") return;
+      if (payment.expiresAt <= new Date()) {
+        await tx.payment.update({ where: { id: payment.id }, data: { status: "EXPIRED", rawCallback: payload.raw } });
+        throw guardianError("Payment session has expired", 409, "PAYMENT_EXPIRED");
+      }
+      if (payment.amount !== payload.amount || payment.currency !== payload.currency.toUpperCase()) {
+        throw guardianError("Payment amount or currency does not match the order", 400, "PAYMENT_AMOUNT_MISMATCH");
+      }
+      if (report.status !== "PENDING_PAYMENT") {
+        throw guardianError("Report cannot accept this payment", 409, "REPORT_NOT_ELIGIBLE");
+      }
+      if (!payload.paid) {
+        await tx.payment.update({ where: { id: payment.id }, data: { status: "FAILED", rawCallback: payload.raw } });
+        await tx.post.update({ where: { id: report.id }, data: { status: "PAYMENT_FAILED" } });
+        return;
       }
 
+      const now = new Date();
+      await tx.payment.update({
+        where: { id: payment.id },
+        data: { status: "PAID", providerTransactionId: payload.providerTransactionId, paidAt: now, rawCallback: payload.raw },
+      });
+      await tx.post.update({
+        where: { id: report.id },
+        data: { status: "ACTIVE", activatedAt: now, expiresAt: new Date(now.getTime() + (report.durationHours || 24) * 60 * 60 * 1000) },
+      });
       await tx.item.update({
-        where: { id: itemId },
-        data: {
-          status: "SAFE",
-          lostLat: null,
-          lostLng: null,
-          lostAddress: null,
-        },
+        where: { id: report.itemId },
+        data: { status: "LOST", lostLat: report.lat, lostLng: report.lng, lostAddress: report.address },
       });
     });
+  }
 
-    if (holdingTx) {
-      await notificationService.notifyPaymentRefunded({
-        receiverId: ownerId,
-        amount: holdingTx.amount,
-        transactionId: holdingTx.transactionCode || holdingTx.id,
-        status: "refunded",
-        postId: post.id,
-      });
-    }
-
-    await notificationService.notifyStatusUpdate({
-      receiverId: ownerId,
-      category: "ITEM",
-      type: "STATUS_UPDATE",
-      title: "Đã hủy giao dịch",
-      content: "Bài đăng thất lạc đã được hủy và giao dịch được hoàn về ví.",
-      metadata: { post_id: post.id, item_id: itemId },
+  async getReportStatus(userId: string, reportId: string): Promise<ReportStatusResponse> {
+    const report = await prisma.post.findUnique({
+      where: { id: reportId },
+      include: { item: { select: { status: true } }, payments: { orderBy: { createdAt: "desc" }, take: 1 } },
     });
-
+    if (!report) throw guardianError("Report not found", 404, "REPORT_NOT_FOUND");
+    if (report.ownerId !== userId) throw guardianError("You do not own this report", 403, "REPORT_NOT_OWNED");
     return {
-      postId: post.id,
-      postStatus: "CANCELLED",
-      transactionStatus: holdingTx ? "REFUNDED" : null,
-      refundedAmount: holdingTx?.amount ?? 0,
+      report_id: report.id,
+      report_status: report.status as ReportStatusResponse["report_status"],
+      payment_status: (report.payments[0]?.status as ReportStatusResponse["payment_status"]) ?? null,
+      item_status: report.item.status,
+      activated_at: report.activatedAt?.toISOString() ?? null,
     };
   }
 
-  // ─── 4. Complete Escrow (Finder confirmed) ────────────────────────────────
+  async createOrGetPaymentSession(userId: string, reportId: string, requestIp: string): Promise<PaymentSession> {
+    this.assertPaymentConfiguration();
+    return prisma.$transaction(async (tx: any) => {
+      const reportExists = await tx.post.findUnique({ where: { id: reportId }, select: { id: true } });
+      if (!reportExists) throw guardianError("Report not found", 404, "REPORT_NOT_FOUND");
+      await tx.$queryRawUnsafe('SELECT "id" FROM "Post" WHERE "id" = $1 FOR UPDATE', reportId);
+      const report = await tx.post.findUnique({ where: { id: reportId }, include: { payments: { orderBy: { createdAt: "desc" } } } });
+      if (!report) throw guardianError("Report not found", 404, "REPORT_NOT_FOUND");
+      if (report.ownerId !== userId) throw guardianError("You do not own this report", 403, "REPORT_NOT_OWNED");
+      if (report.status !== "PENDING_PAYMENT") throw guardianError("Report is no longer awaiting payment", 409, "REPORT_NOT_ELIGIBLE");
+      if (report.expiresAt && report.expiresAt <= new Date()) throw guardianError("Report payment window has expired", 409, "PAYMENT_EXPIRED");
 
-  async completeEscrowFromChannel(
-    ownerId: string,
-    channelId: string
-  ): Promise<CompleteTransactionResult | null> {
-    const parsed = this.parseItemChannelId(channelId);
-    if (!parsed) return null;
+      const current = report.payments.find((payment: any) => payment.status === "PENDING" && payment.expiresAt > new Date());
+      if (current) return this.toPaymentSession(report, current);
+      await tx.payment.updateMany({ where: { reportId, status: "PENDING" }, data: { status: "EXPIRED" } });
 
-    const { itemId, finderId } = parsed;
-
-    const post = await prisma.post.findFirst({
-      where: {
-        itemId,
-        status: { in: ["PENDING_PAYMENT", "SEARCHING", "RESOLVED"] },
-      },
-      orderBy: { createdAt: "desc" },
-      include: { escrowTransactions: { orderBy: { createdAt: "desc" } } },
-    });
-
-    if (!post) return null;
-    if (post.ownerId !== ownerId) {
-      throw new AppError("Only item owner can complete settlement", 403);
-    }
-
-    const alreadyReleasedTx = post.escrowTransactions.find(
-      (tx) => tx.status === "RELEASED"
-    );
-
-    if (post.status === "RESOLVED" && alreadyReleasedTx) {
-      return {
-        postId: post.id,
-        postStatus: "RESOLVED",
-        transactionStatus: "RELEASED",
-        releasedAmount: post.bountyAmount,
-        finderId,
-      };
-    }
-
-    const holdingTx = post.escrowTransactions.find(
-      (tx) => tx.status === "HOLDING"
-    );
-
-    await prisma.$transaction(async (tx: any) => {
-      await tx.post.update({
-        where: { id: post.id },
-        data: { status: "RESOLVED" },
+      const expiresAt = new Date(Date.now() + PAYMENT_SESSION_MS);
+      const providerOrderId = randomUUID();
+      const payment = await tx.payment.create({
+        data: {
+          reportId,
+          provider: "VNPAY",
+          providerOrderId,
+          amount: report.totalPaid,
+          currency: "VND",
+          paymentUrl: this.buildPaymentUrl({ providerOrderId, amount: report.totalPaid, requestIp, expiresAt }),
+          expiresAt,
+        },
       });
-      if (holdingTx) {
-        await tx.escrowTransaction.update({
-          where: { id: holdingTx.id },
-          data: { status: "RELEASED" },
-        });
-      }
-      await tx.item.update({
-        where: { id: itemId },
-        data: { status: "RESOLVED" },
-      });
+      return this.toPaymentSession(report, payment);
     });
-
-    const finder = await prisma.user.findUnique({
-      where: { id: finderId },
-      select: { id: true },
-    });
-
-    if (finder) {
-      await notificationService.notifyBountyReleased({
-        receiverId: finderId,
-        amount: post.bountyAmount,
-        transactionId:
-          holdingTx?.transactionCode ??
-          holdingTx?.id ??
-          alreadyReleasedTx?.transactionCode ??
-          alreadyReleasedTx?.id ??
-          post.id,
-        status: "released",
-        postId: post.id,
-      });
-    } else {
-      logger.warn("Finder user not found for released notification", {
-        postId: post.id,
-        finderId,
-      });
-    }
-
-    await notificationService.notifyStatusUpdate({
-      receiverId: ownerId,
-      category: "ITEM",
-      type: "STATUS_UPDATE",
-      title: "Giao dịch đã hoàn tất",
-      content: "Tiền thưởng đã được chuyển cho người nhặt thành công.",
-      metadata: { post_id: post.id, item_id: itemId, finder_id: finderId },
-    });
-
-    return {
-      postId: post.id,
-      postStatus: "RESOLVED",
-      transactionStatus: holdingTx || alreadyReleasedTx ? "RELEASED" : null,
-      releasedAmount: post.bountyAmount,
-      finderId,
-    };
   }
 
-  // ─── 5. FCM Broadcast ─────────────────────────────────────────────────────
-
-  private async broadcastToNearbyUsers(
-    lat: number,
-    lng: number,
-    itemName: string,
-    radiusMeters: number
-  ): Promise<void> {
-    if (!admin.apps.length) {
-      logger.warn(
-        "Firebase Admin SDK not initialised – skipping FCM broadcast"
-      );
-      return;
-    }
-
-    const nearbyUsers = await prisma.$queryRawUnsafe<{ pushToken: string }[]>(
-      `
-      SELECT u."pushToken"
-      FROM "UserLocation" ul
-      JOIN "User" u ON u.id = ul."user_id"
-      WHERE u."pushToken" IS NOT NULL
-        AND ul."updatedAt" >= NOW() - INTERVAL '1 hour'
-        AND ${EARTH_RADIUS_METERS} * acos(
-          LEAST(1.0,
-            cos(radians($1)) * cos(radians(ul."lat")) *
-            cos(radians(ul."lng") - radians($2)) +
-            sin(radians($1)) * sin(radians(ul."lat"))
-          )
-        ) <= $3
-      `,
-      lat,
-      lng,
-      radiusMeters
-    );
-
-    const tokens = nearbyUsers.map((u) => u.pushToken).filter(Boolean);
-    if (tokens.length === 0) {
-      logger.info("No nearby active users found for FCM broadcast");
-      return;
-    }
-
-    try {
-      const response = await admin.messaging().sendEachForMulticast({
-        notification: {
-          title: "Cảnh báo Guardian 🚨",
-          body: `Có ${itemName} vừa rơi gần bạn (${radiusMeters / 1000}km). Tìm thấy nhận thưởng ngay!`,
-        },
-        tokens,
+  async expirePendingReports(): Promise<number> {
+    const due = await prisma.post.findMany({ where: { status: "PENDING_PAYMENT", expiresAt: { lte: new Date() } }, select: { id: true } });
+    for (const report of due) {
+      await prisma.$transaction(async (tx: any) => {
+        await tx.payment.updateMany({ where: { reportId: report.id, status: "PENDING" }, data: { status: "EXPIRED" } });
+        await tx.post.updateMany({ where: { id: report.id, status: "PENDING_PAYMENT" }, data: { status: "EXPIRED" } });
       });
-      logger.info(`FCM broadcast sent to ${response.successCount} users`);
-    } catch (error) {
-      logger.error("FCM multicast error:", error);
     }
+    return due.length;
+  }
+
+  async cancelEscrowForItem(ownerId: string, itemId: string): Promise<CancelTransactionResult | null> {
+    const report = await prisma.post.findFirst({ where: { ownerId, itemId, status: { in: ["PENDING_PAYMENT", "ACTIVE"] } }, orderBy: { createdAt: "desc" }, include: { escrowTransactions: true } });
+    if (!report) return null;
+    const holding = report.escrowTransactions.find((transaction) => transaction.status === "HOLDING");
+    await prisma.$transaction(async (tx: any) => {
+      await tx.post.update({ where: { id: report.id }, data: { status: "CANCELLED" } });
+      await tx.payment.updateMany({ where: { reportId: report.id, status: "PENDING" }, data: { status: "CANCELLED" } });
+      if (holding) await tx.escrowTransaction.update({ where: { id: holding.id }, data: { status: "REFUNDED" } });
+    });
+    return { postId: report.id, postStatus: "CANCELLED", transactionStatus: holding ? "REFUNDED" : null, refundedAmount: holding?.amount ?? 0 };
+  }
+
+  async completeEscrowFromChannel(ownerId: string, channelId: string): Promise<CompleteTransactionResult | null> {
+    if (!channelId.startsWith("item_")) return null;
+    const [itemId, ...finderParts] = channelId.slice(5).split("_");
+    const finderId = finderParts.join("_");
+    if (!itemId || !finderId) return null;
+    const report = await prisma.post.findFirst({ where: { itemId, ownerId, status: { in: ["ACTIVE", "FOUND", "COMPLETED"] } }, orderBy: { createdAt: "desc" }, include: { escrowTransactions: true } });
+    if (!report) return null;
+    const holding = report.escrowTransactions.find((transaction) => transaction.status === "HOLDING");
+    await prisma.$transaction(async (tx: any) => {
+      await tx.post.update({ where: { id: report.id }, data: { status: "COMPLETED" } });
+      if (holding) await tx.escrowTransaction.update({ where: { id: holding.id }, data: { status: "RELEASED" } });
+      await tx.item.update({ where: { id: itemId }, data: { status: "RESOLVED" } });
+    });
+    return { postId: report.id, postStatus: "COMPLETED", transactionStatus: holding ? "RELEASED" : null, releasedAmount: report.bountyAmount, finderId };
   }
 }
 

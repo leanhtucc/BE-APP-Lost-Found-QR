@@ -2,7 +2,11 @@ import { Router } from "express";
 import { authMiddleware } from "../../middlewares/auth.middleware";
 import { validate } from "../../middlewares/validate.middleware";
 import { reportController } from "./report.controller";
-import { createReportSchema, webhookPaymentSchema } from "./report.schema";
+import {
+  createReportSchema,
+  reportIdParamSchema,
+  webhookPaymentSchema,
+} from "./report.schema";
 
 const router = Router();
 
@@ -12,6 +16,20 @@ router.post(
   authMiddleware,
   validate(createReportSchema),
   reportController.createReport
+);
+
+router.get(
+  "/:reportId/status",
+  authMiddleware,
+  validate(reportIdParamSchema),
+  reportController.getReportStatus
+);
+
+router.post(
+  "/:reportId/payment-session",
+  authMiddleware,
+  validate(reportIdParamSchema),
+  reportController.paymentSession
 );
 
 // Backward-compat alias kept for existing FE calls

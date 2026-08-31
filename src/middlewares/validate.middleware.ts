@@ -51,12 +51,35 @@ export function validate(schema: ZodSchema) {
       next();
     } catch (error: any) {
       const issues = error?.issues || error?.errors;
+      const fields: Record<string, string> = {};
+      for (const issue of issues || []) {
+        const path = Array.isArray(issue.path) ? issue.path : [];
+        const field = String(path[path.length - 1] || "request");
+        if (!fields[field]) fields[field] = issue.message;
+      }
 
-      return ResponseUtil.badRequest(
-        res,
-        "Validation failed",
-        issues?.[0]?.message || error.message
+      const invalidRadius = Boolean(
+        fields.notificationRadiusMeters || fields.nearbyRadius
       );
+      const profileRequest = req.path.includes("/profile");
+      return res.status(invalidRadius ? 422 : 400).json({
+        success: false,
+        message: invalidRadius
+          ? "Notification radius is invalid"
+          : profileRequest
+          ? "Profile data is invalid"
+          : "Request data is invalid",
+        error: {
+          code: invalidRadius
+            ? "INVALID_NOTIFICATION_RADIUS"
+            : "VALIDATION_ERROR",
+          fields:
+            Object.keys(fields).length > 0
+              ? fields
+              : { request: error.message || "Validation failed" },
+        },
+        timestamp: new Date().toISOString(),
+      });
     }
   };
 }

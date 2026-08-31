@@ -1,7 +1,10 @@
 import { describe, expect, it } from "vitest";
 import {
+  changePasswordSchema,
+  confirmAccountDeletionSchema,
   registerSchema,
   resendOtpSchema,
+  updateProfileSchema,
   verifyOtpSchema,
 } from "./auth.schema";
 
@@ -66,5 +69,53 @@ describe("auth registration schemas", () => {
     expect(
       resendOtpSchema.parse({ body: { email: "USER@example.com" } }).body
     ).toEqual({ email: "user@example.com" });
+  });
+
+  it("accepts partial nullable profile updates and normalizes values", () => {
+    const parsed = updateProfileSchema.parse({
+      body: {
+        displayName: "  Nguyễn Văn An  ",
+        photoURL: null,
+        phoneNumber: "+84912345678",
+        address: "  Quận 1, TP.HCM  ",
+        bio: null,
+      },
+    });
+
+    expect(parsed.body).toEqual({
+      displayName: "Nguyễn Văn An",
+      photoURL: null,
+      phoneNumber: "+84912345678",
+      address: "Quận 1, TP.HCM",
+      bio: null,
+    });
+  });
+
+  it("rejects insecure avatar URLs and protected profile fields", () => {
+    expect(
+      updateProfileSchema.safeParse({ body: { photoURL: "http://example.com/a.jpg" } })
+        .success
+    ).toBe(false);
+    expect(
+      updateProfileSchema.safeParse({ body: { trustScore: 100 } }).success
+    ).toBe(false);
+  });
+
+  it("validates password changes and deletion confirmation", () => {
+    expect(
+      changePasswordSchema.safeParse({
+        body: { currentPassword: "OldPassword123", newPassword: "NewPassword456" },
+      }).success
+    ).toBe(true);
+    expect(
+      confirmAccountDeletionSchema.safeParse({
+        body: { otpCode: "123456", confirmation: "DELETE" },
+      }).success
+    ).toBe(true);
+    expect(
+      confirmAccountDeletionSchema.safeParse({
+        body: { otpCode: "123456", confirmation: "delete" },
+      }).success
+    ).toBe(false);
   });
 });

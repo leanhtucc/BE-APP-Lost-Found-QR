@@ -30,5 +30,6 @@ Tất cả tài liệu bổ sung của backend được đặt trong thư mục 
 
 ## Frontend và tài nguyên
 
+- [Handoff cập nhật Profile/Settings/Security cho App](MOBILE_PROFILE_HANDOFF.md)
 - [Cập nhật màn Home/Lost phía frontend](FE_HOME_LOST_FE_UPDATE.md)
 - [Thiết lập logo trong email](LOGO_SETUP.md)

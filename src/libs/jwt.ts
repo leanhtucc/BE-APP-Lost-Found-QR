@@ -9,6 +9,9 @@ export interface TokenPayload {
   id: string;
   uid: string;
   email: string;
+  tokenVersion?: number;
+  iat?: number;
+  exp?: number;
 }
 
 export function generateAccessToken(payload: TokenPayload): string {

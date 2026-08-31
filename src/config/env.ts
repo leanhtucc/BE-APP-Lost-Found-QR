@@ -33,6 +33,10 @@ const rawEnv = z
     APP_BASE_URL: z.string().default("http://localhost:3000"),
     APP_URL: z.string().optional(),
     FRONTEND_URL: z.string().default("http://localhost:19006"),
+    VNPAY_TMN_CODE: z.string().optional(),
+    VNPAY_HASH_SECRET: z.string().optional(),
+    VNPAY_PAYMENT_URL: z.string().url().optional(),
+    VNPAY_RETURN_URL: z.string().url().optional(),
     CORS_ORIGINS: z.string().optional(),
     FIREBASE_CONFIG_PATH: z.string().optional(),
     FIREBASE_SERVICE_ACCOUNT_JSON: z.string().optional(),
@@ -112,6 +116,17 @@ export const ENV = {
     .split(",")
     .map((origin) => origin.trim())
     .filter(Boolean),
+
+  // VNPay. The hash secret is server-only and is required before accepting a
+  // payment webhook or creating a payment URL.
+  VNPAY_TMN_CODE: rawEnv.VNPAY_TMN_CODE || "",
+  VNPAY_HASH_SECRET: rawEnv.VNPAY_HASH_SECRET || "",
+  VNPAY_PAYMENT_URL:
+    rawEnv.VNPAY_PAYMENT_URL ||
+    "https://sandbox.vnpayment.vn/paymentv2/vpcpay.html",
+  VNPAY_RETURN_URL:
+    rawEnv.VNPAY_RETURN_URL ||
+    `${rawEnv.FRONTEND_URL.replace(/\/$/, "")}/payment-result`,
 
   FIREBASE_CONFIG_PATH: rawEnv.FIREBASE_CONFIG_PATH || "",
   FIREBASE_SERVICE_ACCOUNT_JSON: rawEnv.FIREBASE_SERVICE_ACCOUNT_JSON || "",

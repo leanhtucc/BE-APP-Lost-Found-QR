@@ -49,6 +49,27 @@ export interface UserStats {
   trust_score: number;
   items_lost: number;
   items_returned: number;
+  protectedItems: number;
+  safeItems: number;
+  lostItems: number;
+  activeLostReports: number;
+  completedReturns: number;
+  qrScans: number;
+}
+
+export interface ProfilePreferences {
+  pushEnabled: boolean;
+  emailEnabled: boolean;
+  proximityEnabled: boolean;
+  notificationRadiusMeters: number;
+  language: "vi" | "en";
+}
+
+export interface TrustProfile {
+  score: number;
+  level: "BRONZE" | "SILVER" | "GOLD" | "PLATINUM";
+  isVerified: boolean;
+  completedReturns: number;
 }
 
 export type PrivacySettings = {
@@ -66,11 +87,16 @@ export interface UserResponse {
   photoURL: string | null;
   address: string | null;
   bio: string | null;
+  authProvider: "password" | "google" | "firebase_phone" | "apple";
+  emailVerified: boolean;
   isVerified: boolean;
   trustScore: number;
   totalReturned: number;
   itemsLost: number;
   createdAt: string;
+  updatedAt: string;
+  trust: TrustProfile;
+  preferences: ProfilePreferences;
 
   // Backward compatibility aliases
   member_id: string;
@@ -107,13 +133,32 @@ export interface VerifyOtpResponse {
 
 export interface UpdateProfileDTO {
   displayName?: string;
-  photoURL?: string;
-  phoneNumber?: string;
+  photoURL?: string | null;
+  phoneNumber?: string | null;
   pushToken?: string;
-  bio?: string;
-  addressCity?: string;
-  address?: string;
+  bio?: string | null;
+  addressCity?: string | null;
+  address?: string | null;
   privacySettings?: object;
+}
+
+export interface ProfileStatistics {
+  protectedItems: number;
+  safeItems: number;
+  lostItems: number;
+  activeLostReports: number;
+  completedReturns: number;
+  qrScans: number;
+}
+
+export interface ChangePasswordDTO {
+  currentPassword: string;
+  newPassword: string;
+}
+
+export interface ConfirmAccountDeletionDTO {
+  otpCode: string;
+  confirmation: "DELETE";
 }
 
 export interface GoogleAuthResponse {

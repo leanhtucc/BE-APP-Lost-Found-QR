@@ -10,19 +10,28 @@ datasource db {
 
 enum ItemStatus {
   SAFE
-  PENDING_PAYMENT
   LOST
   FOUND
   RESOLVED
 }
 
-enum PostStatus {
+enum GuardianReportStatus {
   PENDING_PAYMENT
-  SEARCHING
-  FOUND
-  EXPIRED_REFUNDED
+  ACTIVE
+  PAYMENT_FAILED
   CANCELLED
-  RESOLVED
+  EXPIRED
+  FOUND
+  COMPLETED
+}
+
+enum PaymentStatus {
+  PENDING
+  PAID
+  FAILED
+  CANCELLED
+  EXPIRED
+  REFUNDED
 }
 
 enum EscrowStatus {
@@ -76,6 +85,11 @@ model User {
   resetPasswordToken     String?
   lastLogin              DateTime?
   role                   String    @default("user")
+  tokenValidAfter        DateTime? @map("token_valid_after")
+  tokenVersion           Int       @default(0) @map("token_version")
+  deletionRequestedAt    DateTime? @map("deletion_requested_at")
+  scheduledDeletionAt    DateTime? @map("scheduled_deletion_at")
+  anonymizedAt           DateTime? @map("anonymized_at")
 
   // Timestamps
   createdAt DateTime @default(now())
@@ -89,12 +103,14 @@ model User {
   aiConversations        AiConversation[]
   notificationPreference NotificationPreference?
   devices                UserDevice[]
+  securityAuditLogs      SecurityAuditLog[]
 
   @@index([uid])
   @@index([email])
   @@index([memberId])
   @@index([googleId])
   @@index([resetPasswordToken])
+  @@index([scheduledDeletionAt, anonymizedAt])
 }
 
 enum NotificationCategory {
@@ -105,35 +121,42 @@ enum NotificationCategory {
 }
 
 model NotificationPreference {
-  id                 String   @id @default(cuid())
-  userId             String   @unique @map("user_id")
-  pushEnabled        Boolean  @default(true) @map("push_enabled")
-  importantEnabled   Boolean  @default(true) @map("important_enabled")
-  transactionEnabled Boolean  @default(true) @map("transaction_enabled")
-  itemEnabled        Boolean  @default(true) @map("item_enabled")
-  socialEnabled      Boolean  @default(true) @map("social_enabled")
-  dailyDigestEnabled Boolean  @default(true) @map("daily_digest_enabled")
-  nearbyAlertsEnabled Boolean @default(true) @map("nearby_alerts_enabled")
-  quietHoursEnabled  Boolean  @default(true) @map("quiet_hours_enabled")
-  quietStart         String   @default("22:00") @map("quiet_start")
-  quietEnd           String   @default("07:00") @map("quiet_end")
-  timezone           String   @default("Asia/Ho_Chi_Minh")
-  dailyDigestTime    String   @default("19:30") @map("daily_digest_time")
-  nearbyRadius       Int      @default(5000) @map("nearby_radius")
-  createdAt          DateTime @default(now()) @map("created_at")
-  updatedAt          DateTime @updatedAt @map("updated_at")
+  id                       String   @id @default(uuid())
+  userId                   String   @unique @map("user_id")
+  pushEnabled              Boolean  @default(true) @map("push_enabled")
+  emailEnabled             Boolean  @default(false) @map("email_enabled")
+  proximityEnabled         Boolean  @default(true) @map("proximity_enabled")
+  notificationRadiusMeters Int      @default(3000) @map("notification_radius_meters")
+  language                 String   @default("vi") @db.VarChar(5)
+  importantEnabled         Boolean  @default(true) @map("important_enabled")
+  transactionEnabled       Boolean  @default(true) @map("transaction_enabled")
+  itemEnabled              Boolean  @default(true) @map("item_enabled")
+  socialEnabled            Boolean  @default(true) @map("social_enabled")
+  dailyDigestEnabled       Boolean  @default(true) @map("daily_digest_enabled")
+  nearbyAlertsEnabled      Boolean  @default(true) @map("nearby_alerts_enabled")
+  quietHoursEnabled        Boolean  @default(true) @map("quiet_hours_enabled")
+  quietStart               String   @default("22:00") @map("quiet_start")
+  quietEnd                 String   @default("07:00") @map("quiet_end")
+  timezone                 String   @default("Asia/Ho_Chi_Minh")
+  dailyDigestTime          String   @default("19:30") @map("daily_digest_time")
+  nearbyRadius             Int      @default(3000) @map("nearby_radius")
+  createdAt                DateTime @default(now()) @map("created_at")
+  updatedAt                DateTime @updatedAt @map("updated_at")
 
   user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@map("user_preferences")
 }
 
 model UserDevice {
-  id           String   @id @default(cuid())
+  id           String   @id @default(uuid())
   userId       String   @map("user_id")
-  token        String
-  platform     String   @default("android") // android, ios, web
-  deviceId     String   @map("device_id")
-  lastActiveAt DateTime @default(now()) @map("last_active_at")
-  isActive     Boolean  @default(true) @map("is_active")
+  token        String   @unique @map("push_token")
+  platform     String   @default("android") @db.VarChar(20) // android, ios, web
+  deviceId     String   @map("device_id") @db.VarChar(255)
+  appVersion   String?  @map("app_version")
+  lastActiveAt DateTime @default(now()) @map("last_seen_at")
+  isActive     Boolean  @default(true) @map("enabled")
   createdAt    DateTime @default(now()) @map("created_at")
   updatedAt    DateTime @updatedAt @map("updated_at")
 
@@ -141,7 +164,20 @@ model UserDevice {
 
   @@unique([userId, deviceId])
   @@index([userId, isActive])
-  @@index([token])
+  @@map("user_devices")
+}
+
+model SecurityAuditLog {
+  id        String   @id @default(uuid())
+  userId    String   @map("user_id")
+  action    String
+  metadata  Json?
+  createdAt DateTime @default(now()) @map("created_at")
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId, createdAt])
+  @@map("security_audit_logs")
 }
 
 model Notification {
@@ -202,12 +238,24 @@ model Item {
   lostAddress       String?
   owner             User                                  @relation("ItemOwner", fields: [ownerId], references: [id], onDelete: Cascade)
   posts             Post[]
+  qrScans           QrScan[]
 
   @@index([itemId])
   @@index([ownerId])
   @@index([status])
   @@index([lostLat, lostLng])
   @@index([locationGeoHash], map: "Item_location_geohash_idx")
+}
+
+model QrScan {
+  id        String   @id @default(uuid())
+  itemId    String   @map("item_id")
+  createdAt DateTime @default(now()) @map("created_at")
+
+  item Item @relation(fields: [itemId], references: [id], onDelete: Cascade)
+
+  @@index([itemId, createdAt])
+  @@map("qr_scans")
 }
 
 model UserLocation {
@@ -222,32 +270,63 @@ model UserLocation {
 }
 
 model Post {
-  id           String     @id @default(cuid())
-  ownerId      String     @map("owner_id")
-  itemId       String     @map("item_id")
-  lat          Float
-  lng          Float
-  address      String?
-  bountyAmount Int        @map("bounty_amount")
-  totalPaid    Int        @default(0) @map("total_paid")
-  // PENDING_PAYMENT → SEARCHING → FOUND | EXPIRED_REFUNDED | CANCELLED | RESOLVED
-  status       PostStatus @default(PENDING_PAYMENT)
-  description  String?
+  id                String               @id @default(cuid())
+  ownerId           String               @map("owner_id")
+  itemId            String               @map("item_id")
+  lat               Float
+  lng               Float
+  address           String?
+  bountyAmount      Int                  @map("bounty_amount")
+  totalPaid         Int                  @default(0) @map("total_paid")
+  // PENDING_PAYMENT → ACTIVE → FOUND → COMPLETED
+  status            GuardianReportStatus @default(PENDING_PAYMENT)
+  description       String?
   // Guardian Radar fields
-  radarConfig  Json?      @map("radar_config") // {"radius": 500, "duration_hours": 24}
-  createdAt    DateTime   @default(now())
-  updatedAt    DateTime   @updatedAt
+  radarConfig       Json?                @map("radar_config") // {"radius": 500, "duration_hours": 24}
+  normalizedAddress String?              @map("normalized_address")
+  radarRadius       Int?                 @map("radar_radius")
+  durationHours     Int?                 @map("duration_hours")
+  serviceFee        Int                  @default(0) @map("service_fee")
+  currency          String               @default("VND")
+  activatedAt       DateTime?            @map("activated_at")
+  expiresAt         DateTime?            @map("expires_at")
+  idempotencyKey    String?              @unique @map("idempotency_key")
+  createdAt         DateTime             @default(now())
+  updatedAt         DateTime             @updatedAt
 
   owner User @relation(fields: [ownerId], references: [id], onDelete: Cascade)
   item  Item @relation(fields: [itemId], references: [id], onDelete: Cascade)
 
   escrowTransactions EscrowTransaction[]
+  payments           Payment[]
 
   @@index([ownerId])
   @@index([itemId])
   @@index([status])
   @@index([lat, lng])
   @@index([createdAt])
+}
+
+model Payment {
+  id                    String          @id @default(cuid())
+  reportId              String          @map("report_id")
+  provider              PaymentProvider
+  providerOrderId       String          @unique @map("provider_order_id")
+  providerTransactionId String?         @unique @map("provider_transaction_id")
+  status                PaymentStatus   @default(PENDING)
+  amount                Int
+  currency              String          @default("VND")
+  paymentUrl            String          @map("payment_url")
+  expiresAt             DateTime        @map("expires_at")
+  paidAt                DateTime?       @map("paid_at")
+  rawCallback           Json?           @map("raw_callback")
+  createdAt             DateTime        @default(now()) @map("created_at")
+  updatedAt             DateTime        @updatedAt @map("updated_at")
+
+  report Post @relation(fields: [reportId], references: [id], onDelete: Cascade)
+
+  @@index([reportId, status])
+  @@index([expiresAt])
 }
 
 model EscrowTransaction {

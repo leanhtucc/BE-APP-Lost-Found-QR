@@ -11,7 +11,8 @@ export class AppError extends Error {
   constructor(
     public message: string,
     public statusCode: number = 500,
-    public isOperational = true
+    public isOperational = true,
+    public code?: string
   ) {
     super(message);
     Object.setPrototypeOf(this, AppError.prototype);
@@ -32,6 +33,14 @@ export function errorHandler(
   });
 
   if (err instanceof AppError) {
+    if (err.code) {
+      return res.status(err.statusCode).json({
+        success: false,
+        message: err.message,
+        error: { code: err.code },
+        timestamp: new Date().toISOString(),
+      });
+    }
     return ResponseUtil.error(
       res,
       err.message,
@@ -55,12 +64,15 @@ export function errorHandler(
   }
 
   // Default error
-  return ResponseUtil.error(
-    res,
-    "Internal server error",
-    500,
-    isDevelopment ? err.message : undefined
-  );
+  return res.status(500).json({
+    success: false,
+    message: "Internal server error",
+    error: {
+      code: "INTERNAL_ERROR",
+      ...(isDevelopment ? { detail: err.message } : {}),
+    },
+    timestamp: new Date().toISOString(),
+  });
 }
 
 export function notFoundHandler(

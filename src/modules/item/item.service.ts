@@ -112,21 +112,16 @@ export class ItemService {
   }
 
   /**
-   * Format items eligible for creating a lost report (màn hình 1).
-   * Reads `details` JSON for device-specific details (color, storage, etc.).
+   * Format items eligible for creating a Guardian report.
    */
   private formatEligibleItemResponse(item: any) {
-    const attrs: Record<string, string> | null = item.details ?? {};
     return {
-      item_id: item.id,
+      id: item.id,
+      qr_code_id: item.qrCodeId,
       name: item.name,
       category: item.category,
       image_url: item.imagePublicUrl ?? null,
-      details: {
-        color: attrs?.["color"] ?? null,
-        storage: attrs?.["storage"] ?? null,
-        serial: attrs?.["serial"] ?? null,
-      },
+      status: item.status,
       has_insurance: item.hasInsurance ?? false,
     };
   }
@@ -177,6 +172,8 @@ export class ItemService {
     if (!item) {
       throw new AppError("Item not found", 404);
     }
+
+    await itemRepository.recordQrScan(item.id);
 
     const shortId = (item.owner.memberId || item.owner.uid || "A3F2")
       .substring(0, 4)
@@ -464,16 +461,20 @@ export class ItemService {
 
   /**
    * GET /v1/items/eligible-for-report (màn hình 1)
-   * Lấy các items đang SAFE có thể báo mất.
+   * Chỉ trả item của chủ sở hữu chưa có Guardian report đang mở.
    */
   async getEligibleItemsForReport(userId: string) {
-    const { items } = await itemRepository.findByOwnerId(userId, {
-      status: "SAFE",
-      skip: 0,
+    const items = await prisma.item.findMany({
+      where: {
+        ownerId: userId,
+        status: { in: ["SAFE", "LOST"] },
+        posts: { none: { status: { in: ["PENDING_PAYMENT", "ACTIVE"] } } },
+      },
+      orderBy: { createdAt: "desc" },
       take: 100,
     });
 
-    return { data: items.map((item) => this.formatEligibleItemResponse(item)) };
+    return { items: items.map((item) => this.formatEligibleItemResponse(item)) };
   }
 
   // Lấy danh sách items của user
@@ -545,7 +546,7 @@ export class ItemService {
   async updateStatus(
     itemId: string,
     userId: string,
-    status: "SAFE" | "PENDING_PAYMENT" | "LOST" | "FOUND" | "RESOLVED",
+    status: "SAFE" | "LOST" | "FOUND" | "RESOLVED",
     lostMessage?: string,
     coordinates: {
       latitude?: number;

@@ -4,6 +4,8 @@ import { queryToBody } from "../../middlewares/query-to-body.middleware";
 import { validate } from "../../middlewares/validate.middleware";
 import { AuthController } from "./auth.controller";
 import {
+  changePasswordSchema,
+  confirmAccountDeletionSchema,
   forgotPasswordSchema,
   googleAuthSchema,
   loginSchema,
@@ -15,6 +17,13 @@ import {
   resendOtpSchema,
   firebaseVerifySchema,
 } from "./auth.schema";
+import { rateLimit } from "../../middlewares/rate-limit.middleware";
+import { notificationController } from "../notification/notification.controller";
+import {
+  registerDeviceSchema,
+  unregisterDeviceSchema,
+  updatePreferenceSchema,
+} from "../notification/notification.schema";
 
 /**
  * Auth Routes
@@ -89,6 +98,25 @@ router.post(
 // Protected routes (cần authentication)
 router.get("/profile", authMiddleware, authController.getProfile);
 
+router.get(
+  "/profile/stats",
+  authMiddleware,
+  authController.getProfileStatistics
+);
+
+router.get(
+  "/profile/preferences",
+  authMiddleware,
+  notificationController.getProfilePreferences
+);
+
+router.patch(
+  "/profile/preferences",
+  authMiddleware,
+  validate(updatePreferenceSchema),
+  notificationController.updateProfilePreferences
+);
+
 router.patch(
   "/profile",
   authMiddleware,
@@ -96,7 +124,42 @@ router.patch(
   authController.updateProfile
 );
 
-router.delete("/account", authMiddleware, authController.deleteAccount);
+router.post(
+  "/devices",
+  authMiddleware,
+  validate(registerDeviceSchema),
+  notificationController.registerDevice
+);
+
+router.delete(
+  "/devices/:deviceId",
+  authMiddleware,
+  validate(unregisterDeviceSchema),
+  notificationController.unregisterDevice
+);
+
+router.post(
+  "/change-password",
+  authMiddleware,
+  rateLimit({ windowMs: 15 * 60 * 1000, max: 5 }),
+  validate(changePasswordSchema),
+  authController.changePassword
+);
+
+router.post(
+  "/account/deletion-otp",
+  authMiddleware,
+  rateLimit({ windowMs: 15 * 60 * 1000, max: 5 }),
+  authController.requestAccountDeletionOtp
+);
+
+router.delete(
+  "/account",
+  authMiddleware,
+  rateLimit({ windowMs: 15 * 60 * 1000, max: 5 }),
+  validate(confirmAccountDeletionSchema),
+  authController.deleteAccount
+);
 
 router.post("/logout", authMiddleware, authController.logout);
 

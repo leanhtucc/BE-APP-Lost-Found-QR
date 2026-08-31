@@ -10,28 +10,45 @@ export class UserDeviceRepository {
     token: string;
     platform: string;
     deviceId: string;
+    appVersion?: string;
   }): Promise<UserDevice> {
-    return prisma.userDevice.upsert({
-      where: {
-        userId_deviceId: {
-          userId: data.userId,
-          deviceId: data.deviceId,
+    return prisma.$transaction(async (tx) => {
+      // A provider token identifies exactly one installation. If the provider
+      // rotates/reassigns it, move it instead of letting two users receive push.
+      await tx.userDevice.deleteMany({
+        where: {
+          token: data.token,
+          NOT: {
+            userId: data.userId,
+            deviceId: data.deviceId,
+          },
         },
-      },
-      create: {
-        userId: data.userId,
-        token: data.token,
-        platform: data.platform,
-        deviceId: data.deviceId,
-        lastActiveAt: new Date(),
-        isActive: true,
-      },
-      update: {
-        token: data.token,
-        platform: data.platform,
-        lastActiveAt: new Date(),
-        isActive: true,
-      },
+      });
+
+      return tx.userDevice.upsert({
+        where: {
+          userId_deviceId: {
+            userId: data.userId,
+            deviceId: data.deviceId,
+          },
+        },
+        create: {
+          userId: data.userId,
+          token: data.token,
+          platform: data.platform,
+          deviceId: data.deviceId,
+          appVersion: data.appVersion,
+          lastActiveAt: new Date(),
+          isActive: true,
+        },
+        update: {
+          token: data.token,
+          platform: data.platform,
+          appVersion: data.appVersion,
+          lastActiveAt: new Date(),
+          isActive: true,
+        },
+      });
     });
   }
 

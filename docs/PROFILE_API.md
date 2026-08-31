@@ -1,217 +1,142 @@
-# User Profile API Documentation
+# Profile API
 
-## Overview
+Base URL: `/api/auth`. Tất cả endpoint yêu cầu `Authorization: Bearer <access_token>`.
 
-API Profile đã được cập nhật để hỗ trợ hệ thống người dùng đại chúng thay vì chỉ sinh viên. Schema mới bao gồm các trường Trust & Reputation, thông tin cá nhân mở rộng, và cài đặt riêng tư.
-
-## Database Schema Changes
-
-### User Model (Updated)
-
-| Field             | Type                     | Description                                             |
-| ----------------- | ------------------------ | ------------------------------------------------------- |
-| `memberId`        | String (unique)          | Định danh người dùng toàn hệ thống (format: `USER_xxx`) |
-| `trustScore`      | Float (default: 5.0)     | Mức độ uy tín khi trả đồ (0-5)                          |
-| `totalReturned`   | Int (default: 0)         | Số đồ đã trả                                            |
-| `itemsLost`       | Int (default: 0)         | Số đồ bị mất                                            |
-| `addressCity`     | String (nullable)        | Địa chỉ thành phố                                       |
-| `bio`             | String (nullable)        | Tiểu sử cá nhân                                         |
-| `isVerified`      | Boolean (default: false) | Đánh dấu tài khoản đã xác minh                          |
-| `privacySettings` | JSON                     | Cài đặt riêng tư (e.g., ẩn/hiện số điện thoại)          |
-
----
-
-## API Endpoints
-
-### 1. GET /api/auth/profile
-
-**Description:** Lấy thông tin profile của người dùng hiện tại.
-
-**Headers:**
-
-```
-Authorization: Bearer <access_token>
-```
-
-**Response (Success - 200):**
+Response dùng envelope chung:
 
 ```json
 {
   "success": true,
-  "data": {
-    "member_id": "USER_79NV...",
-    "full_name": "Lê Anh Tú",
-    "email": "leanhtu1123@gmail.com",
-    "phone": "0398624656",
-    "avatar_url": "https://cloudinary.com/...",
-    "is_verified": true,
-    "stats": {
-      "trust_score": 4.9,
-      "items_lost": 2,
-      "items_returned": 5
-    },
-    "address": "Quận Hà Đông, Hà Nội",
-    "bio": "Sinh viên PTIT yêu công nghệ",
-    "stream_token": "eyJ0eXAiOiJKV1QiLCJhbGciO...",
-    "privacy_settings": {
-      "showPhone": true,
-      "showEmail": false
-    },
-    "created_at": "2026-01-15T10:30:00.000Z"
+  "message": "Profile loaded successfully",
+  "data": {},
+  "timestamp": "2026-08-31T10:00:00.000Z"
+}
+```
+
+## Profile
+
+### `GET /api/auth/profile`
+
+Trả hồ sơ, trust score chuẩn hóa `0..100`, thống kê tổng hợp trực tiếp từ database và preferences. Response không chứa password hash, OTP, refresh token hoặc push token.
+
+```json
+{
+  "id": "user-id",
+  "memberId": "USER_abc123",
+  "email": "user@example.com",
+  "displayName": "Nguyễn Văn An",
+  "photoURL": "https://cdn.example.com/avatar.jpg",
+  "phoneNumber": "+84912345678",
+  "address": "Quận 1, TP.HCM",
+  "bio": "Sinh viên PTIT",
+  "authProvider": "password",
+  "emailVerified": true,
+  "createdAt": "2025-10-20T09:00:00.000Z",
+  "updatedAt": "2026-08-31T09:00:00.000Z",
+  "trust": {
+    "score": 75,
+    "level": "GOLD",
+    "isVerified": false,
+    "completedReturns": 4
+  },
+  "stats": {
+    "protectedItems": 12,
+    "safeItems": 10,
+    "lostItems": 2,
+    "activeLostReports": 1,
+    "completedReturns": 4,
+    "qrScans": 8
+  },
+  "preferences": {
+    "pushEnabled": true,
+    "emailEnabled": false,
+    "proximityEnabled": true,
+    "notificationRadiusMeters": 3000,
+    "language": "vi"
   }
 }
 ```
 
-**Response (Error - 401):**
+Các alias cũ (`member_id`, `full_name`, `avatar_url`, `stream_token`, ...) vẫn được giữ. Object `stats` cũng giữ các key cũ `trust_score`, `items_lost`, `items_returned` để không phá mobile client cũ.
+
+### `GET /api/auth/profile/stats`
+
+Trả riêng sáu field thống kê trên. Các con số không phụ thuộc pagination của `/api/items`.
+
+### `PATCH /api/auth/profile`
+
+Partial update. Field không gửi được giữ nguyên; `photoURL`, `phoneNumber`, `address`, `bio` nhận `null` để xóa.
+
+| Field | Validation |
+| --- | --- |
+| `displayName` | 2–50 ký tự, trim |
+| `photoURL` | HTTPS URL hoặc `null` |
+| `phoneNumber` | 8–15 chữ số, có thể bắt đầu bằng `+`, hoặc `null` |
+| `address` | tối đa 255 ký tự hoặc `null` |
+| `bio` | tối đa 300 ký tự hoặc `null` |
+
+`pushToken` vẫn được chấp nhận tạm thời cho client cũ. Client mới phải dùng device API.
+
+## Notification preferences
+
+### `GET /api/auth/profile/preferences`
+
+Nếu user chưa có record, server tạo defaults: push `true`, email `false`, proximity `true`, radius `3000`, language `vi`.
+
+### `PATCH /api/auth/profile/preferences`
 
 ```json
 {
-  "success": false,
-  "message": "Unauthorized"
+  "pushEnabled": false,
+  "emailEnabled": true,
+  "proximityEnabled": true,
+  "notificationRadiusMeters": 1000,
+  "language": "vi"
 }
 ```
 
----
+Radius phải là integer `100..5000`; language chỉ nhận `vi` hoặc `en`. API cũ `/v1/notifications/preferences` vẫn hoạt động.
 
-### 2. PATCH /api/auth/profile
+## Devices
 
-**Description:** Cập nhật thông tin profile của người dùng.
+### `POST /api/auth/devices`
 
-**Headers:**
-
-```
-Authorization: Bearer <access_token>
-Content-Type: application/json
-```
-
-**Request Body:**
+Upsert theo `(userId, deviceId)`. `pushToken` là unique toàn hệ thống.
 
 ```json
 {
-  "displayName": "Lê Anh Tú Updated",
-  "phoneNumber": "0398624656",
-  "photoURL": "https://cloudinary.com/new-avatar.jpg",
-  "bio": "Làm việc tại Google Vietnam",
-  "addressCity": "Quận 1, TP.HCM",
-  "privacySettings": {
-    "showPhone": false,
-    "showEmail": true
-  }
+  "deviceId": "android-8c733127",
+  "platform": "android",
+  "pushToken": "ExponentPushToken[xxxxxxxxxxxxxxxx]",
+  "appVersion": "1.0.0"
 }
 ```
 
-**Field Validation:**
+### `DELETE /api/auth/devices/:deviceId`
 
-| Field             | Type   | Validation                                            |
-| ----------------- | ------ | ----------------------------------------------------- |
-| `displayName`     | string | Min 2, max 50 characters, letters/numbers/spaces only |
-| `phoneNumber`     | string | 10-11 digits                                          |
-| `photoURL`        | string | Valid URL (optional)                                  |
-| `bio`             | string | Max 500 characters                                    |
-| `addressCity`     | string | Max 100 characters                                    |
-| `privacySettings` | object | `{showPhone?: boolean, showEmail?: boolean}`          |
+Chỉ xóa device của user hiện tại. Token lỗi từ FCM (`registration-token-not-registered` hoặc `invalid-registration-token`) được tự động disable.
 
-**Response (Success - 200):**
+## Password and account deletion
+
+### `POST /api/auth/change-password`
+
+Body gồm `currentPassword`, `newPassword`. Password mới tối thiểu 8 ký tự, có chữ hoa, chữ thường và số. Social account nhận `PASSWORD_NOT_SUPPORTED_FOR_PROVIDER`. Thành công revoke các JWT đã phát hành và yêu cầu đăng nhập lại.
+
+### `POST /api/auth/account/deletion-otp`
+
+Gửi OTP dùng một lần, hết hạn sau 600 giây.
+
+### `DELETE /api/auth/account`
 
 ```json
 {
-  "success": true,
-  "data": {
-    "member_id": "USER_79NV...",
-    "full_name": "Lê Anh Tú Updated",
-    "email": "leanhtu1123@gmail.com",
-    "phone": "0398624656",
-    "avatar_url": "https://cloudinary.com/new-avatar.jpg",
-    "is_verified": true,
-    "stats": {
-      "trust_score": 4.9,
-      "items_lost": 2,
-      "items_returned": 5
-    },
-    "address": "Quận 1, TP.HCM",
-    "bio": "Làm việc tại Google Vietnam",
-    "stream_token": "eyJ0eXAiOiJKV1QiLCJhbGciO...",
-    "privacy_settings": {
-      "showPhone": false,
-      "showEmail": true
-    },
-    "created_at": "2026-01-15T10:30:00.000Z"
-  },
-  "message": "Profile updated successfully"
+  "otpCode": "123456",
+  "confirmation": "DELETE"
 }
 ```
 
-**Response (Error - 400 Validation):**
+Thành công sẽ lên lịch xóa sau 30 ngày, revoke session, tắt devices/preferences và vô hiệu hóa QR. Dữ liệu được soft-delete trong giai đoạn khôi phục; job chạy hằng ngày sẽ ẩn danh PII khi hết hạn nhưng giữ các bản ghi giao dịch bắt buộc.
 
-```json
-{
-  "success": false,
-  "message": "Validation error",
-  "errors": [
-    {
-      "field": "displayName",
-      "message": "Display name must be at least 2 characters"
-    }
-  ]
-}
-```
+## Error codes
 
----
-
-## Stream Chat Integration
-
-API Profile tự động trả về `stream_token` dựa trên `member_id` của người dùng. Token này được sử dụng để:
-
-1. **Authenticate với Stream Chat SDK** trên frontend
-2. **Tạo và tham gia các channel chat** giữa người tìm đồ và chủ sở hữu
-3. **Nhận real-time notifications** về tin nhắn mới
-
-### Usage in Frontend (React Native / Web):
-
-```javascript
-import { StreamChat } from "stream-chat";
-
-// Initialize client
-const chatClient = StreamChat.getInstance(STREAM_API_KEY);
-
-// Connect user with token from profile API
-await chatClient.connectUser(
-  {
-    id: profileData.member_id,
-    name: profileData.full_name,
-    image: profileData.avatar_url,
-  },
-  profileData.stream_token
-);
-```
-
----
-
-## Security Notes
-
-1. **Auth Middleware:** Tất cả các endpoint profile đều yêu cầu JWT Access Token hợp lệ
-2. **Owner-only Access:** Người dùng chỉ có thể xem và sửa profile của chính họ
-3. **Privacy Settings:** Frontend nên tôn trọng `privacy_settings` khi hiển thị thông tin cho người khác
-
----
-
-## Migration Notes
-
-Nếu bạn đang upgrade từ version cũ, cần chạy:
-
-```bash
-# Generate Prisma Client mới
-npx prisma generate
-
-# Đồng bộ schema với database
-npx prisma migrate dev --name add_user_profile_fields
-# hoặc
-npx prisma db push
-```
-
-Các user cũ sẽ có:
-
-- `memberId`: Auto-generated dựa trên `uid`
-- `trustScore`: Default 5.0
-- `itemsLost`: Default 0
-- `privacySettings`: Default `{}`
+Các code chính: `VALIDATION_ERROR`, `UNAUTHORIZED`, `REAUTHENTICATION_REQUIRED`, `PASSWORD_NOT_SUPPORTED_FOR_PROVIDER`, `PROFILE_NOT_FOUND`, `PHONE_ALREADY_USED`, `INVALID_NOTIFICATION_RADIUS`, `RATE_LIMITED`, `INTERNAL_ERROR`.

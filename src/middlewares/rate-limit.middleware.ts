@@ -15,7 +15,8 @@ const requestCounts = new Map<string, { count: number; resetTime: number }>();
 
 export function rateLimit(config: RateLimitConfig) {
   return (req: Request, res: Response, next: NextFunction) => {
-    const identifier = req.ip || req.socket.remoteAddress || "unknown";
+    const identifier =
+      req.user?.id || req.ip || req.socket.remoteAddress || "unknown";
     const now = Date.now();
 
     const record = requestCounts.get(identifier);
@@ -29,11 +30,12 @@ export function rateLimit(config: RateLimitConfig) {
     }
 
     if (record.count >= config.max) {
-      return ResponseUtil.error(
-        res,
-        "Too many requests, please try again later",
-        429
-      );
+      return res.status(429).json({
+        success: false,
+        message: "Too many requests, please try again later",
+        error: { code: "RATE_LIMITED" },
+        timestamp: new Date().toISOString(),
+      });
     }
 
     record.count++;

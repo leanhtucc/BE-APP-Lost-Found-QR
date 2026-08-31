@@ -68,7 +68,7 @@ export class AuthController {
 
       const user = await authService.getProfile(userId);
 
-      return ResponseUtil.success(res, user);
+      return ResponseUtil.success(res, user, "Profile loaded successfully");
     } catch (error) {
       next(error);
     }
@@ -85,6 +85,7 @@ export class AuthController {
         phoneNumber,
         bio,
         addressCity,
+        address,
         privacySettings,
       } = req.body as any;
 
@@ -95,6 +96,7 @@ export class AuthController {
         phoneNumber,
         bio,
         addressCity,
+        address,
         privacySettings,
       });
 
@@ -108,10 +110,56 @@ export class AuthController {
   async deleteAccount(req: Request, res: Response, next: NextFunction) {
     try {
       const userId = req.user!.id;
+      const result = await authService.confirmAccountDeletion(userId, req.body);
 
-      await authService.deleteAccount(userId);
+      return ResponseUtil.success(
+        res,
+        result,
+        "Account deletion has been scheduled"
+      );
+    } catch (error) {
+      next(error);
+    }
+  }
 
-      return ResponseUtil.success(res, null, "Account deleted successfully");
+  async getProfileStatistics(req: Request, res: Response, next: NextFunction) {
+    try {
+      const result = await authService.getProfileStatistics(req.user!.id);
+      return ResponseUtil.success(
+        res,
+        result,
+        "Profile statistics loaded successfully"
+      );
+    } catch (error) {
+      next(error);
+    }
+  }
+
+  async changePassword(req: Request, res: Response, next: NextFunction) {
+    try {
+      await authService.changePassword(req.user!.id, req.body);
+      return ResponseUtil.success(
+        res,
+        null,
+        "Password changed successfully. Please sign in again."
+      );
+    } catch (error) {
+      next(error);
+    }
+  }
+
+  async requestAccountDeletionOtp(
+    req: Request,
+    res: Response,
+    next: NextFunction
+  ) {
+    try {
+      await authService.requestAccountDeletionOtp(req.user!.id);
+      return ResponseUtil.success(
+        res,
+        { expiresInSeconds: 600 },
+        "A verification code has been sent"
+      );
     } catch (error) {
       next(error);
     }

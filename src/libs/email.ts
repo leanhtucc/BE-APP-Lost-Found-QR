@@ -181,6 +181,47 @@ class EmailService {
       text: `Xin chào ${displayName}. Đặt lại mật khẩu tại: ${resetLink}. Liên kết có hiệu lực trong 30 phút.`,
     });
   }
+
+  async sendAccountDeletionOtpEmail(
+    email: string,
+    displayName: string,
+    code: string
+  ): Promise<boolean> {
+    const html = emailLayout(
+      "Xác nhận xóa tài khoản",
+      `<p>Xin chào <strong>${escapeHtml(displayName)}</strong>,</p>
+       <p>Mã xác nhận yêu cầu xóa tài khoản của bạn là:</p>
+       <div style="margin:24px 0;padding:18px;background:#fef2f2;border-radius:12px;text-align:center;font-size:32px;font-weight:700;letter-spacing:8px;color:#b91c1c">${escapeHtml(code)}</div>
+       <p>Mã có hiệu lực trong <strong>10 phút</strong> và chỉ dùng một lần.</p>
+       <p>Nếu bạn không yêu cầu thao tác này, hãy đổi mật khẩu ngay.</p>`
+    );
+
+    return this.sendEmail({
+      to: email,
+      subject: "Mã xác nhận xóa tài khoản Lost & Found",
+      html,
+      text: `Xin chào ${displayName}. Mã xác nhận xóa tài khoản là ${code}. Mã có hiệu lực trong 10 phút.`,
+    });
+  }
+
+  async sendPasswordChangedEmail(
+    email: string,
+    displayName: string
+  ): Promise<boolean> {
+    const html = emailLayout(
+      "Mật khẩu đã được thay đổi",
+      `<p>Xin chào <strong>${escapeHtml(displayName)}</strong>,</p>
+       <p>Mật khẩu tài khoản của bạn vừa được thay đổi. Tất cả phiên đăng nhập cũ đã bị thu hồi.</p>
+       <p>Nếu bạn không thực hiện thao tác này, hãy liên hệ hỗ trợ ngay.</p>`
+    );
+
+    return this.sendEmail({
+      to: email,
+      subject: "Cảnh báo bảo mật Lost & Found",
+      html,
+      text: `Xin chào ${displayName}. Mật khẩu tài khoản của bạn vừa được thay đổi và các phiên cũ đã bị thu hồi.`,
+    });
+  }
 }
 
 export const emailService = new EmailService();

@@ -40,6 +40,10 @@ export interface MarkAllReadResponse {
 export interface NotificationPreferenceDTO {
   user_id: string;
   push_enabled: boolean;
+  email_enabled: boolean;
+  proximity_enabled: boolean;
+  notification_radius_meters: number;
+  language: "vi" | "en";
   important_enabled: boolean;
   transaction_enabled: boolean;
   item_enabled: boolean;
@@ -58,6 +62,10 @@ export interface NotificationPreferenceDTO {
 
 export interface UpdatePreferenceInput {
   pushEnabled?: boolean;
+  emailEnabled?: boolean;
+  proximityEnabled?: boolean;
+  notificationRadiusMeters?: number;
+  language?: "vi" | "en";
   importantEnabled?: boolean;
   transactionEnabled?: boolean;
   itemEnabled?: boolean;
@@ -87,6 +95,7 @@ export interface RegisterDeviceInput {
   token: string;
   platform?: "android" | "ios" | "web";
   deviceId: string;
+  appVersion?: string;
 }
 
 export interface CreateNotificationInput {

@@ -119,6 +119,21 @@ export class NotificationController {
     }
   };
 
+  getProfilePreferences = async (
+    req: Request,
+    res: Response,
+    next: NextFunction
+  ): Promise<void> => {
+    try {
+      const result = await notificationService.getProfilePreferences(
+        req.user!.id
+      );
+      ResponseUtil.success(res, result, "Preferences loaded successfully");
+    } catch (error) {
+      next(error);
+    }
+  };
+
   updatePreferences = async (
     req: Request,
     res: Response,
@@ -129,6 +144,22 @@ export class NotificationController {
       const result = await notificationService.updatePreferences(userId, req.body);
 
       ResponseUtil.success(res, result, "Notification preferences updated");
+    } catch (error) {
+      next(error);
+    }
+  };
+
+  updateProfilePreferences = async (
+    req: Request,
+    res: Response,
+    next: NextFunction
+  ): Promise<void> => {
+    try {
+      const result = await notificationService.updateProfilePreferences(
+        req.user!.id,
+        req.body
+      );
+      ResponseUtil.success(res, result, "Preferences updated successfully");
     } catch (error) {
       next(error);
     }

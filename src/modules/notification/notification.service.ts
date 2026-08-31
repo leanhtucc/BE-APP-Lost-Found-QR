@@ -63,6 +63,10 @@ export class NotificationService {
     return {
       user_id: pref.userId,
       push_enabled: pref.pushEnabled,
+      email_enabled: pref.emailEnabled,
+      proximity_enabled: pref.proximityEnabled,
+      notification_radius_meters: pref.notificationRadiusMeters,
+      language: pref.language,
       important_enabled: pref.importantEnabled,
       transaction_enabled: pref.transactionEnabled,
       item_enabled: pref.itemEnabled,
@@ -226,6 +230,15 @@ export class NotificationService {
   async createNotification(
     input: CreateNotificationInput
   ): Promise<NotificationDTO | null> {
+    if (input.type === "PROXIMITY") {
+      const pref = await notificationPreferenceRepository.findByUserId(
+        input.receiverId
+      );
+      if (!pref.proximityEnabled) {
+        return null;
+      }
+    }
+
     const created = await this.repository.create({
       receiverId: input.receiverId,
       category: input.category,
@@ -343,12 +356,43 @@ export class NotificationService {
     return this.formatPreference(pref);
   }
 
+  async getProfilePreferences(userId: string) {
+    const preference = await this.getPreferences(userId);
+    return {
+      pushEnabled: preference.push_enabled,
+      emailEnabled: preference.email_enabled,
+      proximityEnabled: preference.proximity_enabled,
+      notificationRadiusMeters: preference.notification_radius_meters,
+      language: preference.language,
+      updatedAt: preference.updated_at,
+    };
+  }
+
   async updatePreferences(
     userId: string,
     input: UpdatePreferenceInput
   ): Promise<NotificationPreferenceDTO> {
-    const updated = await notificationPreferenceRepository.upsert(userId, input);
+    const normalized: UpdatePreferenceInput = { ...input };
+
+    if (input.notificationRadiusMeters !== undefined) {
+      normalized.nearbyRadius = input.notificationRadiusMeters;
+    } else if (input.nearbyRadius !== undefined) {
+      normalized.notificationRadiusMeters = input.nearbyRadius;
+    }
+
+    if (input.proximityEnabled !== undefined) {
+      normalized.nearbyAlertsEnabled = input.proximityEnabled;
+    } else if (input.nearbyAlertsEnabled !== undefined) {
+      normalized.proximityEnabled = input.nearbyAlertsEnabled;
+    }
+
+    const updated = await notificationPreferenceRepository.upsert(userId, normalized);
     return this.formatPreference(updated);
+  }
+
+  async updateProfilePreferences(userId: string, input: UpdatePreferenceInput) {
+    await this.updatePreferences(userId, input);
+    return this.getProfilePreferences(userId);
   }
 
   async registerDevice(userId: string, input: RegisterDeviceInput) {
@@ -357,6 +401,7 @@ export class NotificationService {
       token: input.token,
       platform: input.platform || "android",
       deviceId: input.deviceId,
+      appVersion: input.appVersion,
     });
 
     // Also sync User.pushToken for backward compatibility
@@ -367,8 +412,11 @@ export class NotificationService {
 
     return {
       success: true,
+      deviceId: device.deviceId,
       device_id: device.deviceId,
       platform: device.platform,
+      enabled: device.isActive,
+      lastSeenAt: device.lastActiveAt.toISOString(),
     };
   }
 

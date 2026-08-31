@@ -117,29 +117,69 @@ export const updateProfileSchema = z.object({
       .min(2, "Display name must be at least 2 characters")
       .max(50, "Display name is too long")
       .trim()
-      .regex(
-        /^[a-zA-Z0-9\s\u00C0-\u1EF9]+$/,
-        "Display name can only contain letters, numbers, and spaces"
-      )
       .optional(),
 
-    photoURL: z.string().optional().or(z.literal("")),
+    photoURL: z
+      .union([
+        z.string().url("photoURL must be a valid URL").startsWith("https://", "photoURL must use HTTPS"),
+        z.literal("").transform(() => null),
+        z.null(),
+      ])
+      .optional(),
     phoneNumber: z
       .string()
-      .regex(/^[0-9]{10,11}$/, "Invalid phone number format")
+      .trim()
+      .regex(/^\+?\d{8,15}$/, "Phone number must contain 8 to 15 digits and may start with +")
+      .nullable()
       .optional(),
-    bio: z.string().max(500, "Bio is too long (max 500 characters)").optional(),
+    bio: z.string().trim().max(300, "Bio is too long (max 300 characters)").nullable().optional(),
+    address: z
+      .string()
+      .trim()
+      .max(255, "Address is too long (max 255 characters)")
+      .nullable()
+      .optional(),
     addressCity: z
       .string()
-      .max(100, "Address is too long (max 100 characters)")
+      .trim()
+      .max(255, "Address is too long (max 255 characters)")
+      .nullable()
       .optional(),
+    // Legacy clients may still register a single push token through profile.
+    pushToken: z.string().min(1).optional(),
     privacySettings: z
       .object({
         showPhone: z.boolean().optional(),
         showEmail: z.boolean().optional(),
       })
       .optional(),
-  }),
+  }).strict("Profile contains fields that cannot be updated").refine(
+    (body) => Object.keys(body).length > 0,
+    "At least one profile field is required"
+  ),
+});
+
+export const changePasswordSchema = z.object({
+  body: z.object({
+    currentPassword: z.string().min(1, "Current password is required"),
+    newPassword: z
+      .string()
+      .min(8, "Password must be at least 8 characters")
+      .max(100, "Password is too long")
+      .regex(
+        passwordRegex,
+        "Password must contain at least one uppercase letter, one lowercase letter, and one number"
+      ),
+  }).strict(),
+});
+
+export const confirmAccountDeletionSchema = z.object({
+  body: z.object({
+    otpCode: z
+      .string({ required_error: "Deletion OTP is required" })
+      .regex(/^\d{6}$/, "Deletion OTP must contain 6 digits"),
+    confirmation: z.literal("DELETE"),
+  }).strict(),
 });
 
 export const verifyOtpSchema = z.object({

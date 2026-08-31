@@ -1,8 +1,12 @@
 # 📄 NOTIFICATION API – Tài liệu ghép nối cho App (FindBack Alerts)
 
-> **Base URL:** `/v1/notifications` hoặc `/api/notifications`
+> **Canonical Base URL:** `/v1/notifications`
 >
 > **Auth:** Tất cả endpoint đều yêu cầu header `Authorization: Bearer <token>`
+>
+> `/api/notifications` chỉ là compatibility alias cho client cũ. Không phát triển
+> contract `/api/stream/notifications`. Preferences mới nằm tại
+> `/api/auth/profile/preferences`, device tokens tại `/api/auth/devices`.
 
 ---
 

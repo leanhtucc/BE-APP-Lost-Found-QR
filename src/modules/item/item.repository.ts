@@ -71,12 +71,16 @@ export class ItemRepository {
           },
         },
         posts: {
-          where: { status: { in: ["SEARCHING", "FOUND"] } },
+          where: { status: { in: ["ACTIVE", "FOUND"] } },
           orderBy: { createdAt: "desc" },
           take: 1,
         },
       },
     });
+  }
+
+  async recordQrScan(itemId: string) {
+    return prisma.qrScan.create({ data: { itemId } });
   }
 
   // Tìm item theo securityToken

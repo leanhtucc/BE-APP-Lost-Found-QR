@@ -4,6 +4,7 @@ import { connectDatabase, disconnectDatabase } from "./config/database";
 import { ENV } from "./config/env";
 import { startDailyNotificationJob } from "./jobs/daily-notification.job";
 import { startRefundJob } from "./jobs/refund.job";
+import { startAccountDeletionJob } from "./jobs/account-deletion.job";
 import { logger } from "./libs/logger";
 import { redis } from "./libs/redis";
 import { notificationService } from "./modules/notification/notification.service";
@@ -23,6 +24,7 @@ async function startServer() {
     notificationService.startCleanupJob();
     startRefundJob();
     startDailyNotificationJob();
+    startAccountDeletionJob();
 
     const server = httpServer.listen(ENV.PORT, "0.0.0.0", () => {
       logger.success(`Server is running on port ${ENV.PORT}`);

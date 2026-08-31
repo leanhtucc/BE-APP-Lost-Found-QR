@@ -45,7 +45,7 @@ export const updateItemSchema = z.object({
       .optional()
       .or(z.literal("")),
     status: z
-      .enum(["SAFE", "PENDING_PAYMENT", "LOST", "FOUND", "RESOLVED"])
+      .enum(["SAFE", "LOST", "FOUND", "RESOLVED"])
       .optional(),
     lostMessage: z
       .string()
@@ -86,7 +86,7 @@ export const updateItemSchema = z.object({
 // Schema cho update status
 export const updateStatusSchema = z.object({
   query: z.object({
-    status: z.enum(["SAFE", "PENDING_PAYMENT", "LOST", "FOUND", "RESOLVED"], {
+    status: z.enum(["SAFE", "LOST", "FOUND", "RESOLVED"], {
       required_error: "Status is required",
     }),
     lostMessage: z
@@ -143,7 +143,7 @@ export const listItemsSchema = z.object({
       .string()
       .transform((val) => val.toUpperCase())
       .pipe(
-        z.enum(["SAFE", "PENDING_PAYMENT", "LOST", "FOUND", "RESOLVED", "ALL"])
+        z.enum(["SAFE", "LOST", "FOUND", "RESOLVED", "ALL"])
       )
       .optional(),
     category: z.enum(ITEM_CATEGORIES).optional(),
@@ -180,7 +180,7 @@ export const searchItemsSchema = z.object({
       .min(1, "Search query is required")
       .max(100, "Search query must be less than 100 characters"),
     status: z
-      .enum(["SAFE", "PENDING_PAYMENT", "LOST", "FOUND", "RESOLVED", "ALL"])
+      .enum(["SAFE", "LOST", "FOUND", "RESOLVED", "ALL"])
       .optional(),
     category: z.enum(ITEM_CATEGORIES).optional(),
     page: z
