@@ -41,7 +41,9 @@ export class ItemService {
       latitude?: number;
       longitude?: number;
     },
-    fallbackLocation?: string | null
+    fallbackLocation?: string | null,
+    itemLatitude?: number | string | null,
+    itemLongitude?: number | string | null
   ): { latitude: number; longitude: number } | null {
     const hasLatitude =
       coordinates.latitude !== undefined &&
@@ -70,6 +72,18 @@ export class ItemService {
       }
 
       return { latitude, longitude };
+    }
+
+    // Fallback to item known coordinates saved during item protection/creation
+    const parsedItemLat = itemLatitude !== null && itemLatitude !== undefined ? Number(itemLatitude) : null;
+    const parsedItemLng = itemLongitude !== null && itemLongitude !== undefined ? Number(itemLongitude) : null;
+    if (
+      parsedItemLat !== null &&
+      parsedItemLng !== null &&
+      Number.isFinite(parsedItemLat) &&
+      Number.isFinite(parsedItemLng)
+    ) {
+      return { latitude: parsedItemLat, longitude: parsedItemLng };
     }
 
     if (!fallbackLocation) {
@@ -102,6 +116,12 @@ export class ItemService {
       description: item.description,
       status: item.status,
       lostMessage: item.lostMessage,
+      lostAddress: item.lostAddress,
+      lostLat: item.lostLat,
+      lostLng: item.lostLng,
+      latitude: item.latitude,
+      longitude: item.longitude,
+      lastSeenLocation: item.lastSeenLocation,
       qrCodeId: item.qrCodeId,
       imagePublicUrl: item.imagePublicUrl,
       details: item.details,
@@ -115,32 +135,82 @@ export class ItemService {
    * Format items eligible for creating a Guardian report.
    */
   private formatEligibleItemResponse(item: any) {
+    const details = (item.details as Record<string, unknown> | null) ?? {};
+    const rawSerial = details.serial ?? details.imei;
+    const serial =
+      typeof rawSerial === "string" && rawSerial.length > 7
+        ? `${rawSerial.slice(0, 4)}...${rawSerial.slice(-3)}`
+        : rawSerial ?? null;
+
     return {
       id: item.id,
+      item_id: item.id,
       qr_code_id: item.qrCodeId,
       name: item.name,
       category: item.category,
       image_url: item.imagePublicUrl ?? null,
       status: item.status,
       has_insurance: item.hasInsurance ?? false,
+      details: {
+        color: details.color ?? null,
+        storage: details.storage ?? null,
+        serial,
+      },
     };
   }
 
   // Tạo item mới
   async createItem(userId: string, data: CreateItemDTO): Promise<ItemResponse> {
     try {
+      // Validate coordinates if provided
+      const hasLat = data.latitude !== undefined && Number.isFinite(data.latitude);
+      const hasLng = data.longitude !== undefined && Number.isFinite(data.longitude);
+
+      if (hasLat !== hasLng) {
+        throw new AppError(
+          "latitude and longitude must be provided together",
+          400
+        );
+      }
+
+      let locationGeoHash: string | undefined = undefined;
+      let latitude = data.latitude;
+      let longitude = data.longitude;
+
+      if (hasLat && hasLng) {
+        if (latitude! < -90 || latitude! > 90) {
+          throw new AppError("latitude must be in range [-90, 90]", 400);
+        }
+        if (longitude! < -180 || longitude! > 180) {
+          throw new AppError("longitude must be in range [-180, 180]", 400);
+        }
+        locationGeoHash = encodeGeoHash(
+          latitude!,
+          longitude!,
+          ITEM_GEOHASH_PRECISION
+        );
+      }
+
+      const lastSeenLocation = data.lastSeenLocation || data.address || null;
+      const { address, ...cleanData } = data;
+
       // Generate unique IDs
       const qrCodeId = nanoid(16);
       const securityToken = nanoid(32);
 
       const item = await itemRepository.createItem({
-        ...data,
+        ...cleanData,
+        status: "SAFE",
+        latitude: latitude ?? null,
+        longitude: longitude ?? null,
+        lastSeenLocation,
+        locationGeoHash: locationGeoHash ?? null,
         ownerId: userId,
         qrCodeId,
         securityToken,
       });
 
-      logger.info(`Item created: ${item.qrCodeId} by user ${userId}`);
+      logger.info(`Item created: ${item.qrCodeId} (status: SAFE) by user ${userId}`);
 
       return this.formatItemResponse(item);
     } catch (error) {
@@ -186,8 +256,13 @@ export class ItemService {
       joined_date: new Date(item.owner.createdAt).getFullYear().toString(),
     };
 
-    // Nếu status là "SAFE"
-    if (item.status === "SAFE") {
+    if (item.status !== "LOST") {
+      const messages: Record<string, string> = {
+        SAFE: "This item is not reported as lost",
+        FOUND: "The owner is already in contact with a finder",
+        RESOLVED: "This lost-item case has already been resolved",
+      };
+
       return {
         item_info: {
           id: item.qrCodeId,
@@ -199,7 +274,7 @@ export class ItemService {
           owner_info: ownerInfo,
         },
         action: "info_only",
-        message: "This item is not reported as lost",
+        message: messages[item.status] ?? "This item cannot accept a finder",
       };
     }
 
@@ -293,8 +368,29 @@ export class ItemService {
       guestUser.id
     );
 
-    // Update item status to FOUND since someone scanned and initiated returned chat
-    await itemRepository.updateItem(item.id, { status: "FOUND" });
+    const claimed = await prisma.$transaction(async (tx) => {
+      const itemTransition = await tx.item.updateMany({
+        where: { id: item.id, status: "LOST" },
+        data: { status: "FOUND" },
+      });
+
+      if (itemTransition.count !== 1) return false;
+
+      await tx.post.updateMany({
+        where: { itemId: item.id, status: "ACTIVE" },
+        data: { status: "FOUND" },
+      });
+      return true;
+    });
+
+    if (!claimed) {
+      throw new AppError(
+        "Another finder has already claimed this item",
+        409,
+        true,
+        "ITEM_ALREADY_FOUND"
+      );
+    }
 
     // Persist notification records for app inbox + in-app realtime emit.
     const notificationTasks: Promise<unknown>[] = [
@@ -467,7 +563,7 @@ export class ItemService {
     const items = await prisma.item.findMany({
       where: {
         ownerId: userId,
-        status: { in: ["SAFE", "LOST"] },
+        status: "SAFE",
         posts: { none: { status: { in: ["PENDING_PAYMENT", "ACTIVE"] } } },
       },
       orderBy: { createdAt: "desc" },
@@ -546,11 +642,12 @@ export class ItemService {
   async updateStatus(
     itemId: string,
     userId: string,
-    status: "SAFE" | "LOST" | "FOUND" | "RESOLVED",
+    status: "SAFE" | "LOST",
     lostMessage?: string,
     coordinates: {
       latitude?: number;
       longitude?: number;
+      address?: string;
     } = {}
   ): Promise<ItemResponse> {
     const item = await itemRepository.findById(itemId);
@@ -566,18 +663,22 @@ export class ItemService {
       );
     }
 
-    const updateData: UpdateItemDTO = { status };
     let reportedCoordinates: { latitude: number; longitude: number } | null =
       null;
 
-    if (status === "LOST" && lostMessage) {
-      updateData.lostMessage = lostMessage;
+    if (item.status === status) {
+      if (status === "SAFE") {
+        await reportService.cancelEscrowForItem(userId, item.id);
+      }
+      return this.formatItemResponse(item);
     }
 
     if (status === "LOST") {
       reportedCoordinates = this.resolveReportedCoordinates(
         coordinates,
-        item.lastSeenLocation
+        item.lastSeenLocation,
+        item.latitude,
+        item.longitude
       );
 
       if (!reportedCoordinates) {
@@ -588,8 +689,7 @@ export class ItemService {
       }
     }
 
-    const updated = await itemRepository.updateItem(itemId, updateData);
-
+    let updated: any;
     if (status === "LOST" && reportedCoordinates) {
       const geohash = encodeGeoHash(
         reportedCoordinates.latitude,
@@ -597,29 +697,56 @@ export class ItemService {
         ITEM_GEOHASH_PRECISION
       );
 
-      await itemRepository.updateItemGeoPoint(
+      updated = await itemRepository.markLost(
         itemId,
-        reportedCoordinates.latitude,
-        reportedCoordinates.longitude,
-        geohash
+        userId,
+        {
+          lostMessage,
+          lostAddress: coordinates.address,
+          latitude: reportedCoordinates.latitude,
+          longitude: reportedCoordinates.longitude,
+          geohash,
+        }
       );
 
-      await emitLostItemToNearbyUsers({
-        id: updated.id,
-        itemId: item.id,
-        name: updated.name,
-        category: updated.category,
-        description: updated.description || undefined,
-        lostMessage: updated.lostMessage || undefined,
-        imagePublicUrl: updated.imagePublicUrl || undefined,
-        latitude: reportedCoordinates.latitude,
-        longitude: reportedCoordinates.longitude,
-        reportedAt: new Date().toISOString(),
-      });
+      if (!updated) {
+        throw new AppError(
+          "Only a SAFE item can be reported as lost",
+          409,
+          true,
+          "ITEM_NOT_ELIGIBLE"
+        );
+      }
+
+      try {
+        await emitLostItemToNearbyUsers({
+          id: updated.id,
+          itemId: item.id,
+          name: updated.name,
+          category: updated.category,
+          description: updated.description || undefined,
+          lostMessage: updated.lostMessage || undefined,
+          imagePublicUrl: updated.imagePublicUrl || undefined,
+          latitude: reportedCoordinates.latitude,
+          longitude: reportedCoordinates.longitude,
+          reportedAt: new Date().toISOString(),
+        });
+      } catch (error) {
+        logger.error("Item marked LOST but radar broadcast failed", error);
+      }
     }
 
     if (status === "SAFE") {
-      await itemRepository.clearItemGeoPoint(itemId);
+      updated = await itemRepository.markSafe(itemId, userId);
+
+      if (!updated) {
+        throw new AppError(
+          "Item cannot be moved to SAFE from its current status",
+          409,
+          true,
+          "INVALID_ITEM_STATUS_TRANSITION"
+        );
+      }
 
       // Cancel active report/escrow flow and trigger REFUNDED notification.
       await reportService.cancelEscrowForItem(userId, item.id);

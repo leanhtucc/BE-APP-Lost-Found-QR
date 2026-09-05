@@ -142,11 +142,11 @@ function sortNearbyCandidates(
 }
 
 /**
- * Single query that returns the user's own lost items UNION with
- * nearby lost items from other users (when lat/lng provided).
+ * Query that returns the user's own lost items UNION with
+ * nearby lost items from other users (or all public lost items if guest).
  */
 export async function fetchLostFeed(
-  userId: string,
+  userId: string | undefined,
   query: LostFeedQuery
 ): Promise<{ cards: LostFeedCard[]; pins: LostFeedPin[] }> {
   const { lat, lng, radius = 5000 } = query;
@@ -156,63 +156,94 @@ export async function fetchLostFeed(
       ? radius
       : 5000;
 
-  // ── Part 1: own lost items (always fetched) ──────────────────────────
-  // Lấy danh sách đồ đã mất của chính User để hiển thị lên Map & Feed
-  const sqlOwn = `
-    SELECT
-      i."itemId",
-      i."name",
-      i."category",
-      i."imagePublicUrl",
-      i."lostMessage",
-      i."lostLat",
-      i."lostLng",
-      i."lostAddress",
-      i."lastSeenLocation",
-      i."latitude",
-      i."longitude",
-      i."updatedAt",
-      u."displayName" as "ownerDisplayName",
-      u."photoURL"    as "ownerPhotoURL"
-    FROM "Item" i
-    JOIN "User" u ON u."id" = i."ownerId"
-    WHERE i."status" = 'LOST'::"ItemStatus"
-      AND i."ownerId" = $1
-    ORDER BY i."updatedAt" DESC;
-  `;
-  const ownItems = (await prisma.$queryRawUnsafe(
-    sqlOwn,
-    userId
-  )) as RawLostFeedRow[];
+  let ownItems: RawLostFeedRow[] = [];
+  let nearbyRows: RawLostFeedRow[] = [];
 
-  // ── Part 2: nearby lost items from others (only when location given) ──
-  const sqlNearby = `
-    SELECT
-      i."itemId",
-      i."name",
-      i."category",
-      i."imagePublicUrl",
-      i."lostMessage",
-      i."lostLat",
-      i."lostLng",
-      i."lostAddress",
-      i."lastSeenLocation",
-      i."latitude",
-      i."longitude",
-      i."updatedAt",
-      u."displayName" as "ownerDisplayName",
-      u."photoURL"    as "ownerPhotoURL"
-    FROM "Item" i
-    JOIN "User" u ON u."id" = i."ownerId"
-    WHERE i."status" = 'LOST'::"ItemStatus"
-      AND i."ownerId" != $1
-    ORDER BY i."updatedAt" DESC
-    LIMIT ${MAX_NEARBY_CANDIDATES};
-  `;
-  const nearbyRows = (await prisma.$queryRawUnsafe(
-    sqlNearby,
-    userId
-  )) as RawLostFeedRow[];
+  if (userId) {
+    // ── Part 1: own lost items (always fetched for logged in user) ────────
+    const sqlOwn = `
+      SELECT
+        i."itemId",
+        i."name",
+        i."category",
+        i."imagePublicUrl",
+        i."lostMessage",
+        i."lostLat",
+        i."lostLng",
+        i."lostAddress",
+        i."lastSeenLocation",
+        i."latitude",
+        i."longitude",
+        i."updatedAt",
+        u."displayName" as "ownerDisplayName",
+        u."photoURL"    as "ownerPhotoURL"
+      FROM "Item" i
+      JOIN "User" u ON u."id" = i."ownerId"
+      WHERE i."status" = 'LOST'::"ItemStatus"
+        AND i."ownerId" = $1
+      ORDER BY i."updatedAt" DESC;
+    `;
+    ownItems = (await prisma.$queryRawUnsafe(
+      sqlOwn,
+      userId
+    )) as RawLostFeedRow[];
+
+    // ── Part 2: lost items from others ──────────────────────────────────
+    const sqlNearby = `
+      SELECT
+        i."itemId",
+        i."name",
+        i."category",
+        i."imagePublicUrl",
+        i."lostMessage",
+        i."lostLat",
+        i."lostLng",
+        i."lostAddress",
+        i."lastSeenLocation",
+        i."latitude",
+        i."longitude",
+        i."updatedAt",
+        u."displayName" as "ownerDisplayName",
+        u."photoURL"    as "ownerPhotoURL"
+      FROM "Item" i
+      JOIN "User" u ON u."id" = i."ownerId"
+      WHERE i."status" = 'LOST'::"ItemStatus"
+        AND i."ownerId" != $1
+      ORDER BY i."updatedAt" DESC
+      LIMIT ${MAX_NEARBY_CANDIDATES};
+    `;
+    nearbyRows = (await prisma.$queryRawUnsafe(
+      sqlNearby,
+      userId
+    )) as RawLostFeedRow[];
+  } else {
+    // ── Guest: fetch all public lost items without owner filtering ───────
+    const sqlPublicAll = `
+      SELECT
+        i."itemId",
+        i."name",
+        i."category",
+        i."imagePublicUrl",
+        i."lostMessage",
+        i."lostLat",
+        i."lostLng",
+        i."lostAddress",
+        i."lastSeenLocation",
+        i."latitude",
+        i."longitude",
+        i."updatedAt",
+        u."displayName" as "ownerDisplayName",
+        u."photoURL"    as "ownerPhotoURL"
+      FROM "Item" i
+      JOIN "User" u ON u."id" = i."ownerId"
+      WHERE i."status" = 'LOST'::"ItemStatus"
+      ORDER BY i."updatedAt" DESC
+      LIMIT ${MAX_NEARBY_CANDIDATES};
+    `;
+    nearbyRows = (await prisma.$queryRawUnsafe(
+      sqlPublicAll
+    )) as RawLostFeedRow[];
+  }
 
   // ── Build cards ───────────────────────────────────────────────────────
   const ownCards: LostFeedCard[] = ownItems.map((item) => {

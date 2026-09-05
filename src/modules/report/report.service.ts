@@ -1,7 +1,10 @@
 import { createHmac, randomUUID, timingSafeEqual } from "crypto";
 import { ENV } from "../../config/env";
+import { logger } from "../../libs/logger";
 import { prisma } from "../../libs/prisma";
 import { AppError } from "../../middlewares/error.middleware";
+import { emitLostItemToNearbyUsers } from "../../socket/radar.socket";
+import { encodeGeoHash } from "../../utils/geospatial";
 import {
   CancelTransactionResult,
   CompleteTransactionResult,
@@ -111,15 +114,16 @@ export class ReportService {
   }
 
   private async lockItem(tx: any, itemId: string): Promise<void> {
-    await tx.$queryRawUnsafe('SELECT "id" FROM "Item" WHERE "id" = $1 FOR UPDATE', itemId);
+    await tx.$queryRawUnsafe(
+      'SELECT "id" FROM "Item" WHERE "id" = $1 OR "itemId" = $1 OR "qr_code_id" = $1 FOR UPDATE',
+      itemId
+    );
   }
 
   async createLostReport(userId: string, params: ReportLostItemParams): Promise<ReportLostItemResponse> {
     this.assertPaymentConfiguration();
-    const idempotencyKey = params.idempotencyKey.trim();
-    if (!/^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(idempotencyKey)) {
-      throw guardianError("Idempotency-Key must be a UUID", 400, "INVALID_IDEMPOTENCY_KEY");
-    }
+    const rawKey = params.idempotencyKey?.trim();
+    const idempotencyKey = rawKey || randomUUID();
 
     const result = await prisma.$transaction(async (tx: any) => {
       const retry = await tx.post.findUnique({
@@ -146,18 +150,27 @@ export class ReportService {
         }
         return { post: concurrentRetry, payment: concurrentRetry.payments[0] };
       }
-      const item = await tx.item.findUnique({ where: { id: params.itemId } });
+      const item = await tx.item.findFirst({
+        where: {
+          OR: [
+            { id: params.itemId },
+            { itemId: params.itemId },
+            { qrCodeId: params.itemId },
+          ],
+        },
+      });
       if (!item) {
-        const qrItem = await tx.item.findUnique({ where: { qrCodeId: params.itemId }, select: { id: true } });
-        throw guardianError(qrItem ? "item_id must be the database item id, not qr_code_id" : "Item not found", 404, qrItem ? "INVALID_ITEM_ID" : "ITEM_NOT_FOUND");
+        throw guardianError("Item not found", 404, "ITEM_NOT_FOUND");
       }
       if (item.ownerId !== userId) throw guardianError("You do not own this item", 403, "ITEM_NOT_OWNED");
-      if (item.status !== "SAFE" && item.status !== "LOST") {
+      if (item.status !== "SAFE") {
         throw guardianError("Item is not eligible for a Guardian report", 409, "ITEM_NOT_ELIGIBLE");
       }
 
       const owner = await tx.user.findUnique({ where: { id: userId }, select: { isVerified: true } });
-      if (!owner?.isVerified) throw guardianError("User must verify their account before creating a report", 403, "USER_NOT_VERIFIED");
+      if (!owner?.isVerified && !ENV.SKIP_EMAIL_VERIFICATION) {
+        throw guardianError("User must verify their account before creating a report", 403, "USER_NOT_VERIFIED");
+      }
 
       const existing = await tx.post.findFirst({
         where: { itemId: item.id, status: { in: ["PENDING_PAYMENT", "ACTIVE"] } },
@@ -230,7 +243,7 @@ export class ReportService {
       throw guardianError("Invalid payment signature", 400, "INVALID_PAYMENT_SIGNATURE");
     }
 
-    await prisma.$transaction(async (tx: any) => {
+    const activatedItem = await prisma.$transaction(async (tx: any) => {
       const payment = await tx.payment.findUnique({ where: { providerOrderId: payload.providerOrderId } });
       if (!payment) throw guardianError("Payment not found", 404, "PAYMENT_NOT_FOUND");
       await tx.$queryRawUnsafe('SELECT "id" FROM "Payment" WHERE "id" = $1 FOR UPDATE', payment.id);
@@ -238,7 +251,7 @@ export class ReportService {
       if (!report) throw guardianError("Report not found", 404, "REPORT_NOT_FOUND");
       await tx.$queryRawUnsafe('SELECT "id" FROM "Post" WHERE "id" = $1 FOR UPDATE', report.id);
 
-      if (payment.status === "PAID" && report.status === "ACTIVE") return;
+      if (payment.status === "PAID" && report.status === "ACTIVE") return null;
       if (payment.expiresAt <= new Date()) {
         await tx.payment.update({ where: { id: payment.id }, data: { status: "EXPIRED", rawCallback: payload.raw } });
         throw guardianError("Payment session has expired", 409, "PAYMENT_EXPIRED");
@@ -252,10 +265,11 @@ export class ReportService {
       if (!payload.paid) {
         await tx.payment.update({ where: { id: payment.id }, data: { status: "FAILED", rawCallback: payload.raw } });
         await tx.post.update({ where: { id: report.id }, data: { status: "PAYMENT_FAILED" } });
-        return;
+        return null;
       }
 
       const now = new Date();
+      const geohash = encodeGeoHash(report.lat, report.lng, 6);
       await tx.payment.update({
         where: { id: payment.id },
         data: { status: "PAID", providerTransactionId: payload.providerTransactionId, paidAt: now, rawCallback: payload.raw },
@@ -264,11 +278,58 @@ export class ReportService {
         where: { id: report.id },
         data: { status: "ACTIVE", activatedAt: now, expiresAt: new Date(now.getTime() + (report.durationHours || 24) * 60 * 60 * 1000) },
       });
-      await tx.item.update({
-        where: { id: report.itemId },
-        data: { status: "LOST", lostLat: report.lat, lostLng: report.lng, lostAddress: report.address },
+      const itemTransition = await tx.item.updateMany({
+        where: { id: report.itemId, ownerId: report.ownerId, status: "SAFE" },
+        data: {
+          status: "LOST",
+          lostLat: report.lat,
+          lostLng: report.lng,
+          lostAddress: report.address,
+          latitude: report.lat,
+          longitude: report.lng,
+          locationGeoHash: geohash,
+          locationUpdatedAt: now,
+        },
       });
+
+      if (itemTransition.count !== 1) {
+        throw guardianError(
+          "Item is no longer eligible for this Guardian report",
+          409,
+          "ITEM_NOT_ELIGIBLE"
+        );
+      }
+
+      await tx.$executeRaw`
+        UPDATE "Item"
+        SET "location" = ST_SetSRID(
+          ST_MakePoint(${report.lng}, ${report.lat}),
+          4326
+        )::geography
+        WHERE "id" = ${report.itemId}
+      `;
+
+      return tx.item.findUnique({ where: { id: report.itemId } });
     });
+
+    if (activatedItem) {
+      try {
+        await emitLostItemToNearbyUsers({
+          id: activatedItem.id,
+          itemId: activatedItem.id,
+          name: activatedItem.name,
+          category: activatedItem.category,
+          description: activatedItem.description || undefined,
+          lostMessage: activatedItem.lostMessage || undefined,
+          imagePublicUrl: activatedItem.imagePublicUrl || undefined,
+          latitude: activatedItem.lostLat as number,
+          longitude: activatedItem.lostLng as number,
+          reportedAt: new Date().toISOString(),
+        });
+      } catch (error) {
+        logger.error("Guardian report activated but radar broadcast failed", error);
+      }
+    }
   }
 
   async getReportStatus(userId: string, reportId: string): Promise<ReportStatusResponse> {

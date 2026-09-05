@@ -1,5 +1,5 @@
 import { Router } from "express";
-import { authMiddleware } from "../../middlewares/auth.middleware";
+import { optionalAuth } from "../../middlewares/auth.middleware";
 import { validate } from "../../middlewares/validate.middleware";
 import { homeController } from "./home.controller";
 import { lostFeedSchema } from "./home.schema";
@@ -7,14 +7,15 @@ import { lostFeedSchema } from "./home.schema";
 const router = Router();
 
 /**
- * GET /api/home/lost-feed
+ * GET /api/home/lost-feed & /v1/home/lost-feed
  * Unified endpoint combining:
- *  - User's own lost items (always)
- *  - Nearby lost items from others (when lat/lng provided)
+ *  - Public lost items from everyone (available to guests and authenticated users)
+ *  - User's own lost items marked with isOwn: true (when authenticated)
+ *  - Sorted by distance when lat/lng provided
  */
 router.get(
   "/lost-feed",
-  authMiddleware,
+  optionalAuth,
   validate(lostFeedSchema),
   homeController.getLostFeed
 );

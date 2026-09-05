@@ -52,6 +52,7 @@ const rawEnv = z
     SUPABASE_JWKS_URL: z.string().url().optional(),
     SUPABASE_STORAGE_BUCKET: z.string().default("item-images"),
     GOOGLE_API_KEY: z.string().optional(),
+    GOOGLE_MAPS_API_KEY: z.string().optional(),
     GEMINI_API_KEY: z.string().optional(),
     AI_MODEL: z.string().default("gemini-2.5-flash"),
   })
@@ -142,6 +143,10 @@ export const ENV = {
   SUPABASE_JWKS_URL: rawEnv.SUPABASE_JWKS_URL || "",
   SUPABASE_STORAGE_BUCKET: rawEnv.SUPABASE_STORAGE_BUCKET,
   GOOGLE_API_KEY: rawEnv.GOOGLE_API_KEY || rawEnv.GEMINI_API_KEY || "",
+  GOOGLE_MAPS_API_KEY:
+    rawEnv.GOOGLE_MAPS_API_KEY ||
+    rawEnv.GOOGLE_API_KEY ||
+    "",
   AI_MODEL: rawEnv.AI_MODEL,
 } as const;
 

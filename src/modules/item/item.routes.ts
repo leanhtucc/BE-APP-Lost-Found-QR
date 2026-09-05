@@ -4,6 +4,7 @@ import { validate } from "../../middlewares/validate.middleware";
 import { ItemController } from "./item.controller";
 import {
   createItemSchema,
+  initGuestChatSchema,
   itemIdParamSchema,
   listItemsSchema,
   scanQRSchema,
@@ -24,7 +25,11 @@ const itemController = new ItemController();
 router.get("/scan/:itemId", validate(scanQRSchema), itemController.scanQRCode);
 
 // POST /api/scan/guest-init - Khởi tạo chat ẩn danh (Guest Flow B+)
-router.post("/scan/guest-init", itemController.initGuestChat);
+router.post(
+  "/scan/guest-init",
+  validate(initGuestChatSchema),
+  itemController.initGuestChat
+);
 
 // Protected routes (cần authentication)
 // POST /api/items - Tạo item mới
@@ -104,7 +109,7 @@ router.delete(
   itemController.deleteItem
 );
 
-// PATCH /api/items/:id/status - Cập nhật trạng thái (lost/safe)
+// PATCH /api/items/:id/status - Owner chỉ chuyển SAFE/LOST; FOUND/RESOLVED do backend quản lý
 router.patch(
   "/items/:id/status",
   authMiddleware,

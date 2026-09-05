@@ -9,7 +9,7 @@ export class HomeController {
     next: NextFunction
   ): Promise<void> => {
     try {
-      const userId = req.user!.id; // set by authMiddleware
+      const userId = req.user?.id; // optional from optionalAuth
       const lat =
         req.query.lat !== undefined && req.query.lat !== ""
           ? Number(req.query.lat)
@@ -29,24 +29,31 @@ export class HomeController {
         radius,
       });
 
-      const user = await prisma.user.findUnique({
-        where: { id: userId },
-        select: {
-          id: true,
-          displayName: true,
-          photoURL: true,
-        },
-      });
+      let userData: { userId?: string; fullName?: string; avatarUrl?: string } | null = null;
+
+      if (userId) {
+        const user = await prisma.user.findUnique({
+          where: { id: userId },
+          select: {
+            id: true,
+            displayName: true,
+            photoURL: true,
+          },
+        });
+
+        if (user) {
+          userData = {
+            userId: user.id,
+            fullName: user.displayName,
+            avatarUrl: user.photoURL ?? "https://i.pravatar.cc/150?u=placeholder",
+          };
+        }
+      }
 
       res.json({
         success: true,
         data: {
-          user: {
-            userId: user?.id,
-            fullName: user?.displayName,
-            avatarUrl:
-              user?.photoURL ?? "https://i.pravatar.cc/150?u=placeholder",
-          },
+          user: userData,
           lostFeed,
         },
       });

@@ -1,4 +1,5 @@
 import { NextFunction, Request, Response } from "express";
+import { randomUUID } from "crypto";
 import { reportService } from "./report.service";
 
 export class ReportController {
@@ -6,28 +7,37 @@ export class ReportController {
   createReport = async (req: Request, res: Response, next: NextFunction) => {
     try {
       const userId = req.user!.id;
-      const idempotencyKey = req.header("Idempotency-Key");
-      if (!idempotencyKey) {
-        return res.status(400).json({
-          success: false,
-          error: {
-            code: "IDEMPOTENCY_KEY_REQUIRED",
-            message: "Idempotency-Key header is required",
-          },
-        });
-      }
+      const idempotencyKey =
+        req.header("Idempotency-Key") ||
+        req.header("idempotency-key") ||
+        req.header("X-Idempotency-Key") ||
+        req.header("x-idempotency-key") ||
+        req.body?.idempotency_key ||
+        req.body?.idempotencyKey ||
+        randomUUID();
 
+      const rawBody = req.body || {};
       const result = await reportService.createLostReport(userId, {
-        itemId: req.body.item_id,
-        idempotencyKey,
+        itemId: rawBody.item_id || rawBody.itemId,
+        idempotencyKey: String(idempotencyKey),
         requestIp: req.ip || "127.0.0.1",
-        location: req.body.location,
+        location: {
+          lat: rawBody.location?.lat,
+          lng: rawBody.location?.lng,
+          address: rawBody.location?.address ?? undefined,
+        },
         radar: {
-          radius: req.body.radar.radius,
-          durationHours: req.body.radar.duration_hours,
+          radius: rawBody.radar?.radius ?? 500,
+          durationHours:
+            rawBody.radar?.duration_hours ??
+            rawBody.radar?.durationHours ??
+            24,
         },
         reward: {
-          baseAmount: req.body.reward.base_amount,
+          baseAmount:
+            rawBody.reward?.base_amount ??
+            rawBody.reward?.baseAmount ??
+            rawBody.reward?.amount,
         },
       });
 

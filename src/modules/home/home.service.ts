@@ -3,7 +3,7 @@ import { LostFeedQuery, LostFeedResponse } from "./home.types";
 
 export class HomeService {
   async getLostFeed(
-    userId: string,
+    userId: string | undefined,
     query: LostFeedQuery
   ): Promise<LostFeedResponse> {
     const { cards, pins } = await fetchLostFeed(userId, query);

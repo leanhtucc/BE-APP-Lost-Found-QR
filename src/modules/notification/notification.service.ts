@@ -546,6 +546,28 @@ export class NotificationService {
     });
   }
 
+  async notifyReturnEvent(input: {
+    receiverId: string;
+    type: string;
+    title: string;
+    content: string;
+    sessionId: string;
+    itemId?: string;
+  }) {
+    return this.createNotification({
+      receiverId: input.receiverId,
+      category: "IMPORTANT",
+      type: input.type,
+      title: input.title,
+      content: input.content,
+      metadata: {
+        return_session_id: input.sessionId,
+        item_id: input.itemId,
+      },
+      pushPriority: "high",
+    });
+  }
+
   async cleanupOldNonCriticalNotifications(): Promise<number> {
     return this.repository.deleteOldSocialAndItemNotifications(
       SOCIAL_NOTIFICATION_RETENTION_DAYS

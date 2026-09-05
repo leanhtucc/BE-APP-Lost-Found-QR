@@ -9,7 +9,7 @@ export type GuardianStatus =
 
 export interface ReportLostItemParams {
   itemId: string;
-  idempotencyKey: string;
+  idempotencyKey?: string;
   requestIp: string;
   location: { lat: number; lng: number; address?: string };
   radar: { radius: number; durationHours: number };

@@ -10,6 +10,7 @@ import reportRoutes from "./modules/report/report.routes";
 import streamRoutes from "./modules/stream/stream.routes";
 import uploadRoutes from "./modules/upload/upload.routes";
 import radarRoutes from "./modules/radar/radar.routes";
+import returnRoutes from "./modules/return/return.routes";
 import { prisma } from "./libs/prisma";
 import { validate } from "./middlewares/validate.middleware";
 import { reportController } from "./modules/report/report.controller";
@@ -57,11 +58,15 @@ router.use(`${ENV.API_PREFIX}/notifications`, notificationRoutes);
 router.use(`${ENV.API_PREFIX}/home`, homeRoutes);
 router.use(`${ENV.API_PREFIX}/reports`, reportRoutes);
 router.use(`${ENV.API_PREFIX}/radar`, radarRoutes);
+router.use(`${ENV.API_PREFIX}/returns`, returnRoutes);
 router.use(ENV.API_PREFIX, itemRoutes); // Item routes (/items, /scan)
 
 // v1 contract routes
 router.use("/v1/ai", aiRoutes);
+router.use("/v1/home", homeRoutes);
+router.use("/v1", itemRoutes);
 router.use("/v1/reports", reportRoutes);
+router.use("/v1/returns", returnRoutes);
 // Gateway-only endpoint. Payment status changes are accepted exclusively here,
 // after VNPay's signature and amount have been verified by ReportService.
 router.post(

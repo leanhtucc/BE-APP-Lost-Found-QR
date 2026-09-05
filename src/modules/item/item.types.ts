@@ -28,6 +28,11 @@ export interface CreateItemDTO {
   imagePublicUrl?: string;
   hasInsurance?: boolean;
   details?: any; // JSONB
+  latitude?: number | null;
+  longitude?: number | null;
+  address?: string | null;
+  lastSeenLocation?: string | null;
+  locationGeoHash?: string | null;
 }
 
 export interface UpdateItemDTO {
@@ -36,14 +41,16 @@ export interface UpdateItemDTO {
   description?: string;
   status?: "SAFE" | "LOST" | "FOUND" | "RESOLVED";
   lostMessage?: string;
+  lostAddress?: string;
   imagePublicUrl?: string;
   hasInsurance?: boolean;
   details?: any; // JSONB
 }
 
 export interface UpdateItemStatusDTO {
-  status: "SAFE" | "LOST" | "FOUND" | "RESOLVED";
+  status: "SAFE" | "LOST";
   lostMessage?: string;
+  lostAddress?: string;
   latitude?: number;
   longitude?: number;
 }
@@ -56,6 +63,12 @@ export interface ItemResponse {
   description?: string;
   status: string;
   lostMessage?: string;
+  lostAddress?: string;
+  lostLat?: number;
+  lostLng?: number;
+  latitude?: number;
+  longitude?: number;
+  lastSeenLocation?: string;
   qrCodeId: string;
   imagePublicUrl?: string;
   details?: any;

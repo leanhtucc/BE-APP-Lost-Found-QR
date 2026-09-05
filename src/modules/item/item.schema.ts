@@ -27,12 +27,16 @@ export const createItemSchema = z.object({
       .or(z.literal("")),
     hasInsurance: z.boolean().optional().default(false),
     details: z.any().optional(), // JSONB cho color, storage, serial...
+    latitude: z.number().min(-90).max(90).optional(),
+    longitude: z.number().min(-180).max(180).optional(),
+    address: z.string().max(255).optional(),
+    lastSeenLocation: z.string().optional(),
   }),
 });
 
 // Schema cho cập nhật item
 export const updateItemSchema = z.object({
-  query: z.object({
+  body: z.object({
     name: z
       .string()
       .min(1, "Name is required")
@@ -44,49 +48,20 @@ export const updateItemSchema = z.object({
       .max(500, "Description must be less than 500 characters")
       .optional()
       .or(z.literal("")),
-    status: z
-      .enum(["SAFE", "LOST", "FOUND", "RESOLVED"])
-      .optional(),
-    lostMessage: z
-      .string()
-      .max(500, "Lost message must be less than 500 characters")
-      .optional()
-      .or(z.literal("")),
     imagePublicUrl: z
       .string()
       .url("Invalid image URL")
       .optional()
       .or(z.literal("")),
-    lastSeenLocation: z
-      .string()
-      .refine(
-        (val) => {
-          if (!val) return true;
-          try {
-            const parsed = JSON.parse(val);
-            return (
-              typeof parsed.lat === "number" && typeof parsed.lng === "number"
-            );
-          } catch {
-            return false;
-          }
-        },
-        { message: "lastSeenLocation must be valid JSON with lat and lng" }
-      )
-      .optional()
-      .or(z.literal("")),
-    securityPin: z
-      .string()
-      .regex(/^\d{4}$/, "Security PIN must be 4 digits")
-      .optional()
-      .or(z.literal("")),
+    hasInsurance: z.boolean().optional(),
+    details: z.any().optional(),
   }),
 });
 
 // Schema cho update status
 export const updateStatusSchema = z.object({
-  query: z.object({
-    status: z.enum(["SAFE", "LOST", "FOUND", "RESOLVED"], {
+  body: z.object({
+    status: z.enum(["SAFE", "LOST"], {
       required_error: "Status is required",
     }),
     lostMessage: z
@@ -94,47 +69,47 @@ export const updateStatusSchema = z.object({
       .max(500, "Lost message must be less than 500 characters")
       .optional()
       .or(z.literal("")),
-    latitude: z
-      .string()
-      .optional()
-      .refine(
-        (value) => value === undefined || Number.isFinite(Number(value)),
-        { message: "latitude must be a valid number" }
-      )
-      .refine(
-        (value) =>
-          value === undefined || (Number(value) >= -90 && Number(value) <= 90),
-        { message: "latitude must be in range [-90, 90]" }
-      ),
-    longitude: z
-      .string()
-      .optional()
-      .refine(
-        (value) => value === undefined || Number.isFinite(Number(value)),
-        { message: "longitude must be a valid number" }
-      )
-      .refine(
-        (value) =>
-          value === undefined ||
-          (Number(value) >= -180 && Number(value) <= 180),
-        { message: "longitude must be in range [-180, 180]" }
-      ),
+    lostAddress: z.string().trim().max(300).optional().or(z.literal("")),
+    latitude: z.coerce.number().finite().min(-90).max(90).optional(),
+    longitude: z.coerce.number().finite().min(-180).max(180).optional(),
   }),
 });
 
 export const updateStatusSchemaWithCoordinates = updateStatusSchema.refine(
   (payload) => {
-    const { latitude, longitude } = payload.query;
-    const hasLatitude = latitude !== undefined && latitude !== "";
-    const hasLongitude = longitude !== undefined && longitude !== "";
+    const { latitude, longitude } = payload.body;
+    const hasLatitude = latitude !== undefined;
+    const hasLongitude = longitude !== undefined;
 
     return hasLatitude === hasLongitude;
   },
   {
     message: "latitude and longitude must be provided together",
-    path: ["query", "latitude"],
+    path: ["body", "latitude"],
   }
 );
+
+export const initGuestChatSchema = z.object({
+  body: z
+    .object({
+      itemId: z.string().trim().min(1, "Item ID is required"),
+      phoneNumber: z
+        .string()
+        .trim()
+        .regex(/^\+?[0-9]{9,15}$/, "Phone number is invalid"),
+      lat: z.coerce.number().finite().min(-90).max(90).optional(),
+      lng: z.coerce.number().finite().min(-180).max(180).optional(),
+    })
+    .superRefine((value, ctx) => {
+      if ((value.lat === undefined) !== (value.lng === undefined)) {
+        ctx.addIssue({
+          code: z.ZodIssueCode.custom,
+          message: "lat and lng must be provided together",
+          path: ["lat"],
+        });
+      }
+    }),
+});
 
 // Schema cho list items
 export const listItemsSchema = z.object({

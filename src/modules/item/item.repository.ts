@@ -13,10 +13,15 @@ export class ItemRepository {
       ownerId: string;
       qrCodeId: string;
       securityToken: string;
+      status?: "SAFE" | "LOST" | "FOUND" | "RESOLVED";
+      latitude?: number | null;
+      longitude?: number | null;
+      lastSeenLocation?: string | null;
+      locationGeoHash?: string | null;
     }
   ) {
     return await prisma.item.create({
-      data,
+      data: data as any,
       include: {
         owner: {
           select: {
@@ -167,39 +172,112 @@ export class ItemRepository {
     });
   }
 
-  // Cập nhật geospatial location cho Live Radar
-  async updateItemGeoPoint(
-    itemId: string,
-    latitude: number,
-    longitude: number,
-    geohash: string
+  async markLost(
+    id: string,
+    ownerId: string,
+    data: {
+      lostMessage?: string;
+      lostAddress?: string;
+      latitude: number;
+      longitude: number;
+      geohash: string;
+    }
   ) {
-    await prisma.$executeRaw`
-      UPDATE "Item"
-      SET
-        "latitude" = ${latitude},
-        "longitude" = ${longitude},
-        "location_geohash" = ${geohash},
-        "location_updated_at" = NOW(),
-        "location" = ST_SetSRID(ST_MakePoint(${longitude}, ${latitude}), 4326)::geography,
-        "updatedAt" = NOW()
-      WHERE "id" = ${itemId};
-    `;
+    return prisma.$transaction(async (tx) => {
+      const transition = await tx.item.updateMany({
+        where: {
+          id,
+          ownerId,
+          status: "SAFE",
+          posts: {
+            none: { status: { in: ["PENDING_PAYMENT", "ACTIVE"] } },
+          },
+        },
+        data: {
+          status: "LOST",
+          lostMessage: data.lostMessage || null,
+          lostAddress: data.lostAddress || null,
+          lostLat: data.latitude,
+          lostLng: data.longitude,
+          latitude: data.latitude,
+          longitude: data.longitude,
+          locationGeoHash: data.geohash,
+          locationUpdatedAt: new Date(),
+        },
+      });
+
+      if (transition.count !== 1) return null;
+
+      await tx.$executeRaw`
+        UPDATE "Item"
+        SET "location" = ST_SetSRID(
+          ST_MakePoint(${data.longitude}, ${data.latitude}),
+          4326
+        )::geography
+        WHERE "id" = ${id}
+      `;
+
+      return tx.item.findUnique({
+        where: { id },
+        include: {
+          owner: {
+            select: {
+              id: true,
+              uid: true,
+              displayName: true,
+              email: true,
+              photoURL: true,
+            },
+          },
+        },
+      });
+    });
   }
 
-  // Xóa geospatial location (khi item trở lại trạng thái safe)
-  async clearItemGeoPoint(itemId: string) {
-    await prisma.$executeRaw`
-      UPDATE "Item"
-      SET
-        "latitude" = NULL,
-        "longitude" = NULL,
-        "location_geohash" = NULL,
-        "location_updated_at" = NULL,
-        "location" = NULL,
-        "updatedAt" = NOW()
-      WHERE "id" = ${itemId};
-    `;
+  async markSafe(id: string, ownerId: string) {
+    return prisma.$transaction(async (tx) => {
+      const transition = await tx.item.updateMany({
+        where: {
+          id,
+          ownerId,
+          status: { in: ["LOST", "FOUND", "RESOLVED"] },
+        },
+        data: {
+          status: "SAFE",
+          lostMessage: null,
+          lostAddress: null,
+          lostLat: null,
+          lostLng: null,
+          latitude: null,
+          longitude: null,
+          locationGeoHash: null,
+          locationUpdatedAt: null,
+        },
+      });
+
+      if (transition.count !== 1) return null;
+
+      await tx.$executeRaw`
+        UPDATE "Item"
+        SET "location" = NULL
+        WHERE "id" = ${id}
+      `;
+
+      return tx.item.findUnique({
+        where: { id },
+        include: {
+          owner: {
+            select: {
+              id: true,
+              uid: true,
+              displayName: true,
+              email: true,
+              photoURL: true,
+            },
+          },
+        },
+      });
+    });
   }
 
   // Xóa item

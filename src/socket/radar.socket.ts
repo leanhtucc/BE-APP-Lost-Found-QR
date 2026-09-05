@@ -10,6 +10,7 @@ import {
   getGeoHashPrecisionForRadius,
   haversineDistanceMeters,
 } from "../utils/geospatial";
+import { registerReturnSocketHandlers } from "./return.socket";
 
 const MIN_RADIUS_METERS = 100;
 const MAX_RADIUS_METERS = 20000;
@@ -266,6 +267,7 @@ export function initializeSocketServer(httpServer: HttpServer): Server {
     }
 
     logger.info("[RadarSocket] Client connected", { socketId: socket.id });
+    registerReturnSocketHandlers(socket, ioInstance!);
 
     socket.on(
       "radar:subscribe",
@@ -406,4 +408,8 @@ export function emitInAppNotificationToUser(
 
   ioInstance.to(toUserRoomKey(userId)).emit(eventName, payload);
   return true;
+}
+
+export function getSocketServer(): Server | null {
+  return ioInstance;
 }

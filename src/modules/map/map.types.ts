@@ -38,3 +38,26 @@ export interface NearbyMapResponse {
   items: NearbyMapItemPublic[];
   total: number;
 }
+
+export interface PlaceAutocompletePrediction {
+  place_id: string;
+  description: string;
+  main_text: string;
+  secondary_text: string;
+}
+
+export interface PlaceDetailsResult {
+  place_id: string;
+  name: string;
+  formatted_address: string;
+  lat: number;
+  lng: number;
+}
+
+export interface GeocodeResult {
+  formatted_address: string;
+  lat: number;
+  lng: number;
+  place_id?: string;
+  name?: string;
+}

@@ -104,6 +104,10 @@ model User {
   notificationPreference NotificationPreference?
   devices                UserDevice[]
   securityAuditLogs      SecurityAuditLog[]
+  ownerReturnSessions    ReturnSession[]         @relation("ReturnSessionOwner")
+  finderReturnSessions   ReturnSession[]         @relation("ReturnSessionFinder")
+  ratingsGiven           FinderRatingRecord[]    @relation("RatingRater")
+  ratingsReceived        FinderRatingRecord[]    @relation("RatingFinder")
 
   @@index([uid])
   @@index([email])
@@ -239,6 +243,7 @@ model Item {
   owner             User                                  @relation("ItemOwner", fields: [ownerId], references: [id], onDelete: Cascade)
   posts             Post[]
   qrScans           QrScan[]
+  returnSessions    ReturnSession[]
 
   @@index([itemId])
   @@index([ownerId])
@@ -299,6 +304,7 @@ model Post {
 
   escrowTransactions EscrowTransaction[]
   payments           Payment[]
+  returnSessions     ReturnSession[]
 
   @@index([ownerId])
   @@index([itemId])
@@ -370,4 +376,188 @@ model AiMessage {
   conversation   AiConversation @relation(fields: [conversationId], references: [id], onDelete: Cascade)
 
   @@index([conversationId, createdAt])
+}
+
+enum ReturnSessionStatus {
+  CHAT_ACTIVE
+  MEETUP_PROPOSED
+  MEETUP_ACCEPTED
+  TRACKING_ACTIVE
+  ARRIVAL_PENDING
+  HANDOVER_PENDING
+  HANDOVER_CONFIRMED
+  REWARD_RELEASING
+  REWARD_PAID
+  RATING_PENDING
+  COMPLETED
+  MEETUP_CANCELLED
+  TRACKING_EXPIRED
+  HANDOVER_DISPUTED
+  PAYOUT_FAILED
+  REFUND_PENDING
+}
+
+enum ReturnUserRole {
+  OWNER
+  FINDER
+}
+
+enum MeetupStatus {
+  PENDING
+  ACCEPTED
+  REJECTED
+  CANCELLED
+}
+
+enum RewardPayoutStatus {
+  PROCESSING
+  PAID
+  FAILED
+  ACTION_REQUIRED
+}
+
+model ReturnSession {
+  id                String              @id @default(cuid())
+  channelId         String              @unique @map("channel_id")
+  itemId            String              @map("item_id")
+  reportId          String?             @map("report_id")
+  ownerId           String              @map("owner_id")
+  finderId          String              @map("finder_id")
+  status            ReturnSessionStatus @default(CHAT_ACTIVE)
+  serverRevision    Int                 @default(1) @map("server_revision")
+  trackingStartedAt DateTime?           @map("tracking_started_at")
+  trackingExpiresAt DateTime?           @map("tracking_expires_at")
+  completedAt       DateTime?           @map("completed_at")
+  createdAt         DateTime            @default(now()) @map("created_at")
+  updatedAt         DateTime            @updatedAt @map("updated_at")
+
+  owner             User                @relation("ReturnSessionOwner", fields: [ownerId], references: [id], onDelete: Cascade)
+  finder            User                @relation("ReturnSessionFinder", fields: [finderId], references: [id], onDelete: Cascade)
+  item              Item                @relation(fields: [itemId], references: [id], onDelete: Cascade)
+  report            Post?               @relation(fields: [reportId], references: [id], onDelete: SetNull)
+
+  meetupProposals       ReturnMeetupProposal[]
+  arrivals              ReturnArrival[]
+  handoverChallenge     HandoverChallenge?
+  handoverConfirmations HandoverConfirmation[]
+  rewardPayout          RewardPayoutRecord?
+  rating                FinderRatingRecord?
+
+  @@index([channelId])
+  @@index([itemId])
+  @@index([ownerId])
+  @@index([finderId])
+  @@index([status])
+  @@map("return_sessions")
+}
+
+model ReturnMeetupProposal {
+  id            String       @id @default(cuid())
+  sessionId     String       @map("session_id")
+  proposedBy    String       @map("proposed_by")
+  address       String
+  name          String?
+  latitude      Float
+  longitude     Float
+  scheduledTime String       @map("scheduled_time")
+  notes         String?
+  status        MeetupStatus @default(PENDING)
+  proposedAt    DateTime     @default(now()) @map("proposed_at")
+  respondedAt   DateTime?    @map("responded_at")
+
+  session       ReturnSession @relation(fields: [sessionId], references: [id], onDelete: Cascade)
+
+  @@index([sessionId, status])
+  @@map("return_meetup_proposals")
+}
+
+model ReturnArrival {
+  id             String         @id @default(cuid())
+  sessionId      String         @map("session_id")
+  participantId  String         @map("participant_id")
+  role           ReturnUserRole
+  declaredAt     DateTime       @default(now()) @map("declared_at")
+  latitude       Float?
+  longitude      Float?
+  distanceMeters Float?         @map("distance_meters")
+  accuracy       Float?
+
+  session        ReturnSession  @relation(fields: [sessionId], references: [id], onDelete: Cascade)
+
+  @@unique([sessionId, participantId])
+  @@index([sessionId])
+  @@map("return_arrivals")
+}
+
+model HandoverChallenge {
+  id               String        @id @default(cuid())
+  sessionId        String        @unique @map("session_id")
+  codeHash         String        @map("code_hash")
+  expiresAt        DateTime      @map("expires_at")
+  attemptCount     Int           @default(0) @map("attempt_count")
+  maxAttempts      Int           @default(5) @map("max_attempts")
+  consumedAt       DateTime?     @map("consumed_at")
+  createdForUserId String        @map("created_for_user_id")
+  createdAt        DateTime      @default(now()) @map("created_at")
+
+  session          ReturnSession @relation(fields: [sessionId], references: [id], onDelete: Cascade)
+
+  @@map("handover_challenges")
+}
+
+model HandoverConfirmation {
+  id                 String         @id @default(cuid())
+  sessionId          String         @map("session_id")
+  participantId      String         @map("participant_id")
+  role               ReturnUserRole
+  verificationMethod String         @default("CODE") @map("verification_method")
+  idempotencyKey     String?        @map("idempotency_key")
+  confirmedAt        DateTime       @default(now()) @map("confirmed_at")
+
+  session            ReturnSession  @relation(fields: [sessionId], references: [id], onDelete: Cascade)
+
+  @@unique([sessionId, participantId])
+  @@index([sessionId])
+  @@map("handover_confirmations")
+}
+
+model RewardPayoutRecord {
+  id                  String             @id @default(cuid())
+  sessionId           String             @unique @map("session_id")
+  reportId            String?            @map("report_id")
+  escrowTransactionId String?            @map("escrow_transaction_id")
+  baseAmount          Int                @map("base_amount")
+  platformFee         Int                @default(0) @map("platform_fee")
+  netAmount           Int                @map("net_amount")
+  currency            String             @default("VND")
+  status              RewardPayoutStatus @default(PROCESSING)
+  payoutMethodMasked  String?            @map("payout_method_masked")
+  transactionId       String?            @map("transaction_id")
+  failureReason       String?            @map("failure_reason")
+  paidAt              DateTime?          @map("paid_at")
+  createdAt           DateTime           @default(now()) @map("created_at")
+  updatedAt           DateTime           @updatedAt @map("updated_at")
+
+  session             ReturnSession      @relation(fields: [sessionId], references: [id], onDelete: Cascade)
+
+  @@index([status])
+  @@map("reward_payouts")
+}
+
+model FinderRatingRecord {
+  id        String        @id @default(cuid())
+  sessionId String        @unique @map("session_id")
+  raterId   String        @map("rater_id")
+  finderId  String        @map("finder_id")
+  score     Int
+  tags      String[]      @default([])
+  comment   String?
+  createdAt DateTime      @default(now()) @map("created_at")
+
+  session   ReturnSession @relation(fields: [sessionId], references: [id], onDelete: Cascade)
+  rater     User          @relation("RatingRater", fields: [raterId], references: [id], onDelete: Cascade)
+  finder    User          @relation("RatingFinder", fields: [finderId], references: [id], onDelete: Cascade)
+
+  @@index([finderId])
+  @@map("finder_ratings")
 }

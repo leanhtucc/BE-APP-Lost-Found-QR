@@ -24,4 +24,11 @@ describe("health endpoints", () => {
     expect(response.status).toBe(200);
     expect(response.body).toEqual({ success: true, status: "alive" });
   });
+
+  it("mounts the v1 eligible report-items route", async () => {
+    const response = await request(app).get("/v1/items/eligible-for-report");
+
+    expect(response.status).toBe(401);
+    expect(response.body.message).not.toContain("Route");
+  });
 });
