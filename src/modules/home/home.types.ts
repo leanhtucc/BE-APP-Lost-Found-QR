@@ -19,6 +19,7 @@ export interface LostFeedPin {
 
 /** Full card for Bottom Sheet rendering */
 export interface LostFeedCard {
+  reportType?: "LOST" | "FOUND";
   itemId: string;
   name: string;
   category: string;

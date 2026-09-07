@@ -97,6 +97,7 @@ model User {
 
   // Relations
   ownedItems             Item[]                  @relation("ItemOwner")
+  foundReports           FoundReport[]
   locations              UserLocation[]
   posts                  Post[]
   notifications          Notification[]
@@ -250,6 +251,27 @@ model Item {
   @@index([status])
   @@index([lostLat, lostLng])
   @@index([locationGeoHash], map: "Item_location_geohash_idx")
+}
+
+model FoundReport {
+  id             String   @id @default(cuid())
+  finderId       String
+  idempotencyKey String
+  name           String
+  category       String
+  description    String?
+  imagePublicUrl String
+  lat            Float
+  lng            Float
+  address        String
+  resolvedAt     DateTime?
+  createdAt      DateTime @default(now())
+  updatedAt      DateTime @updatedAt
+  finder         User     @relation(fields: [finderId], references: [id], onDelete: Cascade)
+
+  @@unique([finderId, idempotencyKey])
+  @@index([resolvedAt, createdAt])
+  @@index([lat, lng])
 }
 
 model QrScan {

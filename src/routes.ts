@@ -7,6 +7,7 @@ import itemRoutes from "./modules/item/item.routes";
 import mapRoutes from "./modules/map/map.routes";
 import notificationRoutes from "./modules/notification/notification.routes";
 import reportRoutes from "./modules/report/report.routes";
+import foundReportRoutes from "./modules/found-report/found-report.routes";
 import streamRoutes from "./modules/stream/stream.routes";
 import uploadRoutes from "./modules/upload/upload.routes";
 import radarRoutes from "./modules/radar/radar.routes";
@@ -57,6 +58,7 @@ router.use(`${ENV.API_PREFIX}/map`, mapRoutes);
 router.use(`${ENV.API_PREFIX}/notifications`, notificationRoutes);
 router.use(`${ENV.API_PREFIX}/home`, homeRoutes);
 router.use(`${ENV.API_PREFIX}/reports`, reportRoutes);
+router.use(`${ENV.API_PREFIX}/found-reports`, foundReportRoutes);
 router.use(`${ENV.API_PREFIX}/radar`, radarRoutes);
 router.use(`${ENV.API_PREFIX}/returns`, returnRoutes);
 router.use(ENV.API_PREFIX, itemRoutes); // Item routes (/items, /scan)
@@ -66,6 +68,7 @@ router.use("/v1/ai", aiRoutes);
 router.use("/v1/home", homeRoutes);
 router.use("/v1", itemRoutes);
 router.use("/v1/reports", reportRoutes);
+router.use("/v1/found-reports", foundReportRoutes);
 router.use("/v1/returns", returnRoutes);
 // Gateway-only endpoint. Payment status changes are accepted exclusively here,
 // after VNPay's signature and amount have been verified by ReportService.
