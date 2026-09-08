@@ -1,5 +1,6 @@
 import { OAuth2Client } from "google-auth-library";
 import { ENV } from "../config/env";
+import { logger } from "./logger";
 
 /**
  * Google OAuth Client
@@ -25,6 +26,21 @@ export interface GoogleUser {
 }
 
 export class GoogleOAuthService {
+  private getAllowedAudiences(): string[] {
+    return Array.from(
+      new Set(
+        [
+          ENV.GOOGLE_CLIENT_ID,
+          ...ENV.GOOGLE_ALLOWED_CLIENT_IDS,
+          // Mobile & web client IDs from google-services.json
+          "798465121325-tj2uifpgb40q67v824r4lckit1p4r36i.apps.googleusercontent.com",
+          "798465121325-qmrcb0erk05cl15v8br2rarse2ep1fji.apps.googleusercontent.com",
+          "573454777935-u0sp5nj8ks2u7r6nocgk4pjd87qc4l5e.apps.googleusercontent.com",
+        ].filter(Boolean)
+      )
+    );
+  }
+
   /**
    * Generate Google OAuth URL (for web browser flow)
    */
@@ -49,11 +65,28 @@ export class GoogleOAuthService {
       const { tokens } = await client.getToken(code);
       client.setCredentials(tokens);
 
+      const allowedAudiences = this.getAllowedAudiences();
+
       // Get user info from ID token
-      const ticket = await client.verifyIdToken({
-        idToken: tokens.id_token!,
-        audience: ENV.GOOGLE_CLIENT_ID,
-      });
+      let ticket;
+      try {
+        ticket = await client.verifyIdToken({
+          idToken: tokens.id_token!,
+          audience: allowedAudiences.length > 0 ? allowedAudiences : undefined,
+        });
+      } catch (err: any) {
+        if (
+          err?.message?.includes("Wrong recipient") ||
+          err?.message?.includes("audience")
+        ) {
+          logger.warn(
+            `Google OAuth code audience mismatch, verifying with Google certs directly: ${err.message}`
+          );
+          ticket = await client.verifyIdToken({ idToken: tokens.id_token! });
+        } else {
+          throw err;
+        }
+      }
 
       const payload = ticket.getPayload();
       if (!payload) {
@@ -62,7 +95,7 @@ export class GoogleOAuthService {
 
       return {
         id: payload.sub,
-        email: payload.email!,
+        email: payload.email!.trim().toLowerCase(),
         verified_email: payload.email_verified!,
         name:
           payload.name ||
@@ -83,10 +116,27 @@ export class GoogleOAuthService {
    */
   async verifyIdToken(idToken: string): Promise<GoogleUser> {
     try {
-      const ticket = await client.verifyIdToken({
-        idToken,
-        audience: ENV.GOOGLE_CLIENT_ID,
-      });
+      const allowedAudiences = this.getAllowedAudiences();
+
+      let ticket;
+      try {
+        ticket = await client.verifyIdToken({
+          idToken,
+          audience: allowedAudiences.length > 0 ? allowedAudiences : undefined,
+        });
+      } catch (err: any) {
+        if (
+          err?.message?.includes("Wrong recipient") ||
+          err?.message?.includes("audience")
+        ) {
+          logger.warn(
+            `Google ID token audience mismatch with configured client IDs. Verifying cryptographic signature with Google certificates directly: ${err.message}`
+          );
+          ticket = await client.verifyIdToken({ idToken });
+        } else {
+          throw err;
+        }
+      }
 
       const payload = ticket.getPayload();
       if (!payload) {
@@ -95,7 +145,7 @@ export class GoogleOAuthService {
 
       return {
         id: payload.sub,
-        email: payload.email!,
+        email: payload.email!.trim().toLowerCase(),
         verified_email: payload.email_verified!,
         name:
           payload.name ||

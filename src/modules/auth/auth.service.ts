@@ -242,6 +242,12 @@ export class AuthService {
 
     const existingUser = await authRepository.findByEmail(email);
     if (existingUser) {
+      if (existingUser.googleId && !existingUser.password) {
+        throw new AppError(
+          "This email is already registered with Google. Please sign in with Google or use forgot password to set a password.",
+          400
+        );
+      }
       throw new AppError("Email already registered", 400);
     }
 
@@ -289,8 +295,10 @@ export class AuthService {
   }
 
   async login(data: LoginDTO): Promise<LoginResponse> {
+    const email = data.email.trim().toLowerCase();
+
     // Find user by email
-    const user = await authRepository.findByEmail(data.email);
+    const user = await authRepository.findByEmail(email);
     if (!user) {
       throw new AppError("Invalid email or password", 401);
     }
@@ -300,6 +308,12 @@ export class AuthService {
 
     // Verify password
     if (!user.password) {
+      if (user.googleId) {
+        throw new AppError(
+          "This account is registered with Google. Please sign in with Google or reset your password to create a password.",
+          401
+        );
+      }
       throw new AppError("Invalid email or password", 401);
     }
     const isValidPassword = await comparePassword(data.password, user.password);
@@ -706,19 +720,31 @@ export class AuthService {
 
       let user = await authRepository.findByUid(uid);
       let isNewUser = false;
+      const normalizedEmail = email ? email.trim().toLowerCase() : null;
+
+      if (!user && normalizedEmail) {
+        user = await authRepository.findByEmail(normalizedEmail);
+
+        if (user) {
+          // Link Firebase account to existing user
+          const googleIdCandidate =
+            decodedToken.firebase?.identities?.["google.com"]?.[0];
+
+          await authRepository.updateUser(user.id, {
+            photoURL: user.photoURL || picture || undefined,
+            phoneNumber: user.phoneNumber || phone_number || undefined,
+            googleId: user.googleId || googleIdCandidate || undefined,
+            isVerified: true,
+          });
+          user = await authRepository.findByEmail(normalizedEmail);
+          logger.info(
+            `Firebase account linked to existing user: ${user!.email}`
+          );
+        }
+      }
 
       if (!user) {
-        let actualEmail = email;
-        if (!actualEmail) {
-          actualEmail = `${uid}@firebase.app`;
-        } else {
-          // Check if email already exists
-          const existingWithEmail =
-            await authRepository.findByEmail(actualEmail);
-          if (existingWithEmail) {
-            actualEmail = `${uid}_${actualEmail}`; // Prevent duplicate email constraint error
-          }
-        }
+        const actualEmail = normalizedEmail || `${uid}@firebase.app`;
 
         const createdUser = await authRepository.createUser({
           uid: uid,
@@ -736,6 +762,10 @@ export class AuthService {
 
       if (!user) {
         throw new AppError("Failed to create or find user", 500);
+      }
+
+      if (user.scheduledDeletionAt) {
+        throw new AppError("Account is not active", 401, true, "UNAUTHORIZED");
       }
 
       const accessToken = generateAccessToken({
@@ -764,6 +794,9 @@ export class AuthService {
       if (error.code && String(error.code).startsWith("auth/")) {
         throw new AppError("Invalid or expired Firebase ID Token", 401);
       }
+      if (error instanceof AppError) {
+        throw error;
+      }
       throw new AppError("Firebase authentication failed", 500);
     }
   }
@@ -782,29 +815,32 @@ export class AuthService {
       throw new AppError("Google email not verified", 400);
     }
 
+    const email = googleUser.email.trim().toLowerCase();
+
     // Check if user exists with Google ID
     let user: User | null = await authRepository.findByGoogleId(googleUser.id);
     let isNewUser = false;
 
     if (!user) {
-      // Check if user exists with same email
-      user = await authRepository.findByEmail(googleUser.email);
+      // Check if user exists with same email (case-insensitive normalized)
+      user = await authRepository.findByEmail(email);
 
       if (user) {
         // Link Google account to existing user
         await authRepository.updateUser(user.id, {
           googleId: googleUser.id,
-          photoURL: googleUser.picture || user.photoURL || undefined,
+          photoURL: user.photoURL || googleUser.picture || undefined,
           isVerified: true, // Auto-verify Google users
         });
-        user = await authRepository.findByEmail(user.email);
+        await tempStorage.delete(email);
+        user = await authRepository.findByEmail(email);
         logger.info(`Google account linked to existing user: ${user!.email}`);
       } else {
         // Create new user with Google account
         const uid = `user_${nanoid(16)}`;
         await authRepository.createUser({
           uid,
-          email: googleUser.email,
+          email: email,
           password: "", // Empty string for OAuth users
           displayName: googleUser.name,
           photoURL: googleUser.picture || undefined,
@@ -813,7 +849,8 @@ export class AuthService {
           verificationCode: undefined,
           verificationCodeExpiry: undefined,
         });
-        user = await authRepository.findByEmail(googleUser.email);
+        await tempStorage.delete(email);
+        user = await authRepository.findByEmail(email);
         isNewUser = true;
         logger.info(`New user created via Google OAuth: ${user!.email}`);
 
@@ -826,9 +863,12 @@ export class AuthService {
       }
     }
 
-    // Generate tokens (user cannot be null here)
     if (!user) {
       throw new AppError("Failed to create or find user", 500);
+    }
+
+    if (user.scheduledDeletionAt) {
+      throw new AppError("Account is not active", 401, true, "UNAUTHORIZED");
     }
 
     const accessToken = generateAccessToken({
@@ -856,16 +896,12 @@ export class AuthService {
   async requestPasswordReset(
     data: ForgotPasswordDTO
   ): Promise<ForgotPasswordResponse> {
+    const email = data.email.trim().toLowerCase();
+
     // Find user by email
-    const user = await authRepository.findByEmail(data.email);
+    const user = await authRepository.findByEmail(email);
     if (!user) {
       // Don't reveal if email exists - security best practice
-      return {
-        message:
-          "If an account with that email exists, a password reset link has been sent.",
-      };
-    }
-    if (!user.password) {
       return {
         message:
           "If an account with that email exists, a password reset link has been sent.",
@@ -945,8 +981,18 @@ export class AuthService {
       const { uid, phone_number } = decodedToken;
 
       if (!phone_number) {
+        if (decodedToken.email) {
+          const result = await this.verifyFirebaseToken(idToken);
+          return {
+            ...result,
+            token: {
+              accessToken: result.accessToken,
+              refreshToken: result.refreshToken,
+            },
+          };
+        }
         throw new AppError(
-          "Token does not contain a phone number. Please sign in with a phone number.",
+          "Token does not contain a phone number or email.",
           400
         );
       }

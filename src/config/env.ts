@@ -26,6 +26,7 @@ const rawEnv = z
     EMAIL_FROM: z.string().optional(),
     SKIP_EMAIL_VERIFICATION: z.string().optional(),
     GOOGLE_CLIENT_ID: z.string().optional(),
+    GOOGLE_ALLOWED_CLIENT_IDS: z.string().optional(),
     GOOGLE_CLIENT_SECRET: z.string().optional(),
     GOOGLE_CALLBACK_URL: z.string().optional(),
     STREAM_API_KEY: z.string().optional(),
@@ -98,6 +99,10 @@ export const ENV = {
 
   // Google OAuth
   GOOGLE_CLIENT_ID: rawEnv.GOOGLE_CLIENT_ID || "",
+  GOOGLE_ALLOWED_CLIENT_IDS: (rawEnv.GOOGLE_ALLOWED_CLIENT_IDS || "")
+    .split(",")
+    .map((id) => id.trim())
+    .filter(Boolean),
   GOOGLE_CLIENT_SECRET: rawEnv.GOOGLE_CLIENT_SECRET || "",
   GOOGLE_CALLBACK_URL:
     rawEnv.GOOGLE_CALLBACK_URL ||
