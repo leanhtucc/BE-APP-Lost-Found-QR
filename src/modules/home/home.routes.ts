@@ -9,9 +9,9 @@ const router = Router();
 /**
  * GET /api/home/lost-feed & /v1/home/lost-feed
  * Unified endpoint combining:
- *  - Public lost items from everyone (available to guests and authenticated users)
- *  - User's own lost items marked with isOwn: true (when authenticated)
- *  - Sorted by distance when lat/lng provided
+ *  - LOST items from everyone within the server-capped 10 km radar
+ *  - User's own nearby LOST items marked with isOwn: true (when authenticated)
+ *  - Required current coordinates and nearest-first sorting
  */
 router.get(
   "/lost-feed",

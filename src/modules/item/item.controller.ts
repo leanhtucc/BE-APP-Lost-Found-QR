@@ -21,6 +21,10 @@ export class ItemController {
         imagePublicUrl,
         hasInsurance,
         details,
+        latitude,
+        longitude,
+        address,
+        lastSeenLocation,
       } = req.body;
 
       const result = await itemService.createItem(userId, {
@@ -30,6 +34,10 @@ export class ItemController {
         imagePublicUrl,
         hasInsurance,
         details,
+        latitude,
+        longitude,
+        address,
+        lastSeenLocation,
       });
 
       return ResponseUtil.created(res, result, "Item created successfully");
@@ -174,7 +182,8 @@ export class ItemController {
     try {
       const userId = (req as any).user.id;
       const { id } = req.params;
-      const { status, lostMessage, lostAddress, latitude, longitude } = req.body;
+      const { status, lostMessage, lostAddress, latitude, longitude } =
+        req.body;
 
       if (!id) {
         return ResponseUtil.badRequest(res, "Item ID is required");

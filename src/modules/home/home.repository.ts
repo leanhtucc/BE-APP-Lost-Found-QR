@@ -1,329 +1,88 @@
+import { ItemStatus, Prisma } from "../../generated/prisma/client";
 import { prisma } from "../../libs/prisma";
+import {
+  HOME_LOST_FEED_LIMIT,
+  HOME_LOST_RADIUS_METERS,
+} from "../../utils/constants";
 import { LostFeedCard, LostFeedPin, LostFeedQuery } from "./home.types";
-
-const EARTH_RADIUS = 6371000; // metres
-const MAX_NEARBY_CANDIDATES = 300;
-const MAX_NEARBY_RESULTS = 100;
 
 type RawLostFeedRow = {
   itemId: string;
+  ownerId: string;
   name: string;
   category: string;
   imagePublicUrl: string | null;
   lostMessage: string | null;
-  lostLat: number | string | null;
-  lostLng: number | string | null;
   lostAddress: string | null;
-  lastSeenLocation: string | null;
-  latitude: number | string | null;
-  longitude: number | string | null;
-  updatedAt: Date | string | null;
+  lostLat: number | string;
+  lostLng: number | string;
+  distanceMeters: number | string;
+  locationUpdatedAt: Date | string | null;
+  updatedAt: Date | string;
   ownerDisplayName: string | null;
   ownerPhotoURL: string | null;
 };
 
-type NearbyCandidate = {
-  row: RawLostFeedRow;
-  coordinates: { lat: number; lng: number };
-  distanceMeters: number | null;
-};
-
-function toFiniteNumber(value: unknown): number | null {
-  if (value === null || value === undefined) return null;
-
-  const parsed = Number(value);
-  return Number.isFinite(parsed) ? parsed : null;
-}
-
-function extractCoordinates(
-  row: RawLostFeedRow
-): { lat: number; lng: number } | null {
-  const lostLat = toFiniteNumber(row.lostLat);
-  const lostLng = toFiniteNumber(row.lostLng);
-  if (lostLat !== null && lostLng !== null) {
-    return { lat: lostLat, lng: lostLng };
-  }
-
-  const radarLat = toFiniteNumber(row.latitude);
-  const radarLng = toFiniteNumber(row.longitude);
-  if (radarLat !== null && radarLng !== null) {
-    return { lat: radarLat, lng: radarLng };
-  }
-
-  if (typeof row.lastSeenLocation === "string" && row.lastSeenLocation.trim()) {
-    try {
-      const parsed = JSON.parse(row.lastSeenLocation) as {
-        lat?: unknown;
-        lng?: unknown;
-      };
-
-      const fallbackLat = toFiniteNumber(parsed.lat);
-      const fallbackLng = toFiniteNumber(parsed.lng);
-      if (fallbackLat !== null && fallbackLng !== null) {
-        return { lat: fallbackLat, lng: fallbackLng };
-      }
-    } catch {
-      return null;
-    }
-  }
-
-  return null;
-}
-
-function calculateDistanceMeters(
-  originLat: number,
-  originLng: number,
-  targetLat: number,
-  targetLng: number
-): number {
-  const phi1 = (originLat * Math.PI) / 180;
-  const phi2 = (targetLat * Math.PI) / 180;
-  const deltaLambda = ((targetLng - originLng) * Math.PI) / 180;
-
-  return (
-    EARTH_RADIUS *
-    Math.acos(
-      Math.min(
-        1,
-        Math.cos(phi1) * Math.cos(phi2) * Math.cos(deltaLambda) +
-          Math.sin(phi1) * Math.sin(phi2)
-      )
-    )
-  );
-}
-
-function formatDistance(metres: number | null): string | null {
-  if (metres === null) return null;
+function formatDistance(metres: number): string {
   if (metres < 1000) return `${Math.round(metres)}m`;
   return `${(metres / 1000).toFixed(1)}km`;
 }
 
-function toIsoString(value: Date | string | null): string {
-  if (!value) return new Date().toISOString();
-
+function toIsoString(value: Date | string): string {
   const date = value instanceof Date ? value : new Date(value);
-  if (Number.isNaN(date.getTime())) {
-    return new Date().toISOString();
-  }
-
-  return date.toISOString();
-}
-
-function toTimestamp(value: Date | string | null): number {
-  if (!value) return 0;
-
-  const date = value instanceof Date ? value : new Date(value);
-  return Number.isNaN(date.getTime()) ? 0 : date.getTime();
-}
-
-function isNotNull<T>(value: T | null): value is T {
-  return value !== null;
-}
-
-function sortNearbyCandidates(
-  candidates: NearbyCandidate[],
-  hasLocation: boolean
-): NearbyCandidate[] {
-  const sorted = [...candidates];
-
-  if (hasLocation) {
-    sorted.sort((a, b) => {
-      const left = a.distanceMeters ?? Number.MAX_SAFE_INTEGER;
-      const right = b.distanceMeters ?? Number.MAX_SAFE_INTEGER;
-      return left - right;
-    });
-  } else {
-    sorted.sort(
-      (a, b) => toTimestamp(b.row.updatedAt) - toTimestamp(a.row.updatedAt)
-    );
-  }
-
-  return sorted;
+  return Number.isNaN(date.getTime())
+    ? new Date(0).toISOString()
+    : date.toISOString();
 }
 
 /**
- * Query that returns the user's own lost items UNION with
- * nearby lost items from other users (or all public lost items if guest).
+ * Return only LOST items whose canonical PostGIS point is within the fixed
+ * Home radar. Owner identity decorates the response; it never filters a row.
  */
 export async function fetchLostFeed(
   userId: string | undefined,
   query: LostFeedQuery
 ): Promise<{ cards: LostFeedCard[]; pins: LostFeedPin[] }> {
-  const { lat, lng, radius = 5000 } = query;
-  const hasLocation = lat !== undefined && lng !== undefined;
-  const effectiveRadius =
-    typeof radius === "number" && Number.isFinite(radius) && radius > 0
-      ? radius
-      : 5000;
+  const effectiveRadius = Math.min(
+    Math.max(query.radius, 1),
+    HOME_LOST_RADIUS_METERS
+  );
+  const point = Prisma.sql`ST_SetSRID(ST_MakePoint(${query.lng}, ${query.lat}), 4326)::geography`;
 
-  let ownItems: RawLostFeedRow[] = [];
-  let nearbyRows: RawLostFeedRow[] = [];
+  const rows = await prisma.$queryRaw<RawLostFeedRow[]>(Prisma.sql`
+    SELECT
+      i."itemId" AS "itemId",
+      i."ownerId" AS "ownerId",
+      i."name" AS "name",
+      i."category" AS "category",
+      i."imagePublicUrl" AS "imagePublicUrl",
+      i."lostMessage" AS "lostMessage",
+      i."lostAddress" AS "lostAddress",
+      ST_Y(i."location"::geometry) AS "lostLat",
+      ST_X(i."location"::geometry) AS "lostLng",
+      ST_Distance(i."location", ${point}) AS "distanceMeters",
+      i."location_updated_at" AS "locationUpdatedAt",
+      i."updatedAt" AS "updatedAt",
+      u."displayName" AS "ownerDisplayName",
+      u."photoURL" AS "ownerPhotoURL"
+    FROM "Item" i
+    JOIN "User" u ON u."id" = i."ownerId"
+    WHERE i."status" = ${ItemStatus.LOST}::"ItemStatus"
+      AND i."location" IS NOT NULL
+      AND ST_DWithin(i."location", ${point}, ${effectiveRadius})
+    ORDER BY
+      ST_Distance(i."location", ${point}) ASC,
+      COALESCE(i."location_updated_at", i."updatedAt") DESC,
+      i."itemId" ASC
+    LIMIT ${HOME_LOST_FEED_LIMIT};
+  `);
 
-  if (userId) {
-    // ── Part 1: own lost items (always fetched for logged in user) ────────
-    const sqlOwn = `
-      SELECT
-        i."itemId",
-        i."name",
-        i."category",
-        i."imagePublicUrl",
-        i."lostMessage",
-        i."lostLat",
-        i."lostLng",
-        i."lostAddress",
-        i."lastSeenLocation",
-        i."latitude",
-        i."longitude",
-        i."updatedAt",
-        u."displayName" as "ownerDisplayName",
-        u."photoURL"    as "ownerPhotoURL"
-      FROM "Item" i
-      JOIN "User" u ON u."id" = i."ownerId"
-      WHERE i."status" = 'LOST'::"ItemStatus"
-        AND i."ownerId" = $1
-      ORDER BY i."updatedAt" DESC;
-    `;
-    ownItems = (await prisma.$queryRawUnsafe(
-      sqlOwn,
-      userId
-    )) as RawLostFeedRow[];
-
-    // ── Part 2: lost items from others ──────────────────────────────────
-    const sqlNearby = `
-      SELECT
-        i."itemId",
-        i."name",
-        i."category",
-        i."imagePublicUrl",
-        i."lostMessage",
-        i."lostLat",
-        i."lostLng",
-        i."lostAddress",
-        i."lastSeenLocation",
-        i."latitude",
-        i."longitude",
-        i."updatedAt",
-        u."displayName" as "ownerDisplayName",
-        u."photoURL"    as "ownerPhotoURL"
-      FROM "Item" i
-      JOIN "User" u ON u."id" = i."ownerId"
-      WHERE i."status" = 'LOST'::"ItemStatus"
-        AND i."ownerId" != $1
-      ORDER BY i."updatedAt" DESC
-      LIMIT ${MAX_NEARBY_CANDIDATES};
-    `;
-    nearbyRows = (await prisma.$queryRawUnsafe(
-      sqlNearby,
-      userId
-    )) as RawLostFeedRow[];
-  } else {
-    // ── Guest: fetch all public lost items without owner filtering ───────
-    const sqlPublicAll = `
-      SELECT
-        i."itemId",
-        i."name",
-        i."category",
-        i."imagePublicUrl",
-        i."lostMessage",
-        i."lostLat",
-        i."lostLng",
-        i."lostAddress",
-        i."lastSeenLocation",
-        i."latitude",
-        i."longitude",
-        i."updatedAt",
-        u."displayName" as "ownerDisplayName",
-        u."photoURL"    as "ownerPhotoURL"
-      FROM "Item" i
-      JOIN "User" u ON u."id" = i."ownerId"
-      WHERE i."status" = 'LOST'::"ItemStatus"
-      ORDER BY i."updatedAt" DESC
-      LIMIT ${MAX_NEARBY_CANDIDATES};
-    `;
-    nearbyRows = (await prisma.$queryRawUnsafe(
-      sqlPublicAll
-    )) as RawLostFeedRow[];
-  }
-
-  // ── Build cards ───────────────────────────────────────────────────────
-  const ownCards: LostFeedCard[] = ownItems.map((item) => {
-    const coordinates = extractCoordinates(item);
-    const distanceMeters =
-      hasLocation && coordinates
-        ? Math.round(
-            calculateDistanceMeters(
-              lat!,
-              lng!,
-              coordinates.lat,
-              coordinates.lng
-            )
-          )
-        : null;
+  const cards: LostFeedCard[] = rows.map((row) => {
+    const distanceMeters = Math.round(Number(row.distanceMeters));
+    const lostLat = Number(row.lostLat);
+    const lostLng = Number(row.lostLng);
 
     return {
-      itemId: item.itemId,
-      name: item.name,
-      category: item.category,
-      imagePublicUrl: item.imagePublicUrl ?? null,
-      lostMessage: item.lostMessage ?? null,
-      distanceMeters,
-      distanceLabel: formatDistance(distanceMeters),
-      lostLat: coordinates?.lat ?? null,
-      lostLng: coordinates?.lng ?? null,
-      address: item.lostAddress ?? null,
-      isOwn: true,
-      ownerDisplayName: item.ownerDisplayName ?? "",
-      ownerPhotoURL: item.ownerPhotoURL ?? null,
-      reportedAt: toIsoString(item.updatedAt),
-    };
-  });
-
-  const allNearbyCandidates = nearbyRows
-    .map((row): NearbyCandidate | null => {
-      const coordinates = extractCoordinates(row);
-      if (!coordinates) return null;
-
-      const distanceMeters = hasLocation
-        ? Math.round(
-            calculateDistanceMeters(
-              lat!,
-              lng!,
-              coordinates.lat,
-              coordinates.lng
-            )
-          )
-        : null;
-
-      return {
-        row,
-        coordinates,
-        distanceMeters,
-      };
-    })
-    .filter(isNotNull);
-
-  const nearbyCandidatesInRadius = hasLocation
-    ? allNearbyCandidates.filter(
-        (candidate) =>
-          candidate.distanceMeters !== null &&
-          candidate.distanceMeters <= effectiveRadius
-      )
-    : allNearbyCandidates;
-
-  // Keep UX resilient: if no item is inside radius, fallback to nearest LOST items.
-  const nearbyCandidates =
-    hasLocation && nearbyCandidatesInRadius.length === 0
-      ? allNearbyCandidates
-      : nearbyCandidatesInRadius;
-
-  const sortedNearbyCandidates = sortNearbyCandidates(
-    nearbyCandidates,
-    hasLocation
-  );
-
-  const nearbyCards: LostFeedCard[] = sortedNearbyCandidates
-    .slice(0, MAX_NEARBY_RESULTS)
-    .map(({ row, coordinates, distanceMeters }) => ({
       itemId: row.itemId,
       name: row.name,
       category: row.category,
@@ -331,27 +90,30 @@ export async function fetchLostFeed(
       lostMessage: row.lostMessage ?? null,
       distanceMeters,
       distanceLabel: formatDistance(distanceMeters),
-      lostLat: coordinates.lat,
-      lostLng: coordinates.lng,
+      lostLat,
+      lostLng,
       address: row.lostAddress ?? null,
-      isOwn: false,
+      isOwn: Boolean(userId && row.ownerId === userId),
       ownerDisplayName: row.ownerDisplayName ?? "",
       ownerPhotoURL: row.ownerPhotoURL ?? null,
-      reportedAt: toIsoString(row.updatedAt),
-    }));
+      reportedAt: toIsoString(row.locationUpdatedAt ?? row.updatedAt),
+    };
+  });
 
-  // Merge: own items first, then nearby sorted by distance
-  const allCards = [...ownCards, ...nearbyCards];
+  // Every row has a canonical point, so cards and pins are intentionally 1:1.
+  const pins: LostFeedPin[] = cards.map((card) => ({
+    itemId: card.itemId,
+    lat: card.lostLat!,
+    lng: card.lostLng!,
+    isOwn: card.isOwn,
+  }));
 
-  // ── Build pins (only items with coordinates) ──────────────────────────
-  const pins: LostFeedPin[] = allCards
-    .filter((c) => c.lostLat != null && c.lostLng != null)
-    .map((c) => ({
-      itemId: c.itemId,
-      lat: c.lostLat!,
-      lng: c.lostLng!,
-      isOwn: c.isOwn,
-    }));
+  return { cards, pins };
+}
 
-  return { cards: allCards, pins };
+/** Global LOST count for the authenticated user's vault badge. */
+export async function countOwnLostItems(userId: string): Promise<number> {
+  return prisma.item.count({
+    where: { ownerId: userId, status: ItemStatus.LOST },
+  });
 }

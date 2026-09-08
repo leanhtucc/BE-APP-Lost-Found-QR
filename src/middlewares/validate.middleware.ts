@@ -29,6 +29,11 @@ export function validate(schema: ZodSchema) {
       });
 
       if (parsedParams && typeof parsedParams === "object") {
+        // Express 5 exposes req.query through a getter, so mutating the returned
+        // object is not guaranteed to persist. Keep the canonical parsed input
+        // on res.locals for controllers that consume transformed query values.
+        res.locals.validatedRequest = parsedParams;
+
         const parsed = parsedParams as {
           body?: unknown;
           query?: unknown;

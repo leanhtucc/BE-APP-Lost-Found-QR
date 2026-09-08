@@ -8,7 +8,10 @@ import {
   upsertStreamUser,
 } from "../../libs/stream-chat";
 import { AppError } from "../../middlewares/error.middleware";
-import { emitLostItemToNearbyUsers } from "../../socket/radar.socket";
+import {
+  emitLostItemRemovedToNearbyUsers,
+  emitLostItemToNearbyUsers,
+} from "../../socket/radar.socket";
 import { encodeGeoHash, haversineDistanceMeters } from "../../utils/geospatial";
 import { notificationService } from "../notification/notification.service";
 import { reportService } from "../report/report.service";
@@ -36,6 +39,27 @@ const itemRepository = new ItemRepository();
 const ITEM_GEOHASH_PRECISION = 6;
 
 export class ItemService {
+  private async emitLostRemoval(
+    item: any,
+    status: "SAFE" | "FOUND" | "RESOLVED" | "DELETED"
+  ): Promise<void> {
+    const latitude = Number(item.lostLat ?? item.latitude);
+    const longitude = Number(item.lostLng ?? item.longitude);
+    if (!Number.isFinite(latitude) || !Number.isFinite(longitude)) return;
+
+    try {
+      await emitLostItemRemovedToNearbyUsers({
+        itemId: item.itemId,
+        latitude,
+        longitude,
+        status,
+        removedAt: new Date().toISOString(),
+      });
+    } catch (error) {
+      logger.error("Item left LOST state but radar removal failed", error);
+    }
+  }
+
   private resolveReportedCoordinates(
     coordinates: {
       latitude?: number;
@@ -392,6 +416,8 @@ export class ItemService {
       );
     }
 
+    await this.emitLostRemoval(item, "FOUND");
+
     // Persist notification records for app inbox + in-app realtime emit.
     const notificationTasks: Promise<unknown>[] = [
       notificationService.notifyStatusUpdate({
@@ -635,6 +661,10 @@ export class ItemService {
 
     await itemRepository.deleteItem(itemId);
 
+    if (item.status === "LOST") {
+      await this.emitLostRemoval(item, "DELETED");
+    }
+
     logger.info(`Item deleted: ${item.qrCodeId} by user ${userId}`);
   }
 
@@ -721,7 +751,7 @@ export class ItemService {
       try {
         await emitLostItemToNearbyUsers({
           id: updated.id,
-          itemId: item.id,
+          itemId: updated.itemId,
           name: updated.name,
           category: updated.category,
           description: updated.description || undefined,
@@ -729,7 +759,7 @@ export class ItemService {
           imagePublicUrl: updated.imagePublicUrl || undefined,
           latitude: reportedCoordinates.latitude,
           longitude: reportedCoordinates.longitude,
-          reportedAt: new Date().toISOString(),
+          reportedAt: new Date(updated.locationUpdatedAt ?? updated.updatedAt).toISOString(),
         });
       } catch (error) {
         logger.error("Item marked LOST but radar broadcast failed", error);
@@ -748,8 +778,9 @@ export class ItemService {
         );
       }
 
-      // Cancel active report/escrow flow and trigger REFUNDED notification.
-      await reportService.cancelEscrowForItem(userId, item.id);
+      if (item.status === "LOST") {
+        await this.emitLostRemoval(item, "SAFE");
+      }
     }
 
     logger.info(

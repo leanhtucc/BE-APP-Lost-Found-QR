@@ -18,6 +18,9 @@ Backend hiện tại gồm 3 lớp chính:
 2. **Socket.io** để subscribe vùng radar và nhận push realtime.
 3. **PostgreSQL + PostGIS + Redis** để truy vấn nhanh và xử lý heartbeat.
 
+Home uses `GET /api/home/lost-feed` with a fixed maximum of 10 km. The
+`/api/map/nearby` endpoint below remains a separate authenticated map API.
+
 Luồng xử lý:
 
 1. App gọi `GET /api/map/nearby` để load snapshot ban đầu.
@@ -89,13 +92,13 @@ GET /api/map/nearby?lat=<lat>&lng=<lng>&radius=<meters>&limit=<n>
 | --- | --- | --- | --- | --- |
 | `lat` | Có | number (string) | `[-90, 90]` | - |
 | `lng` | Có | number (string) | `[-180, 180]` | - |
-| `radius` | Không | number (string) | `[100, 20000]` | `3000` |
-| `limit` | Không | integer (string) | `[1, 200]` | `50` |
+| `radius` | Không | number (string) | `[100, 50000]` | `5000` |
+| `limit` | Không | integer (string) | `[1, 100]` | `100` |
 
 Lưu ý:
 
 1. Backend validate từ `req.query`, nên app truyền query string là an toàn nhất.
-2. Truy vấn DB dùng PostGIS `ST_DWithin` + geohash pre-filter.
+2. Truy vấn DB dùng PostGIS `ST_DWithin` và GiST spatial index.
 
 ### Response success
 
@@ -153,17 +156,18 @@ Lưu ý:
 ### Endpoint
 
 ```http
-PATCH /api/items/:id/status?status=lost&lostMessage=...&latitude=...&longitude=...
+PATCH /api/items/:id/status
+Content-Type: application/json
 ```
 
 Lưu ý quan trọng:
 
-1. Endpoint này hiện đọc dữ liệu từ **query params** (`req.query`) chứ không phải JSON body.
+1. Endpoint đọc dữ liệu từ JSON body đã được Zod validate.
 2. `latitude` và `longitude` phải truyền cùng nhau (hoặc bỏ cả 2).
 3. Khi `status=lost` mà không có tọa độ mới, backend thử fallback từ `lastSeenLocation` của item.
 4. Nếu không có tọa độ nào hợp lệ -> trả lỗi 400.
 
-### Query params
+### JSON body fields
 
 | Param | Bắt buộc | Ghi chú |
 | --- | --- | --- |
@@ -226,7 +230,7 @@ ACK error:
 ```json
 {
   "success": false,
-  "message": "Radius must be between 100 and 20000 meters"
+  "message": "Radius must be at least 100 meters"
 }
 ```
 
@@ -248,6 +252,7 @@ Ghi chú:
 
 1. Backend vừa cập nhật room geohash, vừa gia hạn heartbeat cache trong Redis.
 2. TTL hiện tại là `120s`.
+3. Radius lớn hơn `10000m` được server cap về `10000m`; ACK trả effective radius.
 
 ### c) `radar:unsubscribe`
 
@@ -282,6 +287,19 @@ Payload:
   "longitude": 106.699018,
   "reportedAt": "2026-04-15T07:14:26.653Z",
   "distanceMeters": 230
+}
+```
+
+### `radar:lost-item-removed`
+
+Backend phát event này sau khi một Item rời trạng thái LOST vì trở thành SAFE,
+FOUND, RESOLVED hoặc bị xóa. App phải xóa cả card và marker theo `itemId`.
+
+```json
+{
+  "itemId": "demo-1776237266651-1-afad",
+  "status": "SAFE",
+  "removedAt": "2026-09-08T12:00:00.000Z"
 }
 ```
 

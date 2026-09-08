@@ -1,120 +1,92 @@
-# FE Integration Update - Home Lost Feed
+# FE Integration Update - Home Lost Radar
 
-Tài liệu này mô tả chính xác hành vi backend hiện tại cho API Home Lost Feed để FE cập nhật và tránh lỗi parse/validation.
+## 1. Endpoint
 
-## 1) Endpoint và mục tiêu
+```http
+GET /api/home/lost-feed?lat=<latitude>&lng=<longitude>&radius=<metres>
+GET /v1/home/lost-feed?lat=<latitude>&lng=<longitude>&radius=<metres>
+```
 
-- Endpoint: `GET /api/home/lost-feed`
-- Auth: bắt buộc `Bearer token`
-- Mục tiêu update:
-  - Giảm lỗi `Validation failed` khi query gửi giá trị null-like.
-  - Hỗ trợ dữ liệu legacy (tọa độ cũ).
-  - Lọc khoảng cách theo radius thực tế khi có vị trí.
+Authentication is optional. A valid Bearer token enables `isOwn` and the
+current-user summary; guests receive the same public LOST dataset with every
+card marked `isOwn=false`.
 
-## 2) Query contract mới (đã normalize)
+## 2. Fixed business rule
 
-Backend hiện chấp nhận các kiểu giá trị cho `lat`, `lng`, `radius`:
+Home is a lost-item radar, not a global feed:
 
-- `number`
-- `string`
-- `null`
-- `undefined`
+```text
+visible = Item.status == LOST
+       && distance(currentLocation, Item.location) <= effectiveRadius
+       && effectiveRadius <= 10000 metres
+```
 
-Các giá trị sau được coi như không truyền (bị normalize thành `undefined`):
+`SAFE`, Item `FOUND`, Item `RESOLVED`, standalone `FoundReport` records and
+LOST items without a canonical location are never returned.
 
-- `null`
-- `undefined`
-- chuỗi rỗng `""`
-- chuỗi `"null"`
-- chuỗi `"undefined"`
-- chuỗi `"nan"`
+The owner is not an exclusion condition. An authenticated user's own LOST item
+is returned when it is inside the effective radius.
 
-Ràng buộc:
+## 3. Query contract
 
-- `lat`: trong khoảng [-90, 90]
-- `lng`: trong khoảng [-180, 180]
-- `radius`: >= 1
-- Nếu giá trị không parse được số hợp lệ -> backend trả `400 Validation failed`
+| Parameter | Required | Validation | Behavior |
+|---|---:|---|---|
+| `lat` | Yes | finite, `-90..90` | Missing/invalid returns HTTP 400 |
+| `lng` | Yes | finite, `-180..180` | Missing/invalid returns HTTP 400 |
+| `radius` | No | positive finite number | Defaults to 10000; values above 10000 are capped to 10000 |
 
-## 3) Hành vi dữ liệu theo có/không có location
+Calling the endpoint without GPS never returns a country-wide feed.
 
-### Trường hợp FE không gửi location (hoặc bị normalize thành undefined)
+## 4. Response contract
 
-- Backend vẫn trả:
-  - danh sách đồ mất của chính user (`isOwn = true`)
-  - và đồ của user khác (`isOwn = false`) theo `updatedAt` mới nhất
-- `distanceMeters` và `distanceLabel` có thể là `null`
+The existing wrapper is preserved:
 
-### Trường hợp FE gửi đủ location (`lat` + `lng`)
+```json
+{
+  "success": true,
+  "data": {
+    "user": null,
+    "lostFeed": {
+      "cards": [],
+      "pins": [],
+      "myLostCount": 0,
+      "nearbyCount": 0
+    }
+  }
+}
+```
 
-- Backend tính khoảng cách Haversine.
-- Chỉ giữ item khác chủ có `distanceMeters <= radius`.
-- Nếu trong bán kính không có item nào, backend fallback sang danh sách LOST gần nhất (ngoài radius) để tránh màn hình rỗng.
-- Mặc định radius hiệu lực trong repository là `5000` khi radius không hợp lệ.
-- Nearby cards được sort theo khoảng cách tăng dần.
+- `cards` and `pins` are generated from the same PostGIS rows and have matching
+  item IDs and order.
+- `distanceMeters` is a raw integer; `distanceLabel` is kept for backwards
+  compatibility.
+- `myLostCount` is the authenticated user's total number of LOST Items across
+  the system, independent of the current radius.
+- `nearbyCount` is the number of returned LOST cards owned by other users. For
+  a guest it equals `cards.length`.
+- Results are sorted by exact distance ascending, then lost-location timestamp
+  descending.
 
-## 4) Status filter đã tương thích legacy
+## 5. Realtime
 
-Backend lọc trạng thái bằng `UPPER(status) = 'LOST'`.
+Listen for:
 
-Điều này cho phép dữ liệu cũ dùng `lost/safe` (chữ thường) vẫn được đọc đúng.
+- `radar:new-lost-item`: add a card/pin only for a server-matched subscription.
+- `radar:lost-item-removed`: remove the card and pin with the supplied `itemId`.
 
-## 5) Fallback tọa độ legacy (thứ tự ưu tiên)
+Radar subscriptions are capped server-side at 10000 metres.
 
-Khi build card/pin, backend lấy tọa độ theo thứ tự:
+## 6. Error example
 
-1. `lostLat/lostLng`
-2. `latitude/longitude`
-3. parse JSON từ `lastSeenLocation` (shape: `{ lat, lng }`)
-
-Nếu không lấy được tọa độ hợp lệ -> item không tạo pin map.
-
-## 6) Response shape FE cần bám
-
-Payload thực tế:
-
-- `data.user`: thông tin user hiện tại.
-- `data.lostFeed.cards`: danh sách card.
-- `data.lostFeed.pins`: danh sách pin map.
-- `data.lostFeed.myLostCount`
-- `data.lostFeed.nearbyCount`
-
-Các trường nullable trong card FE cần xử lý an toàn:
-
-- `imagePublicUrl: string | null`
-- `lostMessage: string | null`
-- `distanceMeters: number | null`
-- `distanceLabel: string | null`
-- `lostLat: number | null`
-- `lostLng: number | null`
-- `address: string | null`
-- `ownerPhotoURL: string | null`
-
-## 7) Checklist FE để hết lỗi
-
-1. Trước khi gọi API, chỉ gửi `lat/lng/radius` khi là số hữu hạn.
-2. Không gửi chuỗi "undefined" hoặc "null" thủ công.
-3. Nếu chưa có GPS, gọi endpoint không kèm `lat/lng`.
-4. UI card/map phải chịu được tất cả trường nullable.
-5. Không tự suy luận tọa độ từ field cũ ở FE nữa; dùng trực tiếp `cards` + `pins` backend trả về.
-6. Badge hoặc count dùng `myLostCount` và `nearbyCount` từ backend.
-
-## 8) Ví dụ request FE khuyến nghị
-
-### Có vị trí
-
-`GET /api/home/lost-feed?lat=10.7769&lng=106.7009&radius=5000`
-
-### Không có vị trí
-
-`GET /api/home/lost-feed`
-
-## 9) Lưu ý thực tế
-
-Controller hiện đang default `radius = 50000` khi thiếu query radius, nhưng repository có lớp bảo vệ radius hiệu lực riêng. FE nên luôn truyền `radius` rõ ràng theo nhu cầu UX để tránh khác biệt kỳ vọng.
-
-Khi backend đang trả fallback ngoài radius, FE có thể hiển thị thêm badge như `Ngoài phạm vi` bằng cách so sánh `distanceMeters > selectedRadius` (nếu UX cần).
-
----
-
-Nếu FE cần, BE có thể cung cấp thêm 1 endpoint debug tạm thời để trả lý do item bị loại (out-of-radius/no-coordinate) nhằm tăng tốc QA.
+```json
+{
+  "success": false,
+  "message": "Request data is invalid",
+  "error": {
+    "code": "VALIDATION_ERROR",
+    "fields": {
+      "lat": "lat is required"
+    }
+  }
+}
+```

@@ -1,4 +1,5 @@
 import { z } from "zod";
+import { HOME_LOST_RADIUS_METERS } from "../../utils/constants";
 
 type NumberRange = {
   min?: number;
@@ -41,14 +42,24 @@ function parseOptionalQueryNumber(field: string, range: NumberRange = {}) {
     );
 }
 
+function parseRequiredQueryNumber(field: string, range: NumberRange = {}) {
+  return parseOptionalQueryNumber(field, range).refine(
+    (value): value is number => value !== undefined,
+    { message: `${field} is required` }
+  );
+}
+
 /**
  * Validation schema for GET /api/home/lost-feed
- * lat/lng are optional – when omitted, only myOwn items are returned (no nearby).
+ * Home is location-bound. Missing coordinates must never fall back to a global
+ * feed. Radius is accepted for backwards compatibility but capped server-side.
  */
 export const lostFeedSchema = z.object({
   query: z.object({
-    lat: parseOptionalQueryNumber("lat", { min: -90, max: 90 }),
-    lng: parseOptionalQueryNumber("lng", { min: -180, max: 180 }),
-    radius: parseOptionalQueryNumber("radius", { min: 1 }),
+    lat: parseRequiredQueryNumber("lat", { min: -90, max: 90 }),
+    lng: parseRequiredQueryNumber("lng", { min: -180, max: 180 }),
+    radius: parseOptionalQueryNumber("radius", { min: 1 }).transform((value) =>
+      Math.min(value ?? HOME_LOST_RADIUS_METERS, HOME_LOST_RADIUS_METERS)
+    ),
   }),
 });

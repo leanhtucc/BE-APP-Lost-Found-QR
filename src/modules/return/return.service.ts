@@ -11,6 +11,7 @@ import {
   emitReturnRewardUpdated,
   emitReturnSessionUpdated,
 } from "../../socket/return.socket";
+import { emitLostItemRemovedToNearbyUsers } from "../../socket/radar.socket";
 import {
   ConfirmHandoverRequest,
   DisputeHandoverRequest,
@@ -1117,10 +1118,19 @@ export class ReturnService {
       });
 
       // 3. Mark item resolved
-      await tx.item.update({
-        where: { id: session.itemId },
+      const itemTransition = await tx.item.updateMany({
+        where: { id: session.itemId, status: "FOUND" },
         data: { status: "RESOLVED" },
       });
+
+      if (itemTransition.count !== 1) {
+        throw new AppError(
+          "Item must be FOUND before the handover can be resolved",
+          409,
+          true,
+          "INVALID_ITEM_STATUS_TRANSITION"
+        );
+      }
 
       // 4. Resolve report (Post) and release Escrow if exists
       if (session.reportId) {
@@ -1214,6 +1224,29 @@ export class ReturnService {
       emitReturnRewardUpdated(sessionId, formatted.reward, resolvedSession.status as ReturnSessionStatus);
     }
     emitReturnSessionUpdated(sessionId, formatted);
+
+    if (resolvedSession.item) {
+      const latitude = Number(
+        resolvedSession.item.lostLat ?? resolvedSession.item.latitude
+      );
+      const longitude = Number(
+        resolvedSession.item.lostLng ?? resolvedSession.item.longitude
+      );
+      if (Number.isFinite(latitude) && Number.isFinite(longitude)) {
+        void emitLostItemRemovedToNearbyUsers({
+          itemId: resolvedSession.item.itemId,
+          latitude,
+          longitude,
+          status: "RESOLVED",
+          removedAt: new Date().toISOString(),
+        }).catch((err) => {
+          logger.error(
+            "Failed to emit radar removal on handover resolution",
+            err
+          );
+        });
+      }
+    }
 
     // Send notifications to both participants
     void notificationService.notifyReturnEvent({

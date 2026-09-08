@@ -13,6 +13,10 @@ export const HTTP_STATUS = {
   INTERNAL_SERVER_ERROR: 500,
 } as const;
 
+/** Home is a fixed lost-item radar, never a client-defined global search. */
+export const HOME_LOST_RADIUS_METERS = 10_000;
+export const HOME_LOST_FEED_LIMIT = 100;
+
 export const ITEM_STATUS = {
   SAFE: "safe",
   LOST: "lost",

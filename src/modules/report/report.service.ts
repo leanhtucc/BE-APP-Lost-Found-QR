@@ -3,7 +3,10 @@ import { ENV } from "../../config/env";
 import { logger } from "../../libs/logger";
 import { prisma } from "../../libs/prisma";
 import { AppError } from "../../middlewares/error.middleware";
-import { emitLostItemToNearbyUsers } from "../../socket/radar.socket";
+import {
+  emitLostItemRemovedToNearbyUsers,
+  emitLostItemToNearbyUsers,
+} from "../../socket/radar.socket";
 import { encodeGeoHash } from "../../utils/geospatial";
 import {
   CancelTransactionResult,
@@ -316,7 +319,7 @@ export class ReportService {
       try {
         await emitLostItemToNearbyUsers({
           id: activatedItem.id,
-          itemId: activatedItem.id,
+          itemId: activatedItem.itemId,
           name: activatedItem.name,
           category: activatedItem.category,
           description: activatedItem.description || undefined,
@@ -324,7 +327,7 @@ export class ReportService {
           imagePublicUrl: activatedItem.imagePublicUrl || undefined,
           latitude: activatedItem.lostLat as number,
           longitude: activatedItem.lostLng as number,
-          reportedAt: new Date().toISOString(),
+          reportedAt: new Date(activatedItem.locationUpdatedAt ?? activatedItem.updatedAt).toISOString(),
         });
       } catch (error) {
         logger.error("Guardian report activated but radar broadcast failed", error);
@@ -415,8 +418,47 @@ export class ReportService {
     await prisma.$transaction(async (tx: any) => {
       await tx.post.update({ where: { id: report.id }, data: { status: "COMPLETED" } });
       if (holding) await tx.escrowTransaction.update({ where: { id: holding.id }, data: { status: "RELEASED" } });
-      await tx.item.update({ where: { id: itemId }, data: { status: "RESOLVED" } });
+      const itemTransition = await tx.item.updateMany({
+        where: { id: itemId, status: "FOUND" },
+        data: { status: "RESOLVED" },
+      });
+      if (itemTransition.count !== 1) {
+        throw guardianError("Item must be FOUND before settlement can complete", 409, "INVALID_ITEM_STATUS_TRANSITION");
+      }
     });
+
+    try {
+      const resolvedItem = await prisma.item.findUnique({
+        where: { id: itemId },
+        select: {
+          itemId: true,
+          lostLat: true,
+          lostLng: true,
+          latitude: true,
+          longitude: true,
+        },
+      });
+      if (resolvedItem) {
+        const latitude = Number(
+          resolvedItem.lostLat ?? resolvedItem.latitude
+        );
+        const longitude = Number(
+          resolvedItem.lostLng ?? resolvedItem.longitude
+        );
+        if (Number.isFinite(latitude) && Number.isFinite(longitude)) {
+          await emitLostItemRemovedToNearbyUsers({
+            itemId: resolvedItem.itemId,
+            latitude,
+            longitude,
+            status: "RESOLVED",
+            removedAt: new Date().toISOString(),
+          });
+        }
+      }
+    } catch (err) {
+      logger.error("Failed to emit radar removal on escrow settlement", err);
+    }
+
     return { postId: report.id, postStatus: "COMPLETED", transactionStatus: holding ? "RELEASED" : null, releasedAmount: report.bountyAmount, finderId };
   }
 }

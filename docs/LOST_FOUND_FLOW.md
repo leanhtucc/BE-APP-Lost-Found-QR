@@ -71,6 +71,10 @@ Content-Type: application/json
 
 Backend chỉ cho phép `SAFE → LOST`, lưu vị trí mất và phát sự kiện radar. Nếu item không còn đủ điều kiện, API trả `409 ITEM_NOT_ELIGIBLE`.
 
+Home Lost Radar chỉ trả Item đang `LOST`, có PostGIS location và nằm trong bán
+kính tối đa 10 km. Item SAFE, FOUND, RESOLVED và bài FoundReport độc lập không
+được trộn vào Home.
+
 Để hủy báo mất và đưa đồ về kho an toàn:
 
 ```json
@@ -80,6 +84,8 @@ Backend chỉ cho phép `SAFE → LOST`, lưu vị trí mất và phát sự ki�
 ```
 
 Backend xóa thông tin vị trí mất hiện hành và hủy Guardian report/escrow đang mở nếu có.
+Sau khi transaction commit, backend phát `radar:lost-item-removed` để client gỡ
+card và marker ngay.
 
 ### Cách B — Báo mất có Guardian và thanh toán
 

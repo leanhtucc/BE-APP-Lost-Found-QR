@@ -4,6 +4,7 @@ import { ENV } from "../config/env";
 import { verifyAccessToken } from "../libs/jwt";
 import { logger } from "../libs/logger";
 import { redis } from "../libs/redis";
+import { HOME_LOST_RADIUS_METERS } from "../utils/constants";
 import {
   encodeGeoHash,
   getGeoHashCellsCoveringRadius,
@@ -13,7 +14,7 @@ import {
 import { registerReturnSocketHandlers } from "./return.socket";
 
 const MIN_RADIUS_METERS = 100;
-const MAX_RADIUS_METERS = 20000;
+const MAX_RADIUS_METERS = HOME_LOST_RADIUS_METERS;
 const DEFAULT_RADIUS_METERS = 3000;
 const HEARTBEAT_TTL_SECONDS = 120;
 const MAX_GEOHASH_ROOM_CELLS = 500;
@@ -47,6 +48,14 @@ export interface LostItemRadarEvent {
   latitude: number;
   longitude: number;
   reportedAt: string;
+}
+
+export interface LostItemRadarRemovalEvent {
+  itemId: string;
+  latitude: number;
+  longitude: number;
+  status: "SAFE" | "FOUND" | "RESOLVED" | "DELETED";
+  removedAt: string;
 }
 
 interface SocketAck {
@@ -103,20 +112,14 @@ function normalizeRadarPayload(payload: RadarSubscriptionPayload): {
     throw new Error("Invalid longitude");
   }
 
-  if (
-    !Number.isFinite(radiusMeters) ||
-    radiusMeters < MIN_RADIUS_METERS ||
-    radiusMeters > MAX_RADIUS_METERS
-  ) {
-    throw new Error(
-      `Radius must be between ${MIN_RADIUS_METERS} and ${MAX_RADIUS_METERS} meters`
-    );
+  if (!Number.isFinite(radiusMeters) || radiusMeters < MIN_RADIUS_METERS) {
+    throw new Error(`Radius must be at least ${MIN_RADIUS_METERS} meters`);
   }
 
   return {
     latitude,
     longitude,
-    radiusMeters,
+    radiusMeters: Math.min(radiusMeters, MAX_RADIUS_METERS),
   };
 }
 
@@ -377,6 +380,48 @@ export async function emitLostItemToNearbyUsers(event: LostItemRadarEvent) {
   }
 
   logger.info("[RadarSocket] Lost item notification dispatched", {
+    itemId: event.itemId,
+    matchedSockets: candidateSocketIds.size,
+    deliveredCount,
+  });
+}
+
+export async function emitLostItemRemovedToNearbyUsers(
+  event: LostItemRadarRemovalEvent
+) {
+  if (!ioInstance) return;
+
+  const candidateSocketIds = new Set<string>();
+  for (const precision of EMIT_MATCH_PRECISIONS) {
+    const geohash = encodeGeoHash(event.latitude, event.longitude, precision);
+    const roomKey = toRoomKey(precision, geohash);
+    const socketsInRoom = ioInstance.sockets.adapter.rooms.get(roomKey);
+    if (!socketsInRoom) continue;
+    for (const socketId of socketsInRoom) candidateSocketIds.add(socketId);
+  }
+
+  let deliveredCount = 0;
+  for (const socketId of candidateSocketIds) {
+    const subscription = activeSubscriptions.get(socketId);
+    if (!subscription) continue;
+
+    const distanceMeters = haversineDistanceMeters(
+      subscription.latitude,
+      subscription.longitude,
+      event.latitude,
+      event.longitude
+    );
+    if (distanceMeters > subscription.radiusMeters) continue;
+
+    ioInstance.to(socketId).emit("radar:lost-item-removed", {
+      itemId: event.itemId,
+      status: event.status,
+      removedAt: event.removedAt,
+    });
+    deliveredCount += 1;
+  }
+
+  logger.info("[RadarSocket] Lost item removal dispatched", {
     itemId: event.itemId,
     matchedSockets: candidateSocketIds.size,
     deliveredCount,

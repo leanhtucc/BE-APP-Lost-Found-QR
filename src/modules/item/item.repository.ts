@@ -257,6 +257,33 @@ export class ItemRepository {
 
       if (transition.count !== 1) return null;
 
+      // Keep the Item and any open Guardian payment/escrow state consistent.
+      // A failure in any of these writes rolls the SAFE transition back too.
+      const openReport = await tx.post.findFirst({
+        where: {
+          itemId: id,
+          ownerId,
+          status: { in: ["PENDING_PAYMENT", "ACTIVE"] },
+        },
+        orderBy: { createdAt: "desc" },
+        select: { id: true },
+      });
+
+      if (openReport) {
+        await tx.post.update({
+          where: { id: openReport.id },
+          data: { status: "CANCELLED" },
+        });
+        await tx.payment.updateMany({
+          where: { reportId: openReport.id, status: "PENDING" },
+          data: { status: "CANCELLED" },
+        });
+        await tx.escrowTransaction.updateMany({
+          where: { postId: openReport.id, status: "HOLDING" },
+          data: { status: "REFUNDED" },
+        });
+      }
+
       await tx.$executeRaw`
         UPDATE "Item"
         SET "location" = NULL
