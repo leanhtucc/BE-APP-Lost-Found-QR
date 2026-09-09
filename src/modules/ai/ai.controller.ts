@@ -25,7 +25,10 @@ export class AIController {
 
       res.status(200).json({
         success: true,
-        data: result,
+        data: {
+          ...result,
+          filename: uploaded.filename,
+        },
       });
     } catch (error) {
       next(error);

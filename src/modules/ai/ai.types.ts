@@ -4,6 +4,7 @@ export interface AIAnalysisResponse {
   color: string;
   confidence_score: number;
   imagePublicUrl?: string;
+  filename?: string;
   ai_visual_tags?: string[];
   description?: string;
 }

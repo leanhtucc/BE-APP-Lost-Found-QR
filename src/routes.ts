@@ -61,6 +61,7 @@ router.use(`${ENV.API_PREFIX}/reports`, reportRoutes);
 router.use(`${ENV.API_PREFIX}/found-reports`, foundReportRoutes);
 router.use(`${ENV.API_PREFIX}/radar`, radarRoutes);
 router.use(`${ENV.API_PREFIX}/returns`, returnRoutes);
+router.use(`${ENV.API_PREFIX}/ai`, aiRoutes);
 router.use(ENV.API_PREFIX, itemRoutes); // Item routes (/items, /scan)
 
 // v1 contract routes
