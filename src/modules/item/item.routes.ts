@@ -84,6 +84,18 @@ router.get(
   itemController.getSelectionSummary
 );
 
+// GET /api/items/public/:id & GET /api/items/:id/public - Lấy thông tin công khai đồ thất lạc
+router.get(
+  "/items/public/:id",
+  validate(itemIdParamSchema),
+  itemController.getPublicItem
+);
+router.get(
+  "/items/:id/public",
+  validate(itemIdParamSchema),
+  itemController.getPublicItem
+);
+
 // GET /api/items/:id - Lấy thông tin 1 item
 router.get(
   "/items/:id",

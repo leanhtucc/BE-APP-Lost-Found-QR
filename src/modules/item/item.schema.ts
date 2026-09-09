@@ -8,30 +8,53 @@ import { ITEM_CATEGORIES } from "./item.types";
 
 // Schema cho tạo item mới
 export const createItemSchema = z.object({
-  body: z.object({
-    name: z
-      .string()
-      .min(1, "Name is required")
-      .max(100, "Name must be less than 100 characters"),
-    category: z.enum(ITEM_CATEGORIES, {
-      errorMap: () => ({ message: "Invalid category" }),
+  body: z
+    .object({
+      name: z
+        .string({ required_error: "Name is required" })
+        .trim()
+        .min(1, "Name is required")
+        .max(100, "Name must be less than 100 characters"),
+      category: z.enum(ITEM_CATEGORIES, {
+        errorMap: () => ({ message: "Invalid category" }),
+      }),
+      description: z
+        .string()
+        .max(500, "Description must be less than 500 characters")
+        .optional(),
+      imagePublicUrl: z
+        .string({ required_error: "Image URL is required" })
+        .trim()
+        .min(1, "Image URL is required")
+        .url("Invalid image URL"),
+      hasInsurance: z.boolean().optional().default(false),
+      details: z.any().optional(), // JSONB cho color, storage, serial...
+      captureLocation: z
+        .object({
+          latitude: z.coerce.number().finite().min(-90).max(90),
+          longitude: z.coerce.number().finite().min(-180).max(180),
+          address: z.string().max(500).optional().nullable(),
+          accuracyMeters: z.coerce.number().finite().nonnegative().optional().nullable(),
+          capturedAt: z.union([z.string(), z.date()]).optional().nullable(),
+        })
+        .optional()
+        .nullable(),
+      latitude: z.coerce.number().finite().min(-90).max(90).optional(),
+      longitude: z.coerce.number().finite().min(-180).max(180).optional(),
+      address: z.string().max(255).optional(),
+      lastSeenLocation: z.string().optional(),
+    })
+    .superRefine((data, ctx) => {
+      const hasFlatLat = data.latitude !== undefined;
+      const hasFlatLng = data.longitude !== undefined;
+      if (hasFlatLat !== hasFlatLng) {
+        ctx.addIssue({
+          code: z.ZodIssueCode.custom,
+          message: "latitude and longitude must be provided together",
+          path: ["latitude"],
+        });
+      }
     }),
-    description: z
-      .string()
-      .max(500, "Description must be less than 500 characters")
-      .optional(),
-    imagePublicUrl: z
-      .string()
-      .url("Invalid image URL")
-      .optional()
-      .or(z.literal("")),
-    hasInsurance: z.boolean().optional().default(false),
-    details: z.any().optional(), // JSONB cho color, storage, serial...
-    latitude: z.number().min(-90).max(90).optional(),
-    longitude: z.number().min(-180).max(180).optional(),
-    address: z.string().max(255).optional(),
-    lastSeenLocation: z.string().optional(),
-  }),
 });
 
 // Schema cho cập nhật item

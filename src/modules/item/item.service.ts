@@ -23,6 +23,7 @@ import {
   ItemResponse,
   ListItemsQuery,
   ListItemsResponse,
+  PublicItemResponse,
   ScanQRResponse,
   SearchItemsQuery,
   SearchItemsResponse,
@@ -134,6 +135,8 @@ export class ItemService {
   private formatItemResponse(item: any): ItemResponse {
     return {
       id: item.id,
+      itemId: item.itemId,
+      publicItemId: item.itemId,
       ownerId: item.ownerId,
       name: item.name,
       category: item.category,
@@ -150,6 +153,21 @@ export class ItemService {
       imagePublicUrl: item.imagePublicUrl,
       details: item.details,
       hasInsurance: item.hasInsurance,
+      captureLatitude: item.captureLatitude,
+      captureLongitude: item.captureLongitude,
+      captureAddress: item.captureAddress,
+      captureAccuracyMeters: item.captureAccuracyMeters,
+      capturedAt: item.capturedAt,
+      captureLocation:
+        item.captureLatitude !== null && item.captureLatitude !== undefined
+          ? {
+              latitude: item.captureLatitude,
+              longitude: item.captureLongitude,
+              address: item.captureAddress,
+              accuracyMeters: item.captureAccuracyMeters,
+              capturedAt: item.capturedAt ? new Date(item.capturedAt).toISOString() : null,
+            }
+          : null,
       createdAt: item.createdAt,
       updatedAt: item.updatedAt,
     };
@@ -186,37 +204,65 @@ export class ItemService {
   // Tạo item mới
   async createItem(userId: string, data: CreateItemDTO): Promise<ItemResponse> {
     try {
-      // Validate coordinates if provided
-      const hasLat = data.latitude !== undefined && Number.isFinite(data.latitude);
-      const hasLng = data.longitude !== undefined && Number.isFinite(data.longitude);
-
-      if (hasLat !== hasLng) {
-        throw new AppError(
-          "latitude and longitude must be provided together",
-          400
-        );
+      if (!data.imagePublicUrl || !data.imagePublicUrl.trim()) {
+        throw new AppError("Image URL is required", 400);
       }
 
-      let locationGeoHash: string | undefined = undefined;
-      let latitude = data.latitude;
-      let longitude = data.longitude;
+      let captureLat: number | null = null;
+      let captureLng: number | null = null;
+      let captureAddress: string | null = null;
+      let captureAccuracy: number | null = null;
+      let capturedAtDate: Date | null = null;
 
-      if (hasLat && hasLng) {
-        if (latitude! < -90 || latitude! > 90) {
+      if (data.captureLocation) {
+        const cLat = data.captureLocation.latitude;
+        const cLng = data.captureLocation.longitude;
+        if (cLat < -90 || cLat > 90) {
           throw new AppError("latitude must be in range [-90, 90]", 400);
         }
-        if (longitude! < -180 || longitude! > 180) {
+        if (cLng < -180 || cLng > 180) {
           throw new AppError("longitude must be in range [-180, 180]", 400);
         }
-        locationGeoHash = encodeGeoHash(
-          latitude!,
-          longitude!,
-          ITEM_GEOHASH_PRECISION
-        );
+        captureLat = cLat;
+        captureLng = cLng;
+        captureAddress = data.captureLocation.address || null;
+        captureAccuracy = data.captureLocation.accuracyMeters ?? null;
+        capturedAtDate = data.captureLocation.capturedAt
+          ? new Date(data.captureLocation.capturedAt)
+          : new Date();
+      } else {
+        const hasLat =
+          data.latitude !== undefined &&
+          data.latitude !== null &&
+          Number.isFinite(data.latitude);
+        const hasLng =
+          data.longitude !== undefined &&
+          data.longitude !== null &&
+          Number.isFinite(data.longitude);
+
+        if (hasLat !== hasLng) {
+          throw new AppError(
+            "latitude and longitude must be provided together",
+            400
+          );
+        }
+
+        if (hasLat && hasLng) {
+          if (data.latitude! < -90 || data.latitude! > 90) {
+            throw new AppError("latitude must be in range [-90, 90]", 400);
+          }
+          if (data.longitude! < -180 || data.longitude! > 180) {
+            throw new AppError("longitude must be in range [-180, 180]", 400);
+          }
+          captureLat = data.latitude!;
+          captureLng = data.longitude!;
+          captureAddress = data.address || data.lastSeenLocation || null;
+          capturedAtDate = new Date();
+        }
       }
 
       const lastSeenLocation = data.lastSeenLocation || data.address || null;
-      const { address, ...cleanData } = data;
+      const { address, captureLocation, ...cleanData } = data;
 
       // Generate unique IDs
       const qrCodeId = nanoid(16);
@@ -225,10 +271,15 @@ export class ItemService {
       const item = await itemRepository.createItem({
         ...cleanData,
         status: "SAFE",
-        latitude: latitude ?? null,
-        longitude: longitude ?? null,
+        latitude: null,
+        longitude: null,
         lastSeenLocation,
-        locationGeoHash: locationGeoHash ?? null,
+        locationGeoHash: null,
+        captureLatitude: captureLat,
+        captureLongitude: captureLng,
+        captureAddress: captureAddress,
+        captureAccuracyMeters: captureAccuracy,
+        capturedAt: capturedAtDate,
         ownerId: userId,
         qrCodeId,
         securityToken,
@@ -245,18 +296,77 @@ export class ItemService {
   }
 
   // Lấy thông tin item (chỉ owner)
-  async getItem(itemId: string, userId: string): Promise<ItemResponse> {
-    const item = await itemRepository.findById(itemId);
+  async getItem(identifier: string, userId: string): Promise<ItemResponse> {
+    const item = await itemRepository.findByIdentifier(identifier);
 
     if (!item) {
-      throw new AppError("Item not found", 404);
+      throw new AppError("Item not found", 404, true, "ITEM_NOT_FOUND");
     }
 
     if (item.ownerId !== userId) {
-      throw new AppError("You don't have permission to view this item", 403);
+      throw new AppError(
+        "You don't have permission to view this item",
+        403,
+        true,
+        "ITEM_FORBIDDEN"
+      );
     }
 
     return this.formatItemResponse(item);
+  }
+
+  // Chi tiết công khai cho đồ thất lạc trên Radar / công cộng
+  async getPublicItem(identifier: string): Promise<PublicItemResponse> {
+    const item = await itemRepository.findByIdentifier(identifier);
+
+    if (!item) {
+      throw new AppError("Item not found", 404, true, "ITEM_NOT_FOUND");
+    }
+
+    const shortId = (item.owner?.memberId || item.owner?.uid || "LOST")
+      .substring(0, 4)
+      .toUpperCase();
+
+    const ownerInfo = {
+      displayName: `Chủ nhân ẩn danh #${shortId}`,
+      avatar: null,
+      joinedDate: item.owner?.createdAt
+        ? new Date(item.owner.createdAt).getFullYear().toString()
+        : "",
+    };
+
+    if (item.status !== "LOST") {
+      return {
+        id: item.qrCodeId,
+        publicItemId: item.itemId,
+        name: item.name,
+        category: item.category,
+        status: item.status,
+        description: item.description || null,
+        imagePublicUrl: item.imagePublicUrl || null,
+        createdAt: item.createdAt,
+        updatedAt: item.updatedAt,
+        owner: ownerInfo,
+        message: "This item is not reported as lost",
+      };
+    }
+
+    return {
+      id: item.qrCodeId,
+      publicItemId: item.itemId,
+      name: item.name,
+      category: item.category,
+      status: item.status,
+      description: item.description || null,
+      lostMessage: item.lostMessage || null,
+      lostAddress: item.lostAddress || null,
+      lostLat: item.lostLat ?? null,
+      lostLng: item.lostLng ?? null,
+      imagePublicUrl: item.imagePublicUrl || null,
+      createdAt: item.createdAt,
+      updatedAt: item.updatedAt,
+      owner: ownerInfo,
+    };
   }
 
   // Quét QR code (public endpoint)
@@ -630,17 +740,22 @@ export class ItemService {
     userId: string,
     data: UpdateItemDTO
   ): Promise<ItemResponse> {
-    const item = await itemRepository.findById(itemId);
+    const item = await itemRepository.findByIdentifier(itemId);
 
     if (!item) {
-      throw new AppError("Item not found", 404);
+      throw new AppError("Item not found", 404, true, "ITEM_NOT_FOUND");
     }
 
     if (item.ownerId !== userId) {
-      throw new AppError("You don't have permission to update this item", 403);
+      throw new AppError(
+        "You don't have permission to update this item",
+        403,
+        true,
+        "ITEM_FORBIDDEN"
+      );
     }
 
-    const updated = await itemRepository.updateItem(itemId, data);
+    const updated = await itemRepository.updateItem(item.id, data);
 
     logger.info(`Item updated: ${item.qrCodeId} by user ${userId}`);
 
@@ -649,17 +764,22 @@ export class ItemService {
 
   // Xóa item
   async deleteItem(itemId: string, userId: string): Promise<void> {
-    const item = await itemRepository.findById(itemId);
+    const item = await itemRepository.findByIdentifier(itemId);
 
     if (!item) {
-      throw new AppError("Item not found", 404);
+      throw new AppError("Item not found", 404, true, "ITEM_NOT_FOUND");
     }
 
     if (item.ownerId !== userId) {
-      throw new AppError("You don't have permission to delete this item", 403);
+      throw new AppError(
+        "You don't have permission to delete this item",
+        403,
+        true,
+        "ITEM_FORBIDDEN"
+      );
     }
 
-    await itemRepository.deleteItem(itemId);
+    await itemRepository.deleteItem(item.id);
 
     if (item.status === "LOST") {
       await this.emitLostRemoval(item, "DELETED");
@@ -680,16 +800,18 @@ export class ItemService {
       address?: string;
     } = {}
   ): Promise<ItemResponse> {
-    const item = await itemRepository.findById(itemId);
+    const item = await itemRepository.findByIdentifier(itemId);
 
     if (!item) {
-      throw new AppError("Item not found", 404);
+      throw new AppError("Item not found", 404, true, "ITEM_NOT_FOUND");
     }
 
     if (item.ownerId !== userId) {
       throw new AppError(
         "You don't have permission to update item status",
-        403
+        403,
+        true,
+        "ITEM_FORBIDDEN"
       );
     }
 
@@ -728,7 +850,7 @@ export class ItemService {
       );
 
       updated = await itemRepository.markLost(
-        itemId,
+        item.id,
         userId,
         {
           lostMessage,
@@ -767,7 +889,7 @@ export class ItemService {
     }
 
     if (status === "SAFE") {
-      updated = await itemRepository.markSafe(itemId, userId);
+      updated = await itemRepository.markSafe(item.id, userId);
 
       if (!updated) {
         throw new AppError(

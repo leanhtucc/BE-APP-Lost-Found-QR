@@ -21,6 +21,14 @@ export const ITEM_CATEGORIES = [
 
 export type ItemCategory = (typeof ITEM_CATEGORIES)[number];
 
+export interface CaptureLocation {
+  latitude: number;
+  longitude: number;
+  address?: string | null;
+  accuracyMeters?: number | null;
+  capturedAt?: Date | string | null;
+}
+
 export interface CreateItemDTO {
   name: string;
   category: ItemCategory;
@@ -28,6 +36,7 @@ export interface CreateItemDTO {
   imagePublicUrl?: string;
   hasInsurance?: boolean;
   details?: any; // JSONB
+  captureLocation?: CaptureLocation | null;
   latitude?: number | null;
   longitude?: number | null;
   address?: string | null;
@@ -57,6 +66,8 @@ export interface UpdateItemStatusDTO {
 
 export interface ItemResponse {
   id: string;
+  itemId: string;
+  publicItemId: string;
   ownerId: string;
   name: string;
   category: string;
@@ -73,6 +84,12 @@ export interface ItemResponse {
   imagePublicUrl?: string;
   details?: any;
   hasInsurance: boolean;
+  captureLatitude?: number | null;
+  captureLongitude?: number | null;
+  captureAddress?: string | null;
+  captureAccuracyMeters?: number | null;
+  capturedAt?: Date | null;
+  captureLocation?: CaptureLocation | null;
   createdAt: Date;
   updatedAt: Date;
 }
@@ -167,3 +184,26 @@ export interface DashboardSummary {
     count: number;
   }[];
 }
+
+export interface PublicItemResponse {
+  id: string;
+  publicItemId: string;
+  name: string;
+  category: string;
+  status: string;
+  description?: string | null;
+  lostMessage?: string | null;
+  lostAddress?: string | null;
+  lostLat?: number | null;
+  lostLng?: number | null;
+  imagePublicUrl?: string | null;
+  createdAt: Date | string;
+  updatedAt: Date | string;
+  owner?: {
+    displayName: string;
+    avatar?: string | null;
+    joinedDate: string;
+  };
+  message?: string;
+}
+

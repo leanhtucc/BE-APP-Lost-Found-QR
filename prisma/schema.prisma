@@ -241,6 +241,12 @@ model Item {
   lostLat           Float?
   lostLng           Float?
   lostAddress       String?
+  // Registered capture location (private to owner)
+  captureLatitude       Float?    @map("capture_latitude")
+  captureLongitude      Float?    @map("capture_longitude")
+  captureAddress        String?   @map("capture_address")
+  captureAccuracyMeters Float?    @map("capture_accuracy_meters")
+  capturedAt            DateTime? @map("captured_at")
   owner             User                                  @relation("ItemOwner", fields: [ownerId], references: [id], onDelete: Cascade)
   posts             Post[]
   qrScans           QrScan[]

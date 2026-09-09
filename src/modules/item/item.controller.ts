@@ -21,6 +21,7 @@ export class ItemController {
         imagePublicUrl,
         hasInsurance,
         details,
+        captureLocation,
         latitude,
         longitude,
         address,
@@ -34,6 +35,7 @@ export class ItemController {
         imagePublicUrl,
         hasInsurance,
         details,
+        captureLocation,
         latitude,
         longitude,
         address,
@@ -57,6 +59,23 @@ export class ItemController {
       }
 
       const result = await itemService.getItem(id, userId);
+
+      return ResponseUtil.success(res, result);
+    } catch (error) {
+      next(error);
+    }
+  }
+
+  // GET /api/items/public/:id - Lấy thông tin công khai của item
+  async getPublicItem(req: Request, res: Response, next: NextFunction) {
+    try {
+      const { id } = req.params;
+
+      if (!id) {
+        return ResponseUtil.badRequest(res, "Item ID is required");
+      }
+
+      const result = await itemService.getPublicItem(id);
 
       return ResponseUtil.success(res, result);
     } catch (error) {

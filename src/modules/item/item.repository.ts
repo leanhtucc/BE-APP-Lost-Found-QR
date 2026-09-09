@@ -18,10 +18,16 @@ export class ItemRepository {
       longitude?: number | null;
       lastSeenLocation?: string | null;
       locationGeoHash?: string | null;
+      captureLatitude?: number | null;
+      captureLongitude?: number | null;
+      captureAddress?: string | null;
+      captureAccuracyMeters?: number | null;
+      capturedAt?: Date | null;
     }
   ) {
+    const { captureLocation, address, ...cleanData } = data as any;
     return await prisma.item.create({
-      data: data as any,
+      data: cleanData,
       include: {
         owner: {
           select: {
@@ -33,6 +39,38 @@ export class ItemRepository {
             phoneNumber: true,
             createdAt: true,
           },
+        },
+      },
+    });
+  }
+
+  // Tìm item theo bất kỳ định danh nào: id (cuid PK), itemId (cuid unique), qrCodeId (unique)
+  async findByIdentifier(identifier: string) {
+    return await prisma.item.findFirst({
+      where: {
+        OR: [
+          { id: identifier },
+          { itemId: identifier },
+          { qrCodeId: identifier },
+        ],
+      },
+      include: {
+        owner: {
+          select: {
+            id: true,
+            uid: true,
+            displayName: true,
+            email: true,
+            photoURL: true,
+            phoneNumber: true,
+            createdAt: true,
+            memberId: true,
+          },
+        },
+        posts: {
+          where: { status: { in: ["ACTIVE", "FOUND"] } },
+          orderBy: { createdAt: "desc" },
+          take: 1,
         },
       },
     });
