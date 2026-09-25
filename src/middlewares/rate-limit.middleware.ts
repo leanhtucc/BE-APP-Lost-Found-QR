@@ -14,7 +14,10 @@ interface RateLimitConfig {
 
 export function rateLimit(config: RateLimitConfig) {
   // Instance-scoped map so different limiters don't pollute each other's buckets
-  const instanceCounts = new Map<string, { count: number; resetTime: number }>();
+  const instanceCounts = new Map<
+    string,
+    { count: number; resetTime: number }
+  >();
 
   return (req: Request, res: Response, next: NextFunction) => {
     const identifier =
