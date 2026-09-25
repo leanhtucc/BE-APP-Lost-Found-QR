@@ -20,8 +20,10 @@ vi.mock("../../libs/prisma", () => ({
 }));
 
 import mapRouter from "./map.routes";
+import { rateLimit } from "../../middlewares/rate-limit.middleware";
 
 const app = express();
+app.set("trust proxy", 1);
 app.use(express.json());
 app.use("/map", mapRouter);
 
@@ -129,6 +131,57 @@ describe("Map Search Endpoints Integration", () => {
       expect(response.status).toBe(404);
       expect(response.body.success).toBe(false);
       expect(response.body.error.code).toBe("PLACE_NOT_FOUND");
+    });
+  });
+
+  describe("Places Rate Limiter & Client IP Isolation", () => {
+    it("isolates rate limit counters between different client IPs", async () => {
+      mapMock.autocomplete.mockResolvedValue([]);
+
+      // Client 1 sends request from IP 1.2.3.4
+      const res1 = await request(app)
+        .get("/map/autocomplete")
+        .set("X-Forwarded-For", "1.2.3.4")
+        .query({ input: "Test IP 1" });
+      expect(res1.status).toBe(200);
+
+      // Client 2 sends request from IP 5.6.7.8
+      const res2 = await request(app)
+        .get("/map/autocomplete")
+        .set("X-Forwarded-For", "5.6.7.8")
+        .query({ input: "Test IP 2" });
+      expect(res2.status).toBe(200);
+    });
+
+    it("triggers 429 when single IP exceeds limiter rate threshold", async () => {
+      const customApp = express();
+      customApp.set("trust proxy", 1);
+      customApp.use(express.json());
+      const testLimiter = rateLimit({ windowMs: 1000, max: 3 });
+      customApp.get("/test-limit", testLimiter, (_req, res) => {
+        res.json({ ok: true });
+      });
+
+      // Requests 1, 2, 3 succeed
+      for (let i = 0; i < 3; i++) {
+        const res = await request(customApp)
+          .get("/test-limit")
+          .set("X-Forwarded-For", "9.9.9.9");
+        expect(res.status).toBe(200);
+      }
+
+      // Request 4 from same IP triggers 429
+      const res4 = await request(customApp)
+        .get("/test-limit")
+        .set("X-Forwarded-For", "9.9.9.9");
+      expect(res4.status).toBe(429);
+      expect(res4.body.error.code).toBe("RATE_LIMITED");
+
+      // Request from DIFFERENT IP still succeeds
+      const resOther = await request(customApp)
+        .get("/test-limit")
+        .set("X-Forwarded-For", "8.8.8.8");
+      expect(resOther.status).toBe(200);
     });
   });
 });
