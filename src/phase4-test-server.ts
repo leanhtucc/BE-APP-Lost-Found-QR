@@ -19,6 +19,7 @@ process.env.DIRECT_URL = testDatabaseUrl;
 process.env.PHASE4_TEST_DATABASE_URL = testDatabaseUrl;
 process.env.PHASE4_PRODUCTION_DATABASE_URL = productionDatabaseUrl;
 process.env.PHASE4_MANUAL_TEST = "true";
+process.env.NODE_ENV = "development";
 
 async function startPhase4TestServer(): Promise<void> {
   await import("./server.js");
