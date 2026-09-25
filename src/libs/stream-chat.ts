@@ -86,6 +86,30 @@ export const createItemChannel = async (
   };
 };
 
+export const createReturnChannel = async (input: {
+  channelId: string;
+  sourceType: "ITEM" | "FOUND_REPORT";
+  sourceId: string;
+  subjectName: string;
+  ownerId: string;
+  finderId: string;
+}) => {
+  const client = getStreamClient();
+  const channel = client.channel("messaging", input.channelId, {
+    members: [input.ownerId, input.finderId],
+    created_by_id: input.finderId,
+    return_source_type: input.sourceType,
+    return_source_id: input.sourceId,
+    item_name: input.subjectName,
+    automod: "AI",
+    automod_behavior: "flag",
+  } as any);
+
+  // Stream channel creation is idempotent for a deterministic channel ID.
+  await channel.create();
+  return { channelId: input.channelId, channelType: "messaging" };
+};
+
 /**
  * Đóng channel khi đã trả đồ xong
  */

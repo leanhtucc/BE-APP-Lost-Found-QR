@@ -20,7 +20,10 @@ export const proposeMeetupSchema = z.object({
       .min(-180, "Longitude must be >= -180")
       .max(180, "Longitude must be <= 180"),
     scheduledTime: z.string().min(1, "scheduledTime is required"),
-    notes: z.string().max(1000, "Notes cannot exceed 1000 characters").optional(),
+    notes: z
+      .string()
+      .max(1000, "Notes cannot exceed 1000 characters")
+      .optional(),
   }),
 });
 
@@ -53,6 +56,9 @@ export const submitRatingSchema = z.object({
       .min(1, "Score must be at least 1")
       .max(5, "Score cannot exceed 5"),
     tags: z.array(z.string()).default([]),
-    comment: z.string().max(1000, "Comment cannot exceed 1000 characters").optional(),
+    comment: z
+      .string()
+      .max(1000, "Comment cannot exceed 1000 characters")
+      .optional(),
   }),
 });

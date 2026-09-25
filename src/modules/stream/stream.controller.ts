@@ -1,10 +1,9 @@
 import { NextFunction, Request, Response } from "express";
 import { ENV } from "../../config/env";
-import { prisma } from "../../libs/prisma";
+import { AppError } from "../../middlewares/error.middleware";
 import {
   banUserFromChannel,
   closeItemChannel,
-  createItemChannel,
   createStreamUserToken,
   flagMessage,
   getFlaggedMessages,
@@ -21,6 +20,7 @@ import {
 import { ResponseUtil } from "../../utils/response";
 import { notificationService } from "../notification/notification.service";
 import { reportService } from "../report/report.service";
+import { createLostItemReturnChannel } from "./stream.service";
 
 export class StreamChatController {
   /**
@@ -73,81 +73,20 @@ export class StreamChatController {
   ): Promise<void> => {
     try {
       const { itemId, finderId } = req.params;
-
-      // Lấy thông tin item và owner bằng itemId (từ QR code)
-      const item = await prisma.item.findFirst({
-        where: { itemId: itemId || "" },
-        select: {
-          id: true,
-          itemId: true,
-          name: true,
-          ownerId: true,
-          owner: {
-            select: {
-              id: true,
-              displayName: true,
-              email: true,
-              photoURL: true,
-            },
-          },
-        },
-      });
-
-      if (!item) {
-        ResponseUtil.notFound(res, "Item not found");
-        return;
+      if (finderId !== req.user!.id) {
+        throw new AppError(
+          "finderId must match the authenticated user",
+          403,
+          true,
+          "FINDER_ID_MISMATCH"
+        );
       }
-
-      // Lấy thông tin finder
-      const finder = await prisma.user.findFirst({
-        where: { id: finderId || "" },
-        select: {
-          id: true,
-          displayName: true,
-          email: true,
-          photoURL: true,
-        },
-      });
-
-      if (!finder) {
-        ResponseUtil.notFound(res, "Finder not found");
-        return;
-      }
-
-      // Upsert owner lên Stream Chat
-      await upsertStreamUser({
-        id: item.owner.id,
-        name: item.owner.displayName,
-        email: item.owner.email,
-        image: item.owner.photoURL || "",
-      });
-
-      // Upsert finder lên Stream Chat
-      await upsertStreamUser({
-        id: finder.id,
-        name: finder.displayName,
-        email: finder.email,
-        image: finder.photoURL || "",
-      });
-
-      // Tạo channel trên Stream (dùng item.id là primary key)
-      if (!finderId) {
-        ResponseUtil.badRequest(res, "Finder ID is required");
-        return;
-      }
-
-      const channel = await createItemChannel(
-        item.id,
-        item.name,
-        item.ownerId,
-        finderId
-      );
+      const result = await createLostItemReturnChannel(req.user!.id, itemId!);
 
       ResponseUtil.created(
         res,
         {
-          channel,
-          itemName: item.name,
+          ...result,
         },
         "Channel created successfully"
       );

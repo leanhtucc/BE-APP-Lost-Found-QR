@@ -9,12 +9,20 @@ import {
   ReturnSessionStatus,
   RewardPayout,
 } from "../modules/return/return.types";
+import { isActionAllowed } from "../modules/return/return.policy";
 
 const LOCATION_TTL_SECONDS = 120;
 const MIN_LOCATION_INTERVAL_MS = 2000;
 
 // Track last location update timestamp per user in memory to throttle
 const lastLocationUpdateTimes = new Map<string, number>();
+const ROOM_REVOKED_STATES: ReturnSessionStatus[] = [
+  "COMPLETED",
+  "MEETUP_CANCELLED",
+  "TRACKING_EXPIRED",
+  "HANDOVER_DISPUTED",
+  "REFUND_PENDING",
+];
 
 export function toReturnRoomKey(sessionId: string): string {
   return `return:${sessionId}`;
@@ -56,8 +64,23 @@ export function registerReturnSocketHandlers(socket: Socket, io: Server) {
         }
 
         if (session.ownerId !== userId && session.finderId !== userId) {
-          logger.warn(`[ReturnSocket] Unauthorized join attempt by ${userId} to ${sessionId}`);
-          ack?.({ success: false, message: "You are not a participant in this session" });
+          logger.warn(
+            `[ReturnSocket] Unauthorized join attempt by ${userId} to ${sessionId}`
+          );
+          ack?.({
+            success: false,
+            message: "You are not a participant in this session",
+          });
+          return;
+        }
+
+        if (
+          ROOM_REVOKED_STATES.includes(session.status as ReturnSessionStatus)
+        ) {
+          ack?.({
+            success: false,
+            message: "Return session is no longer active",
+          });
           return;
         }
 
@@ -111,6 +134,69 @@ export function registerReturnSocketHandlers(socket: Socket, io: Server) {
           return;
         }
 
+        const roomKey = toReturnRoomKey(sessionId);
+        if (!socket.rooms.has(roomKey)) {
+          ack?.({
+            success: false,
+            message: "Join the authorized return session first",
+          });
+          return;
+        }
+
+        const session = await prisma.returnSession.findUnique({
+          where: { id: sessionId },
+          select: {
+            id: true,
+            ownerId: true,
+            finderId: true,
+            status: true,
+            trackingExpiresAt: true,
+            serverRevision: true,
+          },
+        });
+        if (
+          !session ||
+          (session.ownerId !== userId && session.finderId !== userId)
+        ) {
+          ack?.({
+            success: false,
+            message: "Not authorized for this return session",
+          });
+          return;
+        }
+        if (
+          !isActionAllowed(
+            "UPDATE_LOCATION",
+            session.status as ReturnSessionStatus,
+            session.trackingExpiresAt
+          )
+        ) {
+          if (
+            ["TRACKING_ACTIVE", "ARRIVAL_PENDING"].includes(session.status) &&
+            session.trackingExpiresAt &&
+            session.trackingExpiresAt.getTime() <= Date.now()
+          ) {
+            const updated = await prisma.returnSession.update({
+              where: { id: sessionId },
+              data: {
+                status: "TRACKING_EXPIRED",
+                serverRevision: { increment: 1 },
+              },
+              select: { serverRevision: true },
+            });
+            await Promise.all([
+              redis.del(`return:loc:${sessionId}:${session.ownerId}`),
+              redis.del(`return:loc:${sessionId}:${session.finderId}`),
+            ]);
+            emitReturnLocationCleared(sessionId, updated.serverRevision);
+          }
+          ack?.({
+            success: false,
+            message: "Live location sharing is not allowed",
+          });
+          return;
+        }
+
         // Validate coordinates
         const lat = Number(location.latitude);
         const lng = Number(location.longitude);
@@ -138,7 +224,8 @@ export function registerReturnSocketHandlers(socket: Socket, io: Server) {
         const normalizedLocation: LiveLocation = {
           latitude: lat,
           longitude: lng,
-          accuracy: location.accuracy != null ? Number(location.accuracy) : null,
+          accuracy:
+            location.accuracy != null ? Number(location.accuracy) : null,
           heading: location.heading != null ? Number(location.heading) : null,
           speed: location.speed != null ? Number(location.speed) : null,
           capturedAt: location.capturedAt || new Date().toISOString(),
@@ -150,7 +237,6 @@ export function registerReturnSocketHandlers(socket: Socket, io: Server) {
         await redis.set(cacheKey, normalizedLocation, LOCATION_TTL_SECONDS);
 
         // Broadcast to partners in room (excluding sender)
-        const roomKey = toReturnRoomKey(sessionId);
         socket.to(roomKey).emit("return:location-updated", {
           sessionId,
           userId,
@@ -160,7 +246,10 @@ export function registerReturnSocketHandlers(socket: Socket, io: Server) {
         ack?.({ success: true });
       } catch (err: any) {
         logger.error("[ReturnSocket] Error on update-location", err);
-        ack?.({ success: false, message: err?.message || "Location update failed" });
+        ack?.({
+          success: false,
+          message: err?.message || "Location update failed",
+        });
       }
     }
   );
@@ -201,7 +290,11 @@ export function emitReturnHandoverUpdated(
   if (!socketServerInstance) return;
   socketServerInstance
     .to(toReturnRoomKey(sessionId))
-    .emit("return:handover-updated", { sessionId, handover, status });
+    .emit("return:handover-updated", {
+      sessionId,
+      status,
+      eventType: "HANDOVER_UPDATED",
+    });
 }
 
 export function emitReturnRewardUpdated(
@@ -212,7 +305,11 @@ export function emitReturnRewardUpdated(
   if (!socketServerInstance) return;
   socketServerInstance
     .to(toReturnRoomKey(sessionId))
-    .emit("return:reward-updated", { sessionId, reward, status });
+    .emit("return:reward-updated", {
+      sessionId,
+      status,
+      eventType: "REWARD_UPDATED",
+    });
 }
 
 export function emitReturnSessionUpdated(
@@ -222,5 +319,24 @@ export function emitReturnSessionUpdated(
   if (!socketServerInstance) return;
   socketServerInstance
     .to(toReturnRoomKey(sessionId))
-    .emit("return:session-updated", { sessionId, session });
+    .emit("return:session-updated", {
+      sessionId,
+      revision: session.serverRevision,
+      status: session.status,
+      eventType: "SESSION_UPDATED",
+    });
+}
+
+export function emitReturnLocationCleared(
+  sessionId: string,
+  revision?: number
+): void {
+  if (!socketServerInstance) return;
+  socketServerInstance
+    .to(toReturnRoomKey(sessionId))
+    .emit("return:location-cleared", {
+      sessionId,
+      revision,
+      eventType: "LOCATION_CLEARED",
+    });
 }

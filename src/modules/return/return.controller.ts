@@ -12,11 +12,18 @@ function getIfMatch(req: Request): number | undefined {
 
 export class ReturnController {
   // POST /v1/returns
-  createOrGetSession = async (req: Request, res: Response, next: NextFunction) => {
+  createOrGetSession = async (
+    req: Request,
+    res: Response,
+    next: NextFunction
+  ) => {
     try {
       const userId = req.user!.id;
       const { channelId, itemId } = req.body;
-      const result = await returnService.createOrGetSession(userId, { channelId, itemId });
+      const result = await returnService.createOrGetSession(userId, {
+        channelId,
+        itemId,
+      });
 
       res.status(200).json({
         success: true,
@@ -52,7 +59,12 @@ export class ReturnController {
       const userId = req.user!.id;
       const sessionId = req.params.id as string;
       const ifMatch = getIfMatch(req);
-      const result = await returnService.proposeMeetup(userId, sessionId, req.body, ifMatch);
+      const result = await returnService.proposeMeetup(
+        userId,
+        sessionId,
+        req.body,
+        ifMatch
+      );
 
       res.status(200).json({
         success: true,
@@ -71,7 +83,11 @@ export class ReturnController {
       const userId = req.user!.id;
       const sessionId = req.params.id as string;
       const ifMatch = getIfMatch(req);
-      const result = await returnService.acceptMeetup(userId, sessionId, ifMatch);
+      const result = await returnService.acceptMeetup(
+        userId,
+        sessionId,
+        ifMatch
+      );
 
       res.status(200).json({
         success: true,
@@ -90,7 +106,11 @@ export class ReturnController {
       const userId = req.user!.id;
       const sessionId = req.params.id as string;
       const ifMatch = getIfMatch(req);
-      const result = await returnService.rejectMeetup(userId, sessionId, ifMatch);
+      const result = await returnService.rejectMeetup(
+        userId,
+        sessionId,
+        ifMatch
+      );
 
       res.status(200).json({
         success: true,
@@ -109,7 +129,11 @@ export class ReturnController {
       const userId = req.user!.id;
       const sessionId = req.params.id as string;
       const ifMatch = getIfMatch(req);
-      const result = await returnService.startTracking(userId, sessionId, ifMatch);
+      const result = await returnService.startTracking(
+        userId,
+        sessionId,
+        ifMatch
+      );
 
       res.status(200).json({
         success: true,
@@ -128,7 +152,11 @@ export class ReturnController {
       const userId = req.user!.id;
       const sessionId = req.params.id as string;
       const ifMatch = getIfMatch(req);
-      const result = await returnService.stopTracking(userId, sessionId, ifMatch);
+      const result = await returnService.stopTracking(
+        userId,
+        sessionId,
+        ifMatch
+      );
 
       res.status(200).json({
         success: true,
@@ -147,12 +175,35 @@ export class ReturnController {
       const userId = req.user!.id;
       const sessionId = req.params.id as string;
       const ifMatch = getIfMatch(req);
-      const result = await returnService.notifyArrival(userId, sessionId, ifMatch);
+      const result = await returnService.notifyArrival(
+        userId,
+        sessionId,
+        ifMatch
+      );
 
       res.status(200).json({
         success: true,
         data: result,
         message: "Arrival reported",
+        timestamp: new Date().toISOString(),
+      });
+    } catch (err) {
+      next(err);
+    }
+  };
+
+  // POST /v1/returns/:id/cancel
+  cancelReturn = async (req: Request, res: Response, next: NextFunction) => {
+    try {
+      const result = await returnService.cancelReturn(
+        req.user!.id,
+        req.params.id as string,
+        getIfMatch(req)
+      );
+      res.status(200).json({
+        success: true,
+        data: result,
+        message: "Return session cancelled",
         timestamp: new Date().toISOString(),
       });
     } catch (err) {
@@ -184,7 +235,12 @@ export class ReturnController {
       const userId = req.user!.id;
       const sessionId = req.params.id as string;
       const ifMatch = getIfMatch(req);
-      const result = await returnService.confirmHandover(userId, sessionId, req.body, ifMatch);
+      const result = await returnService.confirmHandover(
+        userId,
+        sessionId,
+        req.body,
+        ifMatch
+      );
 
       res.status(200).json({
         success: true,
@@ -203,7 +259,12 @@ export class ReturnController {
       const userId = req.user!.id;
       const sessionId = req.params.id as string;
       const ifMatch = getIfMatch(req);
-      const result = await returnService.disputeHandover(userId, sessionId, req.body, ifMatch);
+      const result = await returnService.disputeHandover(
+        userId,
+        sessionId,
+        req.body,
+        ifMatch
+      );
 
       res.status(200).json({
         success: true,
@@ -239,7 +300,12 @@ export class ReturnController {
       const userId = req.user!.id;
       const sessionId = req.params.id as string;
       const ifMatch = getIfMatch(req);
-      const result = await returnService.submitRating(userId, sessionId, req.body, ifMatch);
+      const result = await returnService.submitRating(
+        userId,
+        sessionId,
+        req.body,
+        ifMatch
+      );
 
       res.status(200).json({
         success: true,

@@ -7,6 +7,7 @@ import { closeItemChannel } from "../../libs/stream-chat";
 import { notificationService } from "../notification/notification.service";
 import {
   emitReturnHandoverUpdated,
+  emitReturnLocationCleared,
   emitReturnParticipantArrived,
   emitReturnRewardUpdated,
   emitReturnSessionUpdated,
@@ -17,6 +18,7 @@ import {
   DisputeHandoverRequest,
   FinderRating,
   HandoverDetails,
+  HandoverInitResult,
   MeetupProposal,
   ProposeMeetupRequest,
   ReturnParticipant,
@@ -26,6 +28,11 @@ import {
   RewardPayout,
   SubmitRatingRequest,
 } from "./return.types";
+import {
+  assertReturnAction,
+  getReturnCapabilities,
+  RETURN_TERMINAL_OR_PRIVATE_REVOKED_STATES,
+} from "./return.policy";
 
 const CODE_SALT = "lost_found_handover_salt_2026";
 const HANDOVER_CODE_TTL_SECONDS = 300; // 5 minutes
@@ -49,24 +56,23 @@ const VALID_TRANSITIONS: Record<ReturnSessionStatus, ReturnSessionStatus[]> = {
   TRACKING_ACTIVE: [
     "ARRIVAL_PENDING",
     "HANDOVER_PENDING",
+    "MEETUP_CANCELLED",
     "TRACKING_EXPIRED",
     "HANDOVER_DISPUTED",
   ],
   ARRIVAL_PENDING: [
     "HANDOVER_PENDING",
+    "MEETUP_CANCELLED",
     "TRACKING_EXPIRED",
     "HANDOVER_DISPUTED",
   ],
   HANDOVER_PENDING: [
     "HANDOVER_CONFIRMED",
     "REWARD_RELEASING",
+    "MEETUP_CANCELLED",
     "HANDOVER_DISPUTED",
   ],
-  HANDOVER_CONFIRMED: [
-    "REWARD_RELEASING",
-    "REWARD_PAID",
-    "HANDOVER_DISPUTED",
-  ],
+  HANDOVER_CONFIRMED: ["REWARD_RELEASING", "REWARD_PAID", "HANDOVER_DISPUTED"],
   REWARD_RELEASING: ["REWARD_PAID", "PAYOUT_FAILED", "HANDOVER_DISPUTED"],
   REWARD_PAID: ["RATING_PENDING", "COMPLETED"],
   RATING_PENDING: ["COMPLETED"],
@@ -79,6 +85,18 @@ const VALID_TRANSITIONS: Record<ReturnSessionStatus, ReturnSessionStatus[]> = {
 };
 
 export class ReturnService {
+  private async clearLiveLocations(session: {
+    id: string;
+    ownerId: string;
+    finderId: string;
+    serverRevision?: number;
+  }): Promise<void> {
+    await Promise.all([
+      redis.del(`return:loc:${session.id}:${session.ownerId}`),
+      redis.del(`return:loc:${session.id}:${session.finderId}`),
+    ]);
+    emitReturnLocationCleared(session.id, session.serverRevision);
+  }
   /**
    * Check if transition is valid according to the state machine
    */
@@ -118,7 +136,10 @@ export class ReturnService {
   /**
    * Concurrency revision check
    */
-  private assertRevision(session: { serverRevision: number }, ifMatch?: number): void {
+  private assertRevision(
+    session: { serverRevision: number },
+    ifMatch?: number
+  ): void {
     if (ifMatch != null && session.serverRevision !== ifMatch) {
       throw new AppError(
         `Revision conflict. Current revision is ${session.serverRevision}, but If-Match was ${ifMatch}`,
@@ -139,7 +160,28 @@ export class ReturnService {
   /**
    * Format Prisma ReturnSession entity to client contract
    */
-  private async formatSession(session: any, currentUserId?: string): Promise<ReturnSession> {
+  private async formatSession(
+    session: any,
+    currentUserId?: string
+  ): Promise<ReturnSession> {
+    const proposals = [...(session.meetupProposals || [])].sort(
+      (a: any, b: any) =>
+        new Date(b.proposedAt).getTime() - new Date(a.proposedAt).getTime()
+    );
+    const pendingProposal = proposals.find(
+      (proposal: any) => proposal.status === "PENDING"
+    );
+    const acceptedProposal = proposals.find(
+      (proposal: any) => proposal.status === "ACCEPTED"
+    );
+    const status = session.status as ReturnSessionStatus;
+    const capabilities = getReturnCapabilities({
+      status,
+      hasPendingMeetup: Boolean(pendingProposal),
+      hasAcceptedMeetup: Boolean(acceptedProposal),
+      trackingExpiresAt: session.trackingExpiresAt,
+      hasHandoverConfirmation: Boolean(session.handoverConfirmations?.length),
+    });
     const ownerArrived =
       session.arrivals?.some(
         (a: any) => a.participantId === session.ownerId || a.role === "OWNER"
@@ -158,7 +200,7 @@ export class ReturnService {
       isVerified: session.owner?.isVerified ?? true,
       trustScore: session.owner?.trustScore ?? 5.0,
       isArrived: ownerArrived,
-      sharingLocation: session.status === "TRACKING_ACTIVE",
+      sharingLocation: capabilities.liveSharingAllowed,
     };
 
     const finder: ReturnParticipant = {
@@ -170,17 +212,21 @@ export class ReturnService {
       isVerified: session.finder?.isVerified ?? false,
       trustScore: session.finder?.trustScore ?? 5.0,
       isArrived: finderArrived,
-      sharingLocation: session.status === "TRACKING_ACTIVE",
+      sharingLocation: capabilities.liveSharingAllowed,
     };
 
     // Latest proposal
     let meetup: MeetupProposal | null = null;
-    if (session.meetupProposals && session.meetupProposals.length > 0) {
-      const sorted = [...session.meetupProposals].sort(
-        (a: any, b: any) =>
-          new Date(b.proposedAt).getTime() - new Date(a.proposedAt).getTime()
-      );
-      const latest = sorted[0];
+    const visibleProposal = capabilities.canReviewMeetup
+      ? pendingProposal
+      : capabilities.directionsAllowed || capabilities.handoverAllowed
+        ? acceptedProposal
+        : null;
+    if (
+      visibleProposal &&
+      !RETURN_TERMINAL_OR_PRIVATE_REVOKED_STATES.includes(status)
+    ) {
+      const latest = visibleProposal;
       const proposedByName =
         latest.proposedBy === session.ownerId
           ? owner.displayName
@@ -210,24 +256,8 @@ export class ReturnService {
       (c: any) => c.role === "FINDER"
     );
 
-    // Retrieve cached code if caller is the creator or challenge is active
-    let code: string | undefined = undefined;
-    if (currentUserId && session.handoverChallenge) {
-      const challenge = session.handoverChallenge;
-      if (
-        challenge.createdForUserId === currentUserId &&
-        !challenge.consumedAt &&
-        new Date(challenge.expiresAt).getTime() > Date.now()
-      ) {
-        const cached = await redis.get<string>(`return:code:${session.id}`);
-        if (cached) code = cached;
-      }
-    }
-
     if (session.handoverChallenge || ownerConf || finderConf) {
       handover = {
-        code,
-        qrPayload: code ? `handover://${session.id}?code=${code}` : undefined,
         finderConfirmed: Boolean(finderConf),
         ownerConfirmed: Boolean(ownerConf),
         finderConfirmedAt: finderConf?.confirmedAt
@@ -277,11 +307,18 @@ export class ReturnService {
     return {
       id: session.id,
       channelId: session.channelId,
-      itemId: session.itemId,
-      itemName: session.item?.name || "Món đồ thất lạc",
-      itemCategory: session.item?.category || undefined,
-      itemImageUrl: session.item?.imagePublicUrl || null,
-      rewardAmount: session.report?.bountyAmount || 0,
+      sourceType: session.itemId ? "ITEM" : "FOUND_REPORT",
+      itemId: session.itemId || undefined,
+      foundReportId: session.foundReportId || undefined,
+      itemName:
+        session.item?.name || session.foundReport?.name || "Món đồ thất lạc",
+      itemCategory:
+        session.item?.category || session.foundReport?.category || undefined,
+      itemImageUrl:
+        session.item?.imagePublicUrl ||
+        session.foundReport?.imagePublicUrl ||
+        null,
+      rewardAmount: session.itemId ? session.report?.bountyAmount || 0 : 0,
       status: session.status,
       owner,
       finder,
@@ -292,6 +329,10 @@ export class ReturnService {
       createdAt: new Date(session.createdAt).toISOString(),
       updatedAt: new Date(session.updatedAt).toISOString(),
       serverRevision: session.serverRevision,
+      trackingExpiresAt: session.trackingExpiresAt
+        ? new Date(session.trackingExpiresAt).toISOString()
+        : null,
+      capabilities,
     };
   }
 
@@ -314,6 +355,7 @@ export class ReturnService {
         owner: true,
         finder: true,
         item: true,
+        foundReport: true,
         report: true,
         meetupProposals: true,
         arrivals: true,
@@ -343,7 +385,10 @@ export class ReturnService {
     }
 
     if (!itemId) {
-      throw new AppError("itemId is required to create a new return session", 400);
+      throw new AppError(
+        "itemId is required to create a new return session",
+        400
+      );
     }
 
     // 3. Query item and owner
@@ -401,6 +446,7 @@ export class ReturnService {
         owner: true,
         finder: true,
         item: true,
+        foundReport: true,
         report: true,
         meetupProposals: true,
         arrivals: true,
@@ -411,7 +457,9 @@ export class ReturnService {
       },
     });
 
-    logger.info(`[ReturnService] Return session created: ${created.id} for channel ${channelId}`);
+    logger.info(
+      `[ReturnService] Return session created: ${created.id} for channel ${channelId}`
+    );
     return this.formatSession(created, userId);
   }
 
@@ -425,6 +473,7 @@ export class ReturnService {
         owner: true,
         finder: true,
         item: true,
+        foundReport: true,
         report: true,
         meetupProposals: true,
         arrivals: true,
@@ -458,6 +507,7 @@ export class ReturnService {
         owner: true,
         finder: true,
         item: true,
+        foundReport: true,
         report: true,
         meetupProposals: true,
         arrivals: true,
@@ -471,7 +521,11 @@ export class ReturnService {
     if (!session) throw new AppError("Return session not found", 404);
     this.assertParticipant(session, userId);
     this.assertRevision(session, ifMatch);
-    this.assertValidTransition(session.status as ReturnSessionStatus, "MEETUP_PROPOSED");
+    assertReturnAction("PROPOSE_MEETUP", session.status as ReturnSessionStatus);
+    this.assertValidTransition(
+      session.status as ReturnSessionStatus,
+      "MEETUP_PROPOSED"
+    );
 
     // Create proposal & update session
     const [proposal, updated] = await prisma.$transaction([
@@ -498,6 +552,7 @@ export class ReturnService {
           owner: true,
           finder: true,
           item: true,
+          foundReport: true,
           report: true,
           meetupProposals: true,
           arrivals: true,
@@ -513,14 +568,15 @@ export class ReturnService {
     emitReturnSessionUpdated(sessionId, formatted);
 
     // Notify counterparty
-    const counterpartyId = userId === session.ownerId ? session.finderId : session.ownerId;
+    const counterpartyId =
+      userId === session.ownerId ? session.finderId : session.ownerId;
     void notificationService.notifyReturnEvent({
       receiverId: counterpartyId,
       type: "MEETUP_PROPOSED",
       title: "Đề xuất điểm hẹn mới",
       content: `Đối tác đã đề xuất điểm hẹn: ${req.address}`,
       sessionId,
-      itemId: session.itemId,
+      itemId: session.itemId || undefined,
     });
 
     return formatted;
@@ -540,6 +596,7 @@ export class ReturnService {
         owner: true,
         finder: true,
         item: true,
+        foundReport: true,
         report: true,
         meetupProposals: { orderBy: { proposedAt: "desc" }, take: 1 },
         arrivals: true,
@@ -553,7 +610,11 @@ export class ReturnService {
     if (!session) throw new AppError("Return session not found", 404);
     this.assertParticipant(session, userId);
     this.assertRevision(session, ifMatch);
-    this.assertValidTransition(session.status as ReturnSessionStatus, "MEETUP_ACCEPTED");
+    assertReturnAction("ACCEPT_MEETUP", session.status as ReturnSessionStatus);
+    this.assertValidTransition(
+      session.status as ReturnSessionStatus,
+      "MEETUP_ACCEPTED"
+    );
 
     const latestProposal = session.meetupProposals[0];
     if (!latestProposal || latestProposal.status !== "PENDING") {
@@ -588,6 +649,7 @@ export class ReturnService {
           owner: true,
           finder: true,
           item: true,
+          foundReport: true,
           report: true,
           meetupProposals: true,
           arrivals: true,
@@ -609,7 +671,7 @@ export class ReturnService {
       title: "Điểm hẹn được chấp nhận",
       content: `Đối tác đã chấp nhận điểm hẹn tại ${latestProposal.address}`,
       sessionId,
-      itemId: session.itemId,
+      itemId: session.itemId || undefined,
     });
 
     return formatted;
@@ -629,6 +691,7 @@ export class ReturnService {
         owner: true,
         finder: true,
         item: true,
+        foundReport: true,
         report: true,
         meetupProposals: { orderBy: { proposedAt: "desc" }, take: 1 },
         arrivals: true,
@@ -642,6 +705,7 @@ export class ReturnService {
     if (!session) throw new AppError("Return session not found", 404);
     this.assertParticipant(session, userId);
     this.assertRevision(session, ifMatch);
+    assertReturnAction("REJECT_MEETUP", session.status as ReturnSessionStatus);
 
     const latestProposal = session.meetupProposals[0];
     if (latestProposal && latestProposal.status === "PENDING") {
@@ -665,6 +729,7 @@ export class ReturnService {
         owner: true,
         finder: true,
         item: true,
+        foundReport: true,
         report: true,
         meetupProposals: true,
         arrivals: true,
@@ -694,6 +759,7 @@ export class ReturnService {
         owner: true,
         finder: true,
         item: true,
+        foundReport: true,
         report: true,
         meetupProposals: true,
         arrivals: true,
@@ -707,6 +773,19 @@ export class ReturnService {
     if (!session) throw new AppError("Return session not found", 404);
     this.assertParticipant(session, userId);
     this.assertRevision(session, ifMatch);
+    assertReturnAction("START_TRACKING", session.status as ReturnSessionStatus);
+
+    const acceptedMeetup = session.meetupProposals.some(
+      (proposal) => proposal.status === "ACCEPTED"
+    );
+    if (!acceptedMeetup) {
+      throw new AppError(
+        "An accepted meetup is required",
+        409,
+        true,
+        "MEETUP_NOT_ACCEPTED"
+      );
+    }
 
     const currentStatus = session.status as ReturnSessionStatus;
     if (
@@ -723,7 +802,10 @@ export class ReturnService {
     const updated = await prisma.returnSession.update({
       where: { id: sessionId },
       data: {
-        status: currentStatus === "ARRIVAL_PENDING" ? "ARRIVAL_PENDING" : "TRACKING_ACTIVE",
+        status:
+          currentStatus === "ARRIVAL_PENDING"
+            ? "ARRIVAL_PENDING"
+            : "TRACKING_ACTIVE",
         trackingStartedAt: session.trackingStartedAt || now,
         trackingExpiresAt: expiresAt,
         serverRevision: { increment: 1 },
@@ -732,6 +814,7 @@ export class ReturnService {
         owner: true,
         finder: true,
         item: true,
+        foundReport: true,
         report: true,
         meetupProposals: true,
         arrivals: true,
@@ -761,6 +844,7 @@ export class ReturnService {
         owner: true,
         finder: true,
         item: true,
+        foundReport: true,
         report: true,
         meetupProposals: true,
         arrivals: true,
@@ -782,6 +866,80 @@ export class ReturnService {
     return formatted;
   }
 
+  /** Cancel an accepted/in-progress meetup before irreversible handover work. */
+  async cancelReturn(
+    userId: string,
+    sessionId: string,
+    ifMatch?: number
+  ): Promise<ReturnSession> {
+    const session = await prisma.returnSession.findUnique({
+      where: { id: sessionId },
+      include: {
+        owner: true,
+        finder: true,
+        item: true,
+        foundReport: true,
+        report: true,
+        meetupProposals: true,
+        arrivals: true,
+        handoverChallenge: true,
+        handoverConfirmations: true,
+        rewardPayout: true,
+        rating: true,
+      },
+    });
+    if (!session) throw new AppError("Return session not found", 404);
+    this.assertParticipant(session, userId);
+    this.assertRevision(session, ifMatch);
+    assertReturnAction("CANCEL", session.status as ReturnSessionStatus);
+    if (session.handoverConfirmations.length > 0) {
+      throw new AppError(
+        "A confirmed handover can no longer be cancelled",
+        409,
+        true,
+        "INVALID_RETURN_TRANSITION"
+      );
+    }
+
+    const acceptedProposal = session.meetupProposals.find(
+      (proposal) => proposal.status === "ACCEPTED"
+    );
+    const updated = await prisma.$transaction(async (tx) => {
+      if (acceptedProposal) {
+        await tx.returnMeetupProposal.update({
+          where: { id: acceptedProposal.id },
+          data: { status: "CANCELLED", respondedAt: new Date() },
+        });
+      }
+      return tx.returnSession.update({
+        where: { id: sessionId },
+        data: {
+          status: "MEETUP_CANCELLED",
+          trackingExpiresAt: null,
+          serverRevision: { increment: 1 },
+        },
+        include: {
+          owner: true,
+          finder: true,
+          item: true,
+          foundReport: true,
+          report: true,
+          meetupProposals: true,
+          arrivals: true,
+          handoverChallenge: true,
+          handoverConfirmations: true,
+          rewardPayout: true,
+          rating: true,
+        },
+      });
+    });
+
+    await this.clearLiveLocations(updated);
+    const formatted = await this.formatSession(updated, userId);
+    emitReturnSessionUpdated(sessionId, formatted);
+    return formatted;
+  }
+
   /**
    * POST /v1/returns/:id/arrival
    */
@@ -796,6 +954,7 @@ export class ReturnService {
         owner: true,
         finder: true,
         item: true,
+        foundReport: true,
         report: true,
         meetupProposals: true,
         arrivals: true,
@@ -809,6 +968,11 @@ export class ReturnService {
     if (!session) throw new AppError("Return session not found", 404);
     const role = this.assertParticipant(session, userId);
     this.assertRevision(session, ifMatch);
+    assertReturnAction(
+      "ARRIVE",
+      session.status as ReturnSessionStatus,
+      session.trackingExpiresAt
+    );
 
     // Record arrival
     await prisma.returnArrival.upsert({
@@ -830,7 +994,8 @@ export class ReturnService {
     });
 
     // Check if counterparty has arrived
-    const counterpartyId = userId === session.ownerId ? session.finderId : session.ownerId;
+    const counterpartyId =
+      userId === session.ownerId ? session.finderId : session.ownerId;
     const counterpartyArrived = session.arrivals.some(
       (a) => a.participantId === counterpartyId
     );
@@ -849,6 +1014,7 @@ export class ReturnService {
         owner: true,
         finder: true,
         item: true,
+        foundReport: true,
         report: true,
         meetupProposals: true,
         arrivals: true,
@@ -870,7 +1036,7 @@ export class ReturnService {
       title: "Đối tác đã đến điểm hẹn!",
       content: `${role === "OWNER" ? "Chủ đồ" : "Người nhặt"} đã có mặt tại điểm hẹn.`,
       sessionId,
-      itemId: session.itemId,
+      itemId: session.itemId || undefined,
     });
 
     return formatted;
@@ -880,7 +1046,10 @@ export class ReturnService {
    * POST /v1/returns/:id/handover/init
    * Generate secure 6-digit cryptographic PIN code with 5-minute TTL and max 5 attempts
    */
-  async initHandover(userId: string, sessionId: string): Promise<HandoverDetails> {
+  async initHandover(
+    userId: string,
+    sessionId: string
+  ): Promise<HandoverInitResult> {
     const session = await prisma.returnSession.findUnique({
       where: { id: sessionId },
       include: {
@@ -890,7 +1059,16 @@ export class ReturnService {
     });
 
     if (!session) throw new AppError("Return session not found", 404);
-    this.assertParticipant(session, userId);
+    const role = this.assertParticipant(session, userId);
+    assertReturnAction("INIT_HANDOVER", session.status as ReturnSessionStatus);
+    if (role !== "FINDER") {
+      throw new AppError(
+        "Only the finder can generate the handover code",
+        403,
+        true,
+        "FORBIDDEN"
+      );
+    }
 
     // Generate 6-digit random code
     const codeNumber = crypto.randomInt(100000, 1000000); // 100000 to 999999
@@ -920,10 +1098,17 @@ export class ReturnService {
     });
 
     // Cache plain code in Redis for creator retrieval during the 5-minute window
-    await redis.set(`return:code:${sessionId}`, code, HANDOVER_CODE_TTL_SECONDS);
+    await redis.set(
+      `return:code:${sessionId}`,
+      code,
+      HANDOVER_CODE_TTL_SECONDS
+    );
 
     // Update status to HANDOVER_PENDING if not already
-    if (session.status !== "HANDOVER_PENDING" && session.status !== "HANDOVER_CONFIRMED") {
+    if (
+      session.status !== "HANDOVER_PENDING" &&
+      session.status !== "HANDOVER_CONFIRMED"
+    ) {
       await prisma.returnSession.update({
         where: { id: sessionId },
         data: {
@@ -935,17 +1120,28 @@ export class ReturnService {
 
     const qrPayload = `handover://${sessionId}?code=${code}`;
 
-    const ownerConf = session.handoverConfirmations?.find((c) => c.role === "OWNER");
-    const finderConf = session.handoverConfirmations?.find((c) => c.role === "FINDER");
+    const ownerConf = session.handoverConfirmations?.find(
+      (c) => c.role === "OWNER"
+    );
+    const finderConf = session.handoverConfirmations?.find(
+      (c) => c.role === "FINDER"
+    );
 
-    const handoverDetails: HandoverDetails = {
+    const handoverDetails: HandoverInitResult = {
       code,
       qrPayload,
       ownerConfirmed: Boolean(ownerConf),
       finderConfirmed: Boolean(finderConf),
     };
 
-    emitReturnHandoverUpdated(sessionId, handoverDetails, "HANDOVER_PENDING");
+    emitReturnHandoverUpdated(
+      sessionId,
+      {
+        finderConfirmed: Boolean(finderConf),
+        ownerConfirmed: Boolean(ownerConf),
+      },
+      "HANDOVER_PENDING"
+    );
     return handoverDetails;
   }
 
@@ -965,6 +1161,7 @@ export class ReturnService {
         owner: true,
         finder: true,
         item: true,
+        foundReport: true,
         report: { include: { escrowTransactions: true } },
         meetupProposals: true,
         arrivals: true,
@@ -979,23 +1176,27 @@ export class ReturnService {
     // Role is strictly derived from DB, client role is completely ignored
     const role = this.assertParticipant(session, userId);
     this.assertRevision(session, ifMatch);
-
-    if (session.status === "COMPLETED" || session.status === "HANDOVER_DISPUTED") {
-      throw new AppError(
-        `Cannot confirm handover in ${session.status} status`,
-        400,
-        true,
-        "INVALID_RETURN_TRANSITION"
-      );
-    }
+    assertReturnAction(
+      "CONFIRM_HANDOVER",
+      session.status as ReturnSessionStatus
+    );
 
     // Check if user has already confirmed
     const existingConfirmation = session.handoverConfirmations.find(
       (c) => c.participantId === userId
     );
 
-    // If code is supplied (by the party confirming via code), verify challenge
-    if (req.code) {
+    // The owner proves in-person possession with the finder-generated PIN.
+    // The finder confirmation is direct and never consumes or echoes the PIN.
+    if (role === "OWNER") {
+      if (!req.code) {
+        throw new AppError(
+          "Handover code is required",
+          400,
+          true,
+          "HANDOVER_CODE_REQUIRED"
+        );
+      }
       const challenge = session.handoverChallenge;
       if (!challenge) {
         throw new AppError("No active handover challenge found", 400);
@@ -1058,7 +1259,8 @@ export class ReturnService {
     }
 
     // Check if counterparty has confirmed
-    const counterpartyId = userId === session.ownerId ? session.finderId : session.ownerId;
+    const counterpartyId =
+      userId === session.ownerId ? session.finderId : session.ownerId;
     const counterpartyConfirmed = session.handoverConfirmations.some(
       (c) => c.participantId === counterpartyId
     );
@@ -1075,6 +1277,7 @@ export class ReturnService {
           owner: true,
           finder: true,
           item: true,
+          foundReport: true,
           report: true,
           meetupProposals: true,
           arrivals: true,
@@ -1087,17 +1290,25 @@ export class ReturnService {
 
       const formatted = await this.formatSession(updated, userId);
       if (formatted.handover) {
-        emitReturnHandoverUpdated(sessionId, formatted.handover, "HANDOVER_PENDING");
+        emitReturnHandoverUpdated(
+          sessionId,
+          formatted.handover,
+          "HANDOVER_PENDING"
+        );
       }
       emitReturnSessionUpdated(sessionId, formatted);
       return formatted;
     }
 
     // Case 2: Both parties confirmed! Execute atomic transaction (P0)
-    logger.info(`[ReturnService] Both parties confirmed for session ${sessionId}. Executing atomic resolution.`);
+    logger.info(
+      `[ReturnService] Both parties confirmed for session ${sessionId}. Executing atomic resolution.`
+    );
 
-    const rewardAmount = session.report?.bountyAmount || 0;
-    const isGuestFinder = !session.finder.isVerified && !session.finder.phoneNumber;
+    const isItemSource = Boolean(session.itemId);
+    const rewardAmount = isItemSource ? session.report?.bountyAmount || 0 : 0;
+    const isGuestFinder =
+      !session.finder.isVerified && !session.finder.phoneNumber;
     const payoutStatus = isGuestFinder ? "ACTION_REQUIRED" : "PAID";
 
     await prisma.$transaction(async (tx) => {
@@ -1107,71 +1318,97 @@ export class ReturnService {
         sessionId
       );
 
-      // 2. Transition session
+      // 2. Lock the session while source-specific completion is applied.
       await tx.returnSession.update({
         where: { id: sessionId },
         data: {
-          status: "REWARD_RELEASING",
+          status: isItemSource ? "REWARD_RELEASING" : "HANDOVER_CONFIRMED",
           completedAt: new Date(),
           serverRevision: { increment: 1 },
         },
       });
 
-      // 3. Mark item resolved
-      const itemTransition = await tx.item.updateMany({
-        where: { id: session.itemId, status: "FOUND" },
-        data: { status: "RESOLVED" },
-      });
-
-      if (itemTransition.count !== 1) {
-        throw new AppError(
-          "Item must be FOUND before the handover can be resolved",
-          409,
-          true,
-          "INVALID_ITEM_STATUS_TRANSITION"
-        );
-      }
-
-      // 4. Resolve report (Post) and release Escrow if exists
-      if (session.reportId) {
-        await tx.post.update({
-          where: { id: session.reportId },
-          data: { status: "COMPLETED" },
+      if (isItemSource) {
+        if (!session.itemId) {
+          throw new AppError(
+            "Item source is missing",
+            409,
+            true,
+            "INVALID_RETURN_SOURCE"
+          );
+        }
+        const itemTransition = await tx.item.updateMany({
+          where: { id: session.itemId, status: "FOUND" },
+          data: { status: "RESOLVED" },
         });
+        if (itemTransition.count !== 1) {
+          throw new AppError(
+            "Item must be FOUND before the handover can be resolved",
+            409,
+            true,
+            "INVALID_ITEM_STATUS_TRANSITION"
+          );
+        }
 
-        const holdingEscrow = session.report?.escrowTransactions?.find(
-          (t) => t.status === "HOLDING"
-        );
-        if (holdingEscrow) {
-          await tx.escrowTransaction.update({
-            where: { id: holdingEscrow.id },
-            data: { status: "RELEASED" },
+        if (session.reportId) {
+          await tx.post.update({
+            where: { id: session.reportId },
+            data: { status: "COMPLETED" },
           });
+          const holdingEscrow = session.report?.escrowTransactions?.find(
+            (t) => t.status === "HOLDING"
+          );
+          if (holdingEscrow) {
+            await tx.escrowTransaction.update({
+              where: { id: holdingEscrow.id },
+              data: { status: "RELEASED" },
+            });
+          }
+        }
+
+        await tx.rewardPayoutRecord.upsert({
+          where: { sessionId },
+          update: {
+            status: payoutStatus,
+            paidAt: payoutStatus === "PAID" ? new Date() : null,
+          },
+          create: {
+            sessionId,
+            reportId: session.reportId,
+            baseAmount: rewardAmount,
+            netAmount: rewardAmount,
+            platformFee: 0,
+            currency: "VND",
+            status: payoutStatus,
+            transactionId: `TXN-${Date.now().toString().slice(-8)}`,
+            payoutMethodMasked: isGuestFinder
+              ? undefined
+              : "Vietcombank •••• 5678",
+            paidAt: payoutStatus === "PAID" ? new Date() : null,
+          },
+        });
+      } else {
+        if (!session.foundReportId) {
+          throw new AppError(
+            "Found report source is missing",
+            409,
+            true,
+            "INVALID_RETURN_SOURCE"
+          );
+        }
+        const resolved = await tx.foundReport.updateMany({
+          where: { id: session.foundReportId, resolvedAt: null },
+          data: { resolvedAt: new Date() },
+        });
+        if (resolved.count !== 1) {
+          throw new AppError(
+            "Found report is already resolved",
+            409,
+            true,
+            "FOUND_REPORT_ALREADY_RESOLVED"
+          );
         }
       }
-
-      // 5. Create or update RewardPayoutRecord
-      await tx.rewardPayoutRecord.upsert({
-        where: { sessionId },
-        update: {
-          status: payoutStatus,
-          paidAt: payoutStatus === "PAID" ? new Date() : null,
-        },
-        create: {
-          sessionId,
-          reportId: session.reportId,
-          baseAmount: rewardAmount,
-          netAmount: rewardAmount,
-          platformFee: 0,
-          currency: "VND",
-          status: payoutStatus,
-          transactionId: `TXN-${Date.now().toString().slice(-8)}`,
-          payoutMethodMasked: isGuestFinder
-            ? undefined
-            : "Vietcombank •••• 5678",
-          paidAt: payoutStatus === "PAID" ? new Date() : null,
-        },
-      });
 
       // 6. Update finder reputation
       await tx.user.update({
@@ -1182,11 +1419,15 @@ export class ReturnService {
         },
       });
 
-      // 7. Transition session to final state
+      // FoundReport has no reward/escrow model; both sources converge at rating.
       await tx.returnSession.update({
         where: { id: sessionId },
         data: {
-          status: payoutStatus === "PAID" ? "RATING_PENDING" : "HANDOVER_CONFIRMED",
+          status: !isItemSource
+            ? "RATING_PENDING"
+            : payoutStatus === "PAID"
+              ? "RATING_PENDING"
+              : "HANDOVER_CONFIRMED",
         },
       });
     });
@@ -1195,7 +1436,10 @@ export class ReturnService {
     try {
       await closeItemChannel(session.channelId);
     } catch (err) {
-      logger.warn(`[ReturnService] Could not freeze stream channel ${session.channelId}:`, err);
+      logger.warn(
+        `[ReturnService] Could not freeze stream channel ${session.channelId}:`,
+        err
+      );
     }
 
     // Reload updated session
@@ -1205,6 +1449,7 @@ export class ReturnService {
         owner: true,
         finder: true,
         item: true,
+        foundReport: true,
         report: true,
         meetupProposals: true,
         arrivals: true,
@@ -1216,12 +1461,21 @@ export class ReturnService {
     });
 
     const formatted = await this.formatSession(resolvedSession, userId);
+    await this.clearLiveLocations(resolvedSession);
 
     if (formatted.handover) {
-      emitReturnHandoverUpdated(sessionId, formatted.handover, resolvedSession.status as ReturnSessionStatus);
+      emitReturnHandoverUpdated(
+        sessionId,
+        formatted.handover,
+        resolvedSession.status as ReturnSessionStatus
+      );
     }
     if (formatted.reward) {
-      emitReturnRewardUpdated(sessionId, formatted.reward, resolvedSession.status as ReturnSessionStatus);
+      emitReturnRewardUpdated(
+        sessionId,
+        formatted.reward,
+        resolvedSession.status as ReturnSessionStatus
+      );
     }
     emitReturnSessionUpdated(sessionId, formatted);
 
@@ -1253,20 +1507,24 @@ export class ReturnService {
       receiverId: session.ownerId,
       type: "HANDOVER_CONFIRMED",
       title: "Bàn giao đồ thành công!",
-      content: `Món đồ "${session.item.name}" đã được hoàn trả thành công. Vui lòng gửi đánh giá cho người nhặt.`,
+      content: `Món đồ "${session.item?.name || session.foundReport?.name || "Đồ vật"}" đã được hoàn trả thành công. Vui lòng gửi đánh giá cho người nhặt.`,
       sessionId,
-      itemId: session.itemId,
+      itemId: session.itemId || undefined,
     });
 
     void notificationService.notifyReturnEvent({
       receiverId: session.finderId,
-      type: "REWARD_PAID",
-      title: "Bàn giao thành công & Giải ngân thưởng!",
-      content: isGuestFinder
-        ? "Bàn giao thành công. Vui lòng liên kết tài khoản để nhận tiền thưởng."
-        : `Bàn giao thành công. Phần thưởng ${rewardAmount.toLocaleString("vi-VN")} VND đang được chuyển.`,
+      type: isItemSource ? "REWARD_PAID" : "HANDOVER_CONFIRMED",
+      title: isItemSource
+        ? "Bàn giao thành công & Giải ngân thưởng!"
+        : "Bàn giao thành công!",
+      content: !isItemSource
+        ? "Bàn giao thành công. Cảm ơn bạn đã giúp hoàn trả đồ vật."
+        : isGuestFinder
+          ? "Bàn giao thành công. Vui lòng liên kết tài khoản để nhận tiền thưởng."
+          : `Bàn giao thành công. Phần thưởng ${rewardAmount.toLocaleString("vi-VN")} VND đang được chuyển.`,
       sessionId,
-      itemId: session.itemId,
+      itemId: session.itemId || undefined,
     });
 
     return formatted;
@@ -1287,6 +1545,7 @@ export class ReturnService {
         owner: true,
         finder: true,
         item: true,
+        foundReport: true,
         report: true,
         meetupProposals: true,
         arrivals: true,
@@ -1300,6 +1559,7 @@ export class ReturnService {
     if (!session) throw new AppError("Return session not found", 404);
     this.assertParticipant(session, userId);
     this.assertRevision(session, ifMatch);
+    assertReturnAction("DISPUTE", session.status as ReturnSessionStatus);
 
     const updated = await prisma.returnSession.update({
       where: { id: sessionId },
@@ -1311,6 +1571,7 @@ export class ReturnService {
         owner: true,
         finder: true,
         item: true,
+        foundReport: true,
         report: true,
         meetupProposals: true,
         arrivals: true,
@@ -1321,11 +1582,18 @@ export class ReturnService {
       },
     });
 
-    logger.warn(`[ReturnService] Return session ${sessionId} disputed by ${userId}: ${req.reason}`);
+    logger.warn(
+      `[ReturnService] Return session ${sessionId} disputed by ${userId}: ${req.reason}`
+    );
+
+    await this.clearLiveLocations(updated);
 
     const formatted = await this.formatSession(updated, userId);
     formatted.handover = {
-      ...(formatted.handover || { finderConfirmed: false, ownerConfirmed: false }),
+      ...(formatted.handover || {
+        finderConfirmed: false,
+        ownerConfirmed: false,
+      }),
       disputeReason: req.reason,
       disputedBy: userId,
       disputedAt: new Date().toISOString(),
@@ -1334,14 +1602,15 @@ export class ReturnService {
     emitReturnSessionUpdated(sessionId, formatted);
 
     // Notify counterparty
-    const counterpartyId = userId === session.ownerId ? session.finderId : session.ownerId;
+    const counterpartyId =
+      userId === session.ownerId ? session.finderId : session.ownerId;
     void notificationService.notifyReturnEvent({
       receiverId: counterpartyId,
       type: "HANDOVER_DISPUTED",
       title: "Tranh chấp bàn giao",
       content: `Phiên bàn giao đã bị khiếu nại: "${req.reason}". Đội ngũ hỗ trợ sẽ can thiệp.`,
       sessionId,
-      itemId: session.itemId,
+      itemId: session.itemId || undefined,
     });
 
     return formatted;
@@ -1350,7 +1619,10 @@ export class ReturnService {
   /**
    * GET /v1/returns/:id/reward
    */
-  async getRewardStatus(userId: string, sessionId: string): Promise<RewardPayout> {
+  async getRewardStatus(
+    userId: string,
+    sessionId: string
+  ): Promise<RewardPayout> {
     const session = await prisma.returnSession.findUnique({
       where: { id: sessionId },
       include: {
@@ -1361,6 +1633,15 @@ export class ReturnService {
 
     if (!session) throw new AppError("Return session not found", 404);
     this.assertParticipant(session, userId);
+
+    if (!session.itemId) {
+      throw new AppError(
+        "Found-report returns do not have a reward payout",
+        409,
+        true,
+        "REWARD_NOT_APPLICABLE"
+      );
+    }
 
     if (session.rewardPayout) {
       const rp = session.rewardPayout;
@@ -1404,6 +1685,7 @@ export class ReturnService {
         owner: true,
         finder: true,
         item: true,
+        foundReport: true,
         report: true,
         meetupProposals: true,
         arrivals: true,
@@ -1417,6 +1699,7 @@ export class ReturnService {
     if (!session) throw new AppError("Return session not found", 404);
     this.assertParticipant(session, userId);
     this.assertRevision(session, ifMatch);
+    assertReturnAction("RATE", session.status as ReturnSessionStatus);
 
     // P0: ONLY owner can rate finder
     if (userId !== session.ownerId) {
@@ -1463,6 +1746,7 @@ export class ReturnService {
           owner: true,
           finder: true,
           item: true,
+          foundReport: true,
           report: true,
           meetupProposals: true,
           arrivals: true,
@@ -1485,6 +1769,7 @@ export class ReturnService {
     ]);
 
     const formatted = await this.formatSession(updated, userId);
+    await this.clearLiveLocations(updated);
     emitReturnSessionUpdated(sessionId, formatted);
 
     // Notify finder
@@ -1494,7 +1779,7 @@ export class ReturnService {
       title: "Bạn vừa nhận được đánh giá mới!",
       content: `Chủ đồ đã gửi đánh giá ${req.score} sao cho bạn. Cảm ơn sự giúp đỡ của bạn!`,
       sessionId,
-      itemId: session.itemId,
+      itemId: session.itemId || undefined,
     });
 
     return formatted;

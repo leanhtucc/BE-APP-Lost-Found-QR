@@ -6,17 +6,101 @@ import {
 import { validate } from "../../middlewares/validate.middleware";
 import {
   createFoundReportSchema,
+  createFoundReportClaimSchema,
   foundReportIdSchema,
+  reviewFoundReportClaimSchema,
 } from "./found-report.schema";
 import {
   createFoundReport,
   getFoundFeed,
   getFoundReport,
+  createFoundReportClaim,
+  getMyFoundReportClaim,
+  listFoundReportClaims,
+  acceptFoundReportClaim,
+  rejectFoundReportClaim,
 } from "./found-report.service";
 import { lostFeedSchema } from "../home/home.schema";
 import { LostFeedQuery } from "../home/home.types";
 
 const router = Router();
+router.post(
+  "/:id/claims",
+  authMiddleware,
+  validate(createFoundReportClaimSchema),
+  async (req, res, next) => {
+    try {
+      const data = await createFoundReportClaim(
+        req.user!.id,
+        req.params.id!,
+        req.body.ownershipProof
+      );
+      res.status(201).json({ success: true, data });
+    } catch (error) {
+      next(error);
+    }
+  }
+);
+router.get(
+  "/:id/claims/mine",
+  authMiddleware,
+  validate(foundReportIdSchema),
+  async (req, res, next) => {
+    try {
+      const data = await getMyFoundReportClaim(req.user!.id, req.params.id!);
+      res.json({ success: true, data });
+    } catch (error) {
+      next(error);
+    }
+  }
+);
+router.get(
+  "/:id/claims",
+  authMiddleware,
+  validate(foundReportIdSchema),
+  async (req, res, next) => {
+    try {
+      const data = await listFoundReportClaims(req.user!.id, req.params.id!);
+      res.json({ success: true, data });
+    } catch (error) {
+      next(error);
+    }
+  }
+);
+router.post(
+  "/:id/claims/:claimId/accept",
+  authMiddleware,
+  validate(reviewFoundReportClaimSchema),
+  async (req, res, next) => {
+    try {
+      const data = await acceptFoundReportClaim(
+        req.user!.id,
+        req.params.id!,
+        req.params.claimId!
+      );
+      res.json({ success: true, data });
+    } catch (error) {
+      next(error);
+    }
+  }
+);
+router.post(
+  "/:id/claims/:claimId/reject",
+  authMiddleware,
+  validate(reviewFoundReportClaimSchema),
+  async (req, res, next) => {
+    try {
+      const data = await rejectFoundReportClaim(
+        req.user!.id,
+        req.params.id!,
+        req.params.claimId!
+      );
+      res.json({ success: true, data });
+    } catch (error) {
+      next(error);
+    }
+  }
+);
 router.post(
   "/",
   authMiddleware,
@@ -68,7 +152,7 @@ router.get(
   validate(foundReportIdSchema),
   async (req, res, next) => {
     try {
-      const data = await getFoundReport(req.params.id!);
+      const data = await getFoundReport(req.params.id!, req.user?.id);
       if (!data) {
         res
           .status(404)

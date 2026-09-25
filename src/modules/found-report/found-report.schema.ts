@@ -32,3 +32,15 @@ export const createFoundReportSchema = z.object({ body: foundReportBody });
 export const foundReportIdSchema = z.object({
   params: z.object({ id: z.string().min(1).max(100) }),
 });
+export const createFoundReportClaimSchema = z.object({
+  params: z.object({ id: z.string().min(1).max(100) }),
+  body: z.object({
+    ownershipProof: z.string().trim().min(10).max(2000),
+  }),
+});
+export const reviewFoundReportClaimSchema = z.object({
+  params: z.object({
+    id: z.string().min(1).max(100),
+    claimId: z.string().min(1).max(100),
+  }),
+});

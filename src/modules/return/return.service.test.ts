@@ -7,29 +7,44 @@ describe("ReturnService Unit Tests", () => {
     it("allows valid forward transition CHAT_ACTIVE -> MEETUP_PROPOSED", () => {
       // Accessing private assertValidTransition via reflection for isolated unit test
       expect(() => {
-        (returnService as any).assertValidTransition("CHAT_ACTIVE", "MEETUP_PROPOSED");
+        (returnService as any).assertValidTransition(
+          "CHAT_ACTIVE",
+          "MEETUP_PROPOSED"
+        );
       }).not.toThrow();
     });
 
     it("allows valid forward transition MEETUP_ACCEPTED -> TRACKING_ACTIVE", () => {
       expect(() => {
-        (returnService as any).assertValidTransition("MEETUP_ACCEPTED", "TRACKING_ACTIVE");
+        (returnService as any).assertValidTransition(
+          "MEETUP_ACCEPTED",
+          "TRACKING_ACTIVE"
+        );
       }).not.toThrow();
     });
 
     it("allows valid forward transition HANDOVER_PENDING -> HANDOVER_CONFIRMED", () => {
       expect(() => {
-        (returnService as any).assertValidTransition("HANDOVER_PENDING", "HANDOVER_CONFIRMED");
+        (returnService as any).assertValidTransition(
+          "HANDOVER_PENDING",
+          "HANDOVER_CONFIRMED"
+        );
       }).not.toThrow();
     });
 
     it("blocks illegal transition CHAT_ACTIVE -> HANDOVER_CONFIRMED with 409", () => {
       expect(() => {
-        (returnService as any).assertValidTransition("CHAT_ACTIVE", "HANDOVER_CONFIRMED");
+        (returnService as any).assertValidTransition(
+          "CHAT_ACTIVE",
+          "HANDOVER_CONFIRMED"
+        );
       }).toThrowError(AppError);
 
       try {
-        (returnService as any).assertValidTransition("CHAT_ACTIVE", "HANDOVER_CONFIRMED");
+        (returnService as any).assertValidTransition(
+          "CHAT_ACTIVE",
+          "HANDOVER_CONFIRMED"
+        );
       } catch (err: any) {
         expect(err.statusCode).toBe(409);
         expect(err.code).toBe("INVALID_RETURN_TRANSITION");
@@ -38,7 +53,10 @@ describe("ReturnService Unit Tests", () => {
 
     it("blocks illegal transition TRACKING_ACTIVE -> COMPLETED with 409", () => {
       try {
-        (returnService as any).assertValidTransition("TRACKING_ACTIVE", "COMPLETED");
+        (returnService as any).assertValidTransition(
+          "TRACKING_ACTIVE",
+          "COMPLETED"
+        );
         expect.unreachable("Should have thrown AppError");
       } catch (err: any) {
         expect(err.statusCode).toBe(409);
@@ -48,7 +66,10 @@ describe("ReturnService Unit Tests", () => {
 
     it("allows same state (no-op)", () => {
       expect(() => {
-        (returnService as any).assertValidTransition("TRACKING_ACTIVE", "TRACKING_ACTIVE");
+        (returnService as any).assertValidTransition(
+          "TRACKING_ACTIVE",
+          "TRACKING_ACTIVE"
+        );
       }).not.toThrow();
     });
   });
@@ -60,18 +81,27 @@ describe("ReturnService Unit Tests", () => {
     };
 
     it("identifies owner correctly", () => {
-      const role = (returnService as any).assertParticipant(mockSession, "user_owner_123");
+      const role = (returnService as any).assertParticipant(
+        mockSession,
+        "user_owner_123"
+      );
       expect(role).toBe("OWNER");
     });
 
     it("identifies finder correctly", () => {
-      const role = (returnService as any).assertParticipant(mockSession, "user_finder_456");
+      const role = (returnService as any).assertParticipant(
+        mockSession,
+        "user_finder_456"
+      );
       expect(role).toBe("FINDER");
     });
 
     it("rejects non-participant with 403 FORBIDDEN", () => {
       try {
-        (returnService as any).assertParticipant(mockSession, "attacker_stranger_999");
+        (returnService as any).assertParticipant(
+          mockSession,
+          "attacker_stranger_999"
+        );
         expect.unreachable("Should have thrown AppError");
       } catch (err: any) {
         expect(err.statusCode).toBe(403);

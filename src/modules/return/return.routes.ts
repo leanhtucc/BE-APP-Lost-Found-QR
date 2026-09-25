@@ -71,6 +71,8 @@ router.post("/:id/tracking/stop", returnController.stopTracking);
  */
 router.post("/:id/arrival", returnController.notifyArrival);
 
+router.post("/:id/cancel", returnController.cancelReturn);
+
 /**
  * @route   POST /v1/returns/:id/handover/init
  * @desc    Khởi tạo bàn giao và sinh mã PIN 6 số bảo mật

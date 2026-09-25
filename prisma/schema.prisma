@@ -98,6 +98,8 @@ model User {
   // Relations
   ownedItems             Item[]                  @relation("ItemOwner")
   foundReports           FoundReport[]
+  foundReportClaims      FoundReportClaim[]      @relation("FoundReportClaimant")
+  reviewedFoundClaims    FoundReportClaim[]      @relation("FoundReportClaimReviewer")
   locations              UserLocation[]
   posts                  Post[]
   notifications          Notification[]
@@ -213,44 +215,44 @@ model Notification {
 }
 
 model Item {
-  id                String                                @id @default(cuid())
-  itemId            String                                @unique @default(cuid())
-  ownerId           String
-  name              String
-  category          String
-  description       String?
-  status            ItemStatus                            @default(SAFE)
-  lostMessage       String?
-  qrCodeUrl         String?
-  securityToken     String                                @unique
-  latitude          Float?
-  longitude         Float?
-  locationGeoHash   String?                               @map("location_geohash") @db.VarChar(16)
-  location          Unsupported("geography(Point,4326)")?
-  locationUpdatedAt DateTime?                             @map("location_updated_at")
-  createdAt         DateTime                              @default(now())
-  updatedAt         DateTime                              @updatedAt
-  imagePublicUrl    String?
-  lastSeenLocation  String?
-  securityPin       String?
+  id                    String                                @id @default(cuid())
+  itemId                String                                @unique @default(cuid())
+  ownerId               String
+  name                  String
+  category              String
+  description           String?
+  status                ItemStatus                            @default(SAFE)
+  lostMessage           String?
+  qrCodeUrl             String?
+  securityToken         String                                @unique
+  latitude              Float?
+  longitude             Float?
+  locationGeoHash       String?                               @map("location_geohash") @db.VarChar(16)
+  location              Unsupported("geography(Point,4326)")?
+  locationUpdatedAt     DateTime?                             @map("location_updated_at")
+  createdAt             DateTime                              @default(now())
+  updatedAt             DateTime                              @updatedAt
+  imagePublicUrl        String?
+  lastSeenLocation      String?
+  securityPin           String?
   // Guardian fields
-  qrCodeId          String                                @unique @default(cuid()) @map("qr_code_id")
-  details           Json? // {"color": "Titan Đen", "storage": "256GB", "serial": "48A..."}
-  hasInsurance      Boolean                               @default(false) @map("has_insurance")
+  qrCodeId              String                                @unique @default(cuid()) @map("qr_code_id")
+  details               Json? // {"color": "Titan Đen", "storage": "256GB", "serial": "48A..."}
+  hasInsurance          Boolean                               @default(false) @map("has_insurance")
   // Lost item coordinates
-  lostLat           Float?
-  lostLng           Float?
-  lostAddress       String?
+  lostLat               Float?
+  lostLng               Float?
+  lostAddress           String?
   // Registered capture location (private to owner)
-  captureLatitude       Float?    @map("capture_latitude")
-  captureLongitude      Float?    @map("capture_longitude")
-  captureAddress        String?   @map("capture_address")
-  captureAccuracyMeters Float?    @map("capture_accuracy_meters")
-  capturedAt            DateTime? @map("captured_at")
-  owner             User                                  @relation("ItemOwner", fields: [ownerId], references: [id], onDelete: Cascade)
-  posts             Post[]
-  qrScans           QrScan[]
-  returnSessions    ReturnSession[]
+  captureLatitude       Float?                                @map("capture_latitude")
+  captureLongitude      Float?                                @map("capture_longitude")
+  captureAddress        String?                               @map("capture_address")
+  captureAccuracyMeters Float?                                @map("capture_accuracy_meters")
+  capturedAt            DateTime?                             @map("captured_at")
+  owner                 User                                  @relation("ItemOwner", fields: [ownerId], references: [id], onDelete: Cascade)
+  posts                 Post[]
+  qrScans               QrScan[]
+  returnSessions        ReturnSession[]
 
   @@index([itemId])
   @@index([ownerId])
@@ -260,7 +262,7 @@ model Item {
 }
 
 model FoundReport {
-  id             String   @id @default(cuid())
+  id             String             @id @default(cuid())
   finderId       String
   idempotencyKey String
   name           String
@@ -271,13 +273,45 @@ model FoundReport {
   lng            Float
   address        String
   resolvedAt     DateTime?
-  createdAt      DateTime @default(now())
-  updatedAt      DateTime @updatedAt
-  finder         User     @relation(fields: [finderId], references: [id], onDelete: Cascade)
+  createdAt      DateTime           @default(now())
+  updatedAt      DateTime           @updatedAt
+  finder         User               @relation(fields: [finderId], references: [id], onDelete: Cascade)
+  claims         FoundReportClaim[]
+  returnSessions ReturnSession[]
 
   @@unique([finderId, idempotencyKey])
   @@index([resolvedAt, createdAt])
   @@index([lat, lng])
+}
+
+enum FoundReportClaimStatus {
+  PENDING
+  ACCEPTED
+  REJECTED
+  WITHDRAWN
+}
+
+model FoundReportClaim {
+  id              String                 @id @default(cuid())
+  foundReportId   String                 @map("found_report_id")
+  claimantId      String                 @map("claimant_id")
+  ownershipProof  String                 @map("ownership_proof")
+  status          FoundReportClaimStatus @default(PENDING)
+  reviewedAt      DateTime?              @map("reviewed_at")
+  reviewedById    String?                @map("reviewed_by_id")
+  returnSessionId String?                @unique @map("return_session_id")
+  createdAt       DateTime               @default(now()) @map("created_at")
+  updatedAt       DateTime               @updatedAt @map("updated_at")
+
+  foundReport   FoundReport    @relation(fields: [foundReportId], references: [id], onDelete: Cascade)
+  claimant      User           @relation("FoundReportClaimant", fields: [claimantId], references: [id], onDelete: Cascade)
+  reviewedBy    User?          @relation("FoundReportClaimReviewer", fields: [reviewedById], references: [id], onDelete: SetNull)
+  returnSession ReturnSession? @relation(fields: [returnSessionId], references: [id], onDelete: SetNull)
+
+  @@unique([foundReportId, claimantId])
+  @@index([foundReportId, status])
+  @@index([claimantId, status])
+  @@map("found_report_claims")
 }
 
 model QrScan {
@@ -447,7 +481,8 @@ enum RewardPayoutStatus {
 model ReturnSession {
   id                String              @id @default(cuid())
   channelId         String              @unique @map("channel_id")
-  itemId            String              @map("item_id")
+  itemId            String?             @map("item_id")
+  foundReportId     String?             @map("found_report_id")
   reportId          String?             @map("report_id")
   ownerId           String              @map("owner_id")
   finderId          String              @map("finder_id")
@@ -459,10 +494,12 @@ model ReturnSession {
   createdAt         DateTime            @default(now()) @map("created_at")
   updatedAt         DateTime            @updatedAt @map("updated_at")
 
-  owner             User                @relation("ReturnSessionOwner", fields: [ownerId], references: [id], onDelete: Cascade)
-  finder            User                @relation("ReturnSessionFinder", fields: [finderId], references: [id], onDelete: Cascade)
-  item              Item                @relation(fields: [itemId], references: [id], onDelete: Cascade)
-  report            Post?               @relation(fields: [reportId], references: [id], onDelete: SetNull)
+  owner            User              @relation("ReturnSessionOwner", fields: [ownerId], references: [id], onDelete: Cascade)
+  finder           User              @relation("ReturnSessionFinder", fields: [finderId], references: [id], onDelete: Cascade)
+  item             Item?             @relation(fields: [itemId], references: [id], onDelete: Cascade)
+  foundReport      FoundReport?      @relation(fields: [foundReportId], references: [id], onDelete: Cascade)
+  report           Post?             @relation(fields: [reportId], references: [id], onDelete: SetNull)
+  foundReportClaim FoundReportClaim?
 
   meetupProposals       ReturnMeetupProposal[]
   arrivals              ReturnArrival[]
@@ -473,6 +510,7 @@ model ReturnSession {
 
   @@index([channelId])
   @@index([itemId])
+  @@index([foundReportId])
   @@index([ownerId])
   @@index([finderId])
   @@index([status])
@@ -493,7 +531,7 @@ model ReturnMeetupProposal {
   proposedAt    DateTime     @default(now()) @map("proposed_at")
   respondedAt   DateTime?    @map("responded_at")
 
-  session       ReturnSession @relation(fields: [sessionId], references: [id], onDelete: Cascade)
+  session ReturnSession @relation(fields: [sessionId], references: [id], onDelete: Cascade)
 
   @@index([sessionId, status])
   @@map("return_meetup_proposals")
@@ -510,7 +548,7 @@ model ReturnArrival {
   distanceMeters Float?         @map("distance_meters")
   accuracy       Float?
 
-  session        ReturnSession  @relation(fields: [sessionId], references: [id], onDelete: Cascade)
+  session ReturnSession @relation(fields: [sessionId], references: [id], onDelete: Cascade)
 
   @@unique([sessionId, participantId])
   @@index([sessionId])
@@ -518,17 +556,17 @@ model ReturnArrival {
 }
 
 model HandoverChallenge {
-  id               String        @id @default(cuid())
-  sessionId        String        @unique @map("session_id")
-  codeHash         String        @map("code_hash")
-  expiresAt        DateTime      @map("expires_at")
-  attemptCount     Int           @default(0) @map("attempt_count")
-  maxAttempts      Int           @default(5) @map("max_attempts")
-  consumedAt       DateTime?     @map("consumed_at")
-  createdForUserId String        @map("created_for_user_id")
-  createdAt        DateTime      @default(now()) @map("created_at")
+  id               String    @id @default(cuid())
+  sessionId        String    @unique @map("session_id")
+  codeHash         String    @map("code_hash")
+  expiresAt        DateTime  @map("expires_at")
+  attemptCount     Int       @default(0) @map("attempt_count")
+  maxAttempts      Int       @default(5) @map("max_attempts")
+  consumedAt       DateTime? @map("consumed_at")
+  createdForUserId String    @map("created_for_user_id")
+  createdAt        DateTime  @default(now()) @map("created_at")
 
-  session          ReturnSession @relation(fields: [sessionId], references: [id], onDelete: Cascade)
+  session ReturnSession @relation(fields: [sessionId], references: [id], onDelete: Cascade)
 
   @@map("handover_challenges")
 }
@@ -542,7 +580,7 @@ model HandoverConfirmation {
   idempotencyKey     String?        @map("idempotency_key")
   confirmedAt        DateTime       @default(now()) @map("confirmed_at")
 
-  session            ReturnSession  @relation(fields: [sessionId], references: [id], onDelete: Cascade)
+  session ReturnSession @relation(fields: [sessionId], references: [id], onDelete: Cascade)
 
   @@unique([sessionId, participantId])
   @@index([sessionId])
@@ -566,25 +604,25 @@ model RewardPayoutRecord {
   createdAt           DateTime           @default(now()) @map("created_at")
   updatedAt           DateTime           @updatedAt @map("updated_at")
 
-  session             ReturnSession      @relation(fields: [sessionId], references: [id], onDelete: Cascade)
+  session ReturnSession @relation(fields: [sessionId], references: [id], onDelete: Cascade)
 
   @@index([status])
   @@map("reward_payouts")
 }
 
 model FinderRatingRecord {
-  id        String        @id @default(cuid())
-  sessionId String        @unique @map("session_id")
-  raterId   String        @map("rater_id")
-  finderId  String        @map("finder_id")
+  id        String   @id @default(cuid())
+  sessionId String   @unique @map("session_id")
+  raterId   String   @map("rater_id")
+  finderId  String   @map("finder_id")
   score     Int
-  tags      String[]      @default([])
+  tags      String[] @default([])
   comment   String?
-  createdAt DateTime      @default(now()) @map("created_at")
+  createdAt DateTime @default(now()) @map("created_at")
 
-  session   ReturnSession @relation(fields: [sessionId], references: [id], onDelete: Cascade)
-  rater     User          @relation("RatingRater", fields: [raterId], references: [id], onDelete: Cascade)
-  finder    User          @relation("RatingFinder", fields: [finderId], references: [id], onDelete: Cascade)
+  session ReturnSession @relation(fields: [sessionId], references: [id], onDelete: Cascade)
+  rater   User          @relation("RatingRater", fields: [raterId], references: [id], onDelete: Cascade)
+  finder  User          @relation("RatingFinder", fields: [finderId], references: [id], onDelete: Cascade)
 
   @@index([finderId])
   @@map("finder_ratings")

@@ -7,6 +7,9 @@ import {
   haversineDistanceMeters,
 } from "../../utils/geospatial";
 import { HOME_LOST_RADIUS_METERS } from "../../utils/constants";
+import { AppError } from "../../middlewares/error.middleware";
+import { nanoid } from "nanoid";
+import { createReturnChannel, upsertStreamUser } from "../../libs/stream-chat";
 
 const publicSelect = {
   id: true,
@@ -48,8 +51,23 @@ export async function createFoundReport(
   });
 }
 
-export async function getFoundReport(id: string) {
-  return prisma.foundReport.findUnique({ where: { id }, select: publicSelect });
+export async function getFoundReport(id: string, userId?: string) {
+  if (userId) {
+    const report = await prisma.foundReport.findUnique({
+      where: { id },
+      select: { ...publicSelect, finderId: true },
+    });
+    if (!report) return null;
+    const { finderId, ...safe } = report;
+    return { ...safe, isOwn: finderId === userId };
+  }
+
+  const report = await prisma.foundReport.findUnique({
+    where: { id },
+    select: publicSelect,
+  });
+  if (!report) return null;
+  return { ...report, isOwn: false };
 }
 
 export async function getFoundFeed(
@@ -139,4 +157,181 @@ export async function getFoundFeed(
   );
   publicCards.sort((a, b) => (a.distanceMeters ?? 0) - (b.distanceMeters ?? 0));
   return [...ownCards, ...publicCards.slice(0, 100)];
+}
+
+const claimPublicSelect = {
+  id: true,
+  foundReportId: true,
+  claimantId: true,
+  ownershipProof: true,
+  status: true,
+  returnSessionId: true,
+  createdAt: true,
+  reviewedAt: true,
+} as const;
+
+export async function createFoundReportClaim(
+  claimantId: string,
+  foundReportId: string,
+  ownershipProof: string
+) {
+  const report = await prisma.foundReport.findUnique({
+    where: { id: foundReportId },
+  });
+  if (!report || report.resolvedAt)
+    throw new AppError("Found report is not available", 404);
+  if (report.finderId === claimantId) {
+    throw new AppError("Finder cannot claim their own report", 409);
+  }
+  return prisma.foundReportClaim.upsert({
+    where: { foundReportId_claimantId: { foundReportId, claimantId } },
+    update: {},
+    create: { foundReportId, claimantId, ownershipProof },
+    select: claimPublicSelect,
+  });
+}
+
+export async function getMyFoundReportClaim(
+  claimantId: string,
+  foundReportId: string
+) {
+  return prisma.foundReportClaim.findUnique({
+    where: { foundReportId_claimantId: { foundReportId, claimantId } },
+    select: claimPublicSelect,
+  });
+}
+
+export async function listFoundReportClaims(
+  finderId: string,
+  foundReportId: string
+) {
+  const report = await prisma.foundReport.findUnique({
+    where: { id: foundReportId },
+  });
+  if (!report) throw new AppError("Found report not found", 404);
+  if (report.finderId !== finderId) throw new AppError("Forbidden", 403);
+  return prisma.foundReportClaim.findMany({
+    where: { foundReportId },
+    select: {
+      ...claimPublicSelect,
+      claimant: { select: { displayName: true, photoURL: true } },
+    },
+    orderBy: { createdAt: "desc" },
+  });
+}
+
+export async function rejectFoundReportClaim(
+  finderId: string,
+  foundReportId: string,
+  claimId: string
+) {
+  const claim = await prisma.foundReportClaim.findFirst({
+    where: { id: claimId, foundReportId },
+    include: { foundReport: true },
+  });
+  if (!claim) throw new AppError("Claim not found", 404);
+  if (claim.foundReport.finderId !== finderId)
+    throw new AppError("Forbidden", 403);
+  if (claim.status !== "PENDING")
+    throw new AppError("Claim is no longer pending", 409);
+  return prisma.foundReportClaim.update({
+    where: { id: claim.id },
+    data: {
+      status: "REJECTED",
+      reviewedAt: new Date(),
+      reviewedById: finderId,
+    },
+    select: claimPublicSelect,
+  });
+}
+
+export async function acceptFoundReportClaim(
+  finderId: string,
+  foundReportId: string,
+  claimId: string
+) {
+  const accepted = await prisma.$transaction(async (tx) => {
+    const claim = await tx.foundReportClaim.findFirst({
+      where: { id: claimId, foundReportId },
+      include: {
+        foundReport: { include: { finder: true } },
+        claimant: true,
+        returnSession: true,
+      },
+    });
+    if (!claim) throw new AppError("Claim not found", 404);
+    if (claim.foundReport.finderId !== finderId)
+      throw new AppError("Forbidden", 403);
+    if (claim.status === "ACCEPTED" && claim.returnSession) return claim;
+    if (claim.status !== "PENDING" || claim.foundReport.resolvedAt) {
+      throw new AppError("Claim is no longer available", 409);
+    }
+    const otherAccepted = await tx.foundReportClaim.findFirst({
+      where: { foundReportId, status: "ACCEPTED" },
+    });
+    if (otherAccepted)
+      throw new AppError("Another claim was already accepted", 409);
+
+    const sessionId = `ret_${nanoid(18)}`;
+    const session = await tx.returnSession.create({
+      data: {
+        id: sessionId,
+        channelId: `return_${sessionId}`,
+        foundReportId,
+        ownerId: claim.claimantId,
+        finderId,
+      },
+    });
+    await tx.foundReportClaim.updateMany({
+      where: { foundReportId, id: { not: claim.id }, status: "PENDING" },
+      data: {
+        status: "REJECTED",
+        reviewedAt: new Date(),
+        reviewedById: finderId,
+      },
+    });
+    return tx.foundReportClaim.update({
+      where: { id: claim.id },
+      data: {
+        status: "ACCEPTED",
+        reviewedAt: new Date(),
+        reviewedById: finderId,
+        returnSessionId: session.id,
+      },
+      include: {
+        foundReport: { include: { finder: true } },
+        claimant: true,
+        returnSession: true,
+      },
+    });
+  });
+
+  const session = accepted.returnSession!;
+  await Promise.all([
+    upsertStreamUser({
+      id: accepted.foundReport.finder.id,
+      name: accepted.foundReport.finder.displayName,
+      email: accepted.foundReport.finder.email,
+      image: accepted.foundReport.finder.photoURL || "",
+    }),
+    upsertStreamUser({
+      id: accepted.claimant.id,
+      name: accepted.claimant.displayName,
+      email: accepted.claimant.email,
+      image: accepted.claimant.photoURL || "",
+    }),
+  ]);
+  const channel = await createReturnChannel({
+    channelId: session.channelId,
+    sourceType: "FOUND_REPORT",
+    sourceId: accepted.foundReportId,
+    subjectName: accepted.foundReport.name,
+    ownerId: accepted.claimantId,
+    finderId,
+  });
+  return {
+    claim: { ...accepted, ownershipProof: undefined },
+    channel,
+    returnSessionId: session.id,
+  };
 }
