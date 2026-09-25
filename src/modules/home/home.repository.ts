@@ -70,6 +70,7 @@ export async function fetchLostFeed(
     WHERE i."status" = ${ItemStatus.LOST}::"ItemStatus"
       AND i."location" IS NOT NULL
       AND ST_DWithin(i."location", ${point}, ${effectiveRadius})
+      ${query.category ? Prisma.sql`AND i."category" = ${query.category}` : Prisma.empty}
     ORDER BY
       ST_Distance(i."location", ${point}) ASC,
       COALESCE(i."location_updated_at", i."updatedAt") DESC,

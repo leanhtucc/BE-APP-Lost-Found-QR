@@ -755,7 +755,61 @@ export class ItemService {
       );
     }
 
-    const updated = await itemRepository.updateItem(item.id, data);
+    const updatePayload: UpdateItemDTO = { ...data };
+
+    if (data.captureLocation !== undefined) {
+      if (data.captureLocation === null) {
+        updatePayload.captureLatitude = null;
+        updatePayload.captureLongitude = null;
+        updatePayload.captureAddress = null;
+        updatePayload.captureAccuracyMeters = null;
+        updatePayload.capturedAt = null;
+      } else {
+        const cLat = data.captureLocation.latitude;
+        const cLng = data.captureLocation.longitude;
+        if (cLat < -90 || cLat > 90) {
+          throw new AppError("latitude must be in range [-90, 90]", 400);
+        }
+        if (cLng < -180 || cLng > 180) {
+          throw new AppError("longitude must be in range [-180, 180]", 400);
+        }
+        updatePayload.captureLatitude = cLat;
+        updatePayload.captureLongitude = cLng;
+        updatePayload.captureAddress = data.captureLocation.address || null;
+        updatePayload.captureAccuracyMeters = data.captureLocation.accuracyMeters ?? null;
+        updatePayload.capturedAt = data.captureLocation.capturedAt
+          ? new Date(data.captureLocation.capturedAt)
+          : new Date();
+      }
+      delete updatePayload.captureLocation;
+    } else if (data.latitude !== undefined && data.longitude !== undefined) {
+      if (data.latitude !== null && data.longitude !== null) {
+        if (data.latitude < -90 || data.latitude > 90) {
+          throw new AppError("latitude must be in range [-90, 90]", 400);
+        }
+        if (data.longitude < -180 || data.longitude > 180) {
+          throw new AppError("longitude must be in range [-180, 180]", 400);
+        }
+        updatePayload.captureLatitude = data.latitude;
+        updatePayload.captureLongitude = data.longitude;
+        updatePayload.captureAddress = data.address || data.lastSeenLocation || null;
+        updatePayload.capturedAt = new Date();
+      } else if (data.latitude === null && data.longitude === null) {
+        updatePayload.captureLatitude = null;
+        updatePayload.captureLongitude = null;
+        updatePayload.captureAddress = null;
+        updatePayload.captureAccuracyMeters = null;
+        updatePayload.capturedAt = null;
+      }
+    }
+
+    // Clean ephemeral fields so they don't leak into Prisma update
+    delete (updatePayload as any).latitude;
+    delete (updatePayload as any).longitude;
+    delete (updatePayload as any).address;
+    delete (updatePayload as any).lastSeenLocation;
+
+    const updated = await itemRepository.updateItem(item.id, updatePayload);
 
     logger.info(`Item updated: ${item.qrCodeId} by user ${userId}`);
 

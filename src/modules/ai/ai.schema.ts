@@ -20,3 +20,13 @@ export const sendAiMessageSchema = z.object({
     content: z.string().trim().min(1).max(4000),
   }),
 });
+
+export const classifyItemSchema = z.object({
+  body: z.object({
+    description: z
+      .string()
+      .trim()
+      .min(1, "Description is required")
+      .max(1000, "Description must be less than 1000 characters"),
+  }),
+});

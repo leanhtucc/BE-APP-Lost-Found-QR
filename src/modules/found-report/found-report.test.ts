@@ -15,7 +15,12 @@ vi.mock("../../middlewares/auth.middleware", () => ({
     req.user = { id: "finder-1" };
     next();
   },
-  optionalAuth: (_req: any, _res: any, next: any) => next(),
+  optionalAuth: (req: any, _res: any, next: any) => {
+    if (req.headers.authorization) {
+      req.user = { id: "finder-1" };
+    }
+    next();
+  },
 }));
 import router from "./found-report.routes";
 import { getFoundFeed } from "./found-report.service";
@@ -125,5 +130,145 @@ describe("found reports", () => {
   it("returns 404 for an unknown report", async () => {
     db.findUnique.mockResolvedValue(null);
     expect((await request(app).get("/found-reports/missing")).status).toBe(404);
+  });
+
+  describe("GET /found-reports/feed", () => {
+    it("returns public feed pins and cards for guest users without exposing finder identity", async () => {
+      db.findMany.mockResolvedValueOnce([
+        {
+          ...record,
+          id: "report-10",
+          finderId: "stranger",
+          lat: 21.02,
+          lng: 105.83,
+        },
+      ]);
+
+      const response = await request(app)
+        .get("/found-reports/feed")
+        .query({ lat: 21.02, lng: 105.83, radius: 5000 });
+
+      expect(response.status).toBe(200);
+      expect(response.body.success).toBe(true);
+      expect(response.body.data.cards).toHaveLength(1);
+      expect(response.body.data.pins).toHaveLength(1);
+      expect(response.body.data.totalCount).toBe(1);
+
+      const card = response.body.data.cards[0];
+      expect(card.itemId).toBe("found:report-10");
+      expect(card.reportType).toBe("FOUND");
+      expect(card.isOwn).toBe(false);
+      expect(card.ownerDisplayName).toBe("Người nhặt được");
+      expect(card).not.toHaveProperty("finderId");
+      expect(card).not.toHaveProperty("finder");
+
+      const pin = response.body.data.pins[0];
+      expect(pin.itemId).toBe("found:report-10");
+      expect(pin.lat).toBe(21.02);
+      expect(pin.lng).toBe(105.83);
+      expect(pin.isOwn).toBe(false);
+    });
+
+    it("prefilters with bounding box and category in database query for authenticated users", async () => {
+      db.findMany
+        .mockResolvedValueOnce([]) // own
+        .mockResolvedValueOnce([]); // nearby
+
+      const response = await request(app)
+        .get("/found-reports/feed")
+        .set("Authorization", "test")
+        .query({ lat: 21.02, lng: 105.83, radius: 2000, category: "wallet" });
+
+      expect(response.status).toBe(200);
+      expect(db.findMany).toHaveBeenCalledTimes(2);
+
+      const nearbyCall = db.findMany.mock.calls[1]![0];
+      expect(nearbyCall.where).toMatchObject({
+        resolvedAt: null,
+        category: "wallet",
+        lat: expect.objectContaining({
+          gte: expect.any(Number),
+          lte: expect.any(Number),
+        }),
+        lng: expect.objectContaining({
+          gte: expect.any(Number),
+          lte: expect.any(Number),
+        }),
+      });
+    });
+
+    it("handles zero coordinates correctly (equator/meridian)", async () => {
+      db.findMany.mockResolvedValueOnce([
+        { ...record, id: "report-zero", finderId: "other", lat: 0, lng: 0 },
+      ]);
+
+      const response = await request(app)
+        .get("/found-reports/feed")
+        .query({ lat: 0, lng: 0, radius: 1000 });
+
+      expect(response.status).toBe(200);
+      expect(response.body.success).toBe(true);
+      expect(response.body.data.cards).toHaveLength(1);
+    });
+
+    it("rejects invalid coordinates with 400 Bad Request", async () => {
+      const response = await request(app)
+        .get("/found-reports/feed")
+        .query({ lat: 95, lng: 105.83 });
+
+      expect(response.status).toBe(400);
+      expect(db.findMany).not.toHaveBeenCalled();
+    });
+
+    it("returns empty cards and pins when no reports are found", async () => {
+      db.findMany.mockResolvedValueOnce([]).mockResolvedValueOnce([]);
+
+      const response = await request(app)
+        .get("/found-reports/feed")
+        .query({ lat: 21.02, lng: 105.83, radius: 1000 });
+
+      expect(response.status).toBe(200);
+      expect(response.body.data.cards).toEqual([]);
+      expect(response.body.data.pins).toEqual([]);
+      expect(response.body.data.totalCount).toBe(0);
+    });
+
+    it("strictly omits sensitive fields (finderId, idempotencyKey, email, phone, handover) from public response", async () => {
+      db.findMany.mockResolvedValueOnce([
+        {
+          id: "rep-secret",
+          name: "Ví da",
+          category: "wallet",
+          description: "Nhặt được tại quán cà phê",
+          imagePublicUrl: "https://example.com/item.jpg",
+          lat: 21.02,
+          lng: 105.83,
+          address: "123 Phố Huế",
+          createdAt: new Date(),
+          resolvedAt: null,
+          finderId: "user-secret-999",
+          idempotencyKey: "secret-key-123",
+        },
+      ]);
+
+      const response = await request(app)
+        .get("/found-reports/feed")
+        .query({ lat: 21.02, lng: 105.83, radius: 1000 });
+
+      expect(response.status).toBe(200);
+      const card = response.body.data.cards[0];
+      const pin = response.body.data.pins[0];
+
+      // Privacy checks
+      expect(card).not.toHaveProperty("finderId");
+      expect(card).not.toHaveProperty("idempotencyKey");
+      expect(card).not.toHaveProperty("email");
+      expect(card).not.toHaveProperty("phone");
+      expect(card).not.toHaveProperty("handover");
+      expect(card).not.toHaveProperty("verificationCode");
+
+      expect(pin).not.toHaveProperty("finderId");
+      expect(pin).not.toHaveProperty("idempotencyKey");
+    });
   });
 });

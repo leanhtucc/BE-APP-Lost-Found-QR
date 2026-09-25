@@ -53,6 +53,7 @@
     "@types/node": "^22.20.1",
     "@types/node-cron": "^3.0.11",
     "@types/nodemailer": "^8.0.1",
+    "@typesafe-ai/sdk": "^0.6.0",
     "@upstash/redis": "^1.38.2",
     "bcrypt": "^6.0.0",
     "cors": "^2.8.6",

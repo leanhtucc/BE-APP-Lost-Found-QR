@@ -193,9 +193,10 @@ export class ItemRepository {
 
   // Cập nhật item
   async updateItem(id: string, data: UpdateItemDTO) {
+    const { captureLocation, address, lastSeenLocation, latitude, longitude, ...cleanData } = data as any;
     return await prisma.item.update({
       where: { id },
-      data,
+      data: cleanData,
       include: {
         owner: {
           select: {

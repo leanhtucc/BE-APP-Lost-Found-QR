@@ -143,3 +143,30 @@ export function haversineDistanceMeters(
   const c = 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
   return EARTH_RADIUS_METERS * c;
 }
+
+export interface BoundingBox {
+  minLat: number;
+  maxLat: number;
+  minLng: number;
+  maxLng: number;
+}
+
+export function calculateBoundingBox(
+  lat: number,
+  lng: number,
+  radiusMeters: number
+): BoundingBox {
+  const metersPerLatDegree = 111320;
+  const cosLat = Math.max(0.0001, Math.cos((lat * Math.PI) / 180));
+  const metersPerLngDegree = metersPerLatDegree * cosLat;
+
+  const latDelta = radiusMeters / metersPerLatDegree;
+  const lngDelta = radiusMeters / metersPerLngDegree;
+
+  return {
+    minLat: Math.max(-90, lat - latDelta),
+    maxLat: Math.min(90, lat + latDelta),
+    minLng: Math.max(-180, lng - lngDelta),
+    maxLng: Math.min(180, lng + lngDelta),
+  };
+}

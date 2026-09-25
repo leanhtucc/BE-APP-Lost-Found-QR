@@ -27,14 +27,21 @@ export class MapService {
    */
   async autocomplete(
     input: string,
-    options?: { lat?: number; lng?: number; radius?: number; sessionToken?: string }
+    options?: {
+      lat?: number;
+      lng?: number;
+      radius?: number;
+      sessionToken?: string;
+    }
   ): Promise<PlaceAutocompletePrediction[]> {
     const trimmed = input.trim();
     if (!trimmed) return [];
 
     const apiKey = ENV.GOOGLE_MAPS_API_KEY;
     if (!apiKey) {
-      logger.warn("GOOGLE_MAPS_API_KEY is not set. Map search will return empty results.");
+      logger.warn(
+        "GOOGLE_MAPS_API_KEY is not set. Map search will return empty results."
+      );
       return [];
     }
 
@@ -62,24 +69,31 @@ export class MapService {
         payload.sessionToken = options.sessionToken;
       }
 
-      const response = await fetch("https://places.googleapis.com/v1/places:autocomplete", {
-        method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-          "X-Goog-Api-Key": apiKey,
-        },
-        body: JSON.stringify(payload),
-      });
+      const response = await fetch(
+        "https://places.googleapis.com/v1/places:autocomplete",
+        {
+          method: "POST",
+          headers: {
+            "Content-Type": "application/json",
+            "X-Goog-Api-Key": apiKey,
+          },
+          body: JSON.stringify(payload),
+        }
+      );
 
       if (response.ok) {
         const data = (await response.json()) as any;
         if (Array.isArray(data.suggestions) && data.suggestions.length > 0) {
           return data.suggestions.map((item: any) => {
             const pred = item.placePrediction || {};
-            const placeId = pred.placeId || (pred.place ? String(pred.place).replace(/^places\//, "") : "");
+            const placeId =
+              pred.placeId ||
+              (pred.place ? String(pred.place).replace(/^places\//, "") : "");
             const description = pred.text?.text || "";
-            const mainText = pred.structuredFormat?.mainText?.text || description;
-            const secondaryText = pred.structuredFormat?.secondaryText?.text || "";
+            const mainText =
+              pred.structuredFormat?.mainText?.text || description;
+            const secondaryText =
+              pred.structuredFormat?.secondaryText?.text || "";
             return {
               place_id: placeId,
               description,
@@ -90,12 +104,16 @@ export class MapService {
         }
       }
     } catch (err: any) {
-      logger.warn(`Google Places API (New) autocomplete error: ${err?.message}`);
+      logger.warn(
+        `Google Places API (New) autocomplete error: ${err?.message}`
+      );
     }
 
     // 2. Fallback to Legacy Google Places Autocomplete API
     try {
-      const url = new URL("https://maps.googleapis.com/maps/api/place/autocomplete/json");
+      const url = new URL(
+        "https://maps.googleapis.com/maps/api/place/autocomplete/json"
+      );
       url.searchParams.set("input", trimmed);
       url.searchParams.set("components", "country:vn");
       url.searchParams.set("language", "vi");
@@ -112,11 +130,16 @@ export class MapService {
       const response = await fetch(url.toString());
       if (response.ok) {
         const data = (await response.json()) as any;
-        if (data.status === "OK" && Array.isArray(data.predictions) && data.predictions.length > 0) {
+        if (
+          data.status === "OK" &&
+          Array.isArray(data.predictions) &&
+          data.predictions.length > 0
+        ) {
           return data.predictions.map((item: any) => ({
             place_id: item.place_id,
             description: item.description,
-            main_text: item.structured_formatting?.main_text || item.description,
+            main_text:
+              item.structured_formatting?.main_text || item.description,
             secondary_text: item.structured_formatting?.secondary_text || "",
           }));
         }
@@ -131,10 +154,17 @@ export class MapService {
       if (geoResults) {
         return [
           {
-            place_id: geoResults.place_id || `geo_${geoResults.lat}_${geoResults.lng}`,
+            place_id:
+              geoResults.place_id || `geo_${geoResults.lat}_${geoResults.lng}`,
             description: geoResults.formatted_address,
-            main_text: geoResults.formatted_address.split(",")[0]?.trim() || geoResults.formatted_address,
-            secondary_text: geoResults.formatted_address.split(",").slice(1).join(",").trim(),
+            main_text:
+              geoResults.formatted_address.split(",")[0]?.trim() ||
+              geoResults.formatted_address,
+            secondary_text: geoResults.formatted_address
+              .split(",")
+              .slice(1)
+              .join(",")
+              .trim(),
           },
         ];
       }
@@ -148,7 +178,10 @@ export class MapService {
   /**
    * Get full details (lat, lng, formatted address) from place_id.
    */
-  async getPlaceDetails(placeId: string, sessionToken?: string): Promise<PlaceDetailsResult | null> {
+  async getPlaceDetails(
+    placeId: string,
+    sessionToken?: string
+  ): Promise<PlaceDetailsResult | null> {
     const apiKey = ENV.GOOGLE_MAPS_API_KEY;
     if (!apiKey) return null;
 
@@ -169,7 +202,9 @@ export class MapService {
 
     // 1. Try Places API (New) Place Details
     try {
-      const cleanPlaceId = placeId.startsWith("places/") ? placeId.replace(/^places\//, "") : placeId;
+      const cleanPlaceId = placeId.startsWith("places/")
+        ? placeId.replace(/^places\//, "")
+        : placeId;
       const url = `https://places.googleapis.com/v1/places/${encodeURIComponent(cleanPlaceId)}`;
       const headers: Record<string, string> = {
         "X-Goog-Api-Key": apiKey,
@@ -186,7 +221,10 @@ export class MapService {
         if (data.location?.latitude && data.location?.longitude) {
           return {
             place_id: data.id || cleanPlaceId,
-            name: data.displayName?.text || data.formattedAddress?.split(",")[0]?.trim() || "",
+            name:
+              data.displayName?.text ||
+              data.formattedAddress?.split(",")[0]?.trim() ||
+              "",
             formatted_address: data.formattedAddress || "",
             lat: data.location.latitude,
             lng: data.location.longitude,
@@ -199,7 +237,9 @@ export class MapService {
 
     // 2. Fallback to Legacy Google Place Details
     try {
-      const url = new URL("https://maps.googleapis.com/maps/api/place/details/json");
+      const url = new URL(
+        "https://maps.googleapis.com/maps/api/place/details/json"
+      );
       url.searchParams.set("place_id", placeId);
       url.searchParams.set("fields", "geometry,formatted_address,name");
       url.searchParams.set("language", "vi");
@@ -214,7 +254,10 @@ export class MapService {
         if (data.status === "OK" && data.result?.geometry?.location) {
           return {
             place_id: placeId,
-            name: data.result.name || data.result.formatted_address?.split(",")[0]?.trim() || "",
+            name:
+              data.result.name ||
+              data.result.formatted_address?.split(",")[0]?.trim() ||
+              "",
             formatted_address: data.result.formatted_address || "",
             lat: data.result.geometry.location.lat,
             lng: data.result.geometry.location.lng,
@@ -256,7 +299,10 @@ export class MapService {
   /**
    * Reverse geocode: Coordinates (lat, lng) -> Vietnamese formatted address.
    */
-  async reverseGeocode(lat: number, lng: number): Promise<GeocodeResult | null> {
+  async reverseGeocode(
+    lat: number,
+    lng: number
+  ): Promise<GeocodeResult | null> {
     const apiKey = ENV.GOOGLE_MAPS_API_KEY;
     if (!apiKey) return null;
 
@@ -269,7 +315,11 @@ export class MapService {
       const response = await fetch(url.toString());
       if (response.ok) {
         const data = (await response.json()) as any;
-        if (data.status === "OK" && Array.isArray(data.results) && data.results.length > 0) {
+        if (
+          data.status === "OK" &&
+          Array.isArray(data.results) &&
+          data.results.length > 0
+        ) {
           const first = data.results[0];
           return {
             formatted_address: first.formatted_address || `${lat}, ${lng}`,
@@ -303,7 +353,11 @@ export class MapService {
       const response = await fetch(url.toString());
       if (response.ok) {
         const data = (await response.json()) as any;
-        if (data.status === "OK" && Array.isArray(data.results) && data.results.length > 0) {
+        if (
+          data.status === "OK" &&
+          Array.isArray(data.results) &&
+          data.results.length > 0
+        ) {
           const first = data.results[0];
           return {
             formatted_address: first.formatted_address || address,
@@ -322,4 +376,3 @@ export class MapService {
 }
 
 export const mapService = new MapService();
-

@@ -1,7 +1,9 @@
 import { NextFunction, Request, Response } from "express";
 import { AppError } from "../../middlewares/error.middleware";
+import { ResponseUtil } from "../../utils/response";
 import { aiService } from "./ai.service";
 import { uploadService } from "../upload/upload.service";
+import { classifyItemCategory } from "../../libs/typesafe";
 
 export class AIController {
   analyzeImage = async (req: Request, res: Response, next: NextFunction) => {
@@ -30,6 +32,20 @@ export class AIController {
           filename: uploaded.filename,
         },
       });
+    } catch (error) {
+      next(error);
+    }
+  };
+
+  /**
+   * Classify a lost/found item by text description using TypeSafe AI (Jev).
+   * Returns the suggested category, confidence, and probability distribution.
+   */
+  classifyItem = async (req: Request, res: Response, next: NextFunction) => {
+    try {
+      const { description } = req.body as { description: string };
+      const result = await classifyItemCategory(description);
+      return ResponseUtil.success(res, result, "Item classified successfully");
     } catch (error) {
       next(error);
     }

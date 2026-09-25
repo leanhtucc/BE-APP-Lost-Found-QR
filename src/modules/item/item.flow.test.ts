@@ -379,4 +379,109 @@ describe("Item Flow and Multi-ID Resolution", () => {
     expect(safeRes.body.data.captureLatitude).toBe(10.7769);
     expect(safeRes.body.data.captureLongitude).toBe(106.7009);
   });
+
+  it("10. PATCH /api/items/:id: Bỏ qua captureLocation thì bảo toàn vị trí đăng ký hiện tại", async () => {
+    itemDb.findFirst.mockResolvedValueOnce(sampleDbItem);
+    const updatedDbItem = {
+      ...sampleDbItem,
+      name: "Ví da màu đen đổi tên",
+    };
+    itemDb.update.mockResolvedValueOnce(updatedDbItem);
+
+    const res = await request(app)
+      .patch("/api/items/cuid_pk_item_123")
+      .set("Authorization", "Bearer owner-token")
+      .send({
+        name: "Ví da màu đen đổi tên",
+      });
+
+    expect(res.status).toBe(200);
+    expect(res.body.success).toBe(true);
+    expect(res.body.data.name).toBe("Ví da màu đen đổi tên");
+    // captureLatitude/captureLongitude được giữ nguyên
+    expect(res.body.data.captureLatitude).toBe(10.7769);
+    expect(res.body.data.captureLongitude).toBe(106.7009);
+    expect(itemDb.update).toHaveBeenCalledWith(
+      expect.objectContaining({
+        where: { id: "cuid_pk_item_123" },
+        data: expect.not.objectContaining({
+          captureLatitude: null,
+        }),
+      })
+    );
+  });
+
+  it("11. PATCH /api/items/:id: Cập nhật captureLocation với tọa độ hợp lệ (bao gồm cả (0, 0))", async () => {
+    itemDb.findFirst.mockResolvedValueOnce(sampleDbItem);
+    const updatedZeroItem = {
+      ...sampleDbItem,
+      captureLatitude: 0,
+      captureLongitude: 0,
+      captureAddress: "Vĩ độ 0, Kinh độ 0",
+      captureAccuracyMeters: 3,
+    };
+    itemDb.update.mockResolvedValueOnce(updatedZeroItem);
+
+    const res = await request(app)
+      .patch("/api/items/cuid_pk_item_123")
+      .set("Authorization", "Bearer owner-token")
+      .send({
+        captureLocation: {
+          latitude: 0,
+          longitude: 0,
+          address: "Vĩ độ 0, Kinh độ 0",
+          accuracyMeters: 3,
+        },
+      });
+
+    expect(res.status).toBe(200);
+    expect(res.body.success).toBe(true);
+    expect(res.body.data.captureLatitude).toBe(0);
+    expect(res.body.data.captureLongitude).toBe(0);
+    expect(itemDb.update).toHaveBeenCalledWith(
+      expect.objectContaining({
+        where: { id: "cuid_pk_item_123" },
+        data: expect.objectContaining({
+          captureLatitude: 0,
+          captureLongitude: 0,
+        }),
+      })
+    );
+  });
+
+  it("12. PATCH /api/items/:id: captureLocation: null xóa vị trí an toàn đã lưu", async () => {
+    itemDb.findFirst.mockResolvedValueOnce(sampleDbItem);
+    const clearedItem = {
+      ...sampleDbItem,
+      captureLatitude: null,
+      captureLongitude: null,
+      captureAddress: null,
+      captureAccuracyMeters: null,
+      capturedAt: null,
+    };
+    itemDb.update.mockResolvedValueOnce(clearedItem);
+
+    const res = await request(app)
+      .patch("/api/items/cuid_pk_item_123")
+      .set("Authorization", "Bearer owner-token")
+      .send({
+        captureLocation: null,
+      });
+
+    expect(res.status).toBe(200);
+    expect(res.body.success).toBe(true);
+    expect(res.body.data.captureLatitude).toBeNull();
+    expect(res.body.data.captureLongitude).toBeNull();
+    expect(res.body.data.captureLocation).toBeNull();
+    expect(itemDb.update).toHaveBeenCalledWith(
+      expect.objectContaining({
+        where: { id: "cuid_pk_item_123" },
+        data: expect.objectContaining({
+          captureLatitude: null,
+          captureLongitude: null,
+          captureAddress: null,
+        }),
+      })
+    );
+  });
 });

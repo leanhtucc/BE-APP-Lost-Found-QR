@@ -157,6 +157,11 @@ export class ItemController {
         imagePublicUrl,
         hasInsurance,
         details,
+        captureLocation,
+        latitude,
+        longitude,
+        address,
+        lastSeenLocation,
       } = req.body;
 
       if (!id) {
@@ -170,6 +175,11 @@ export class ItemController {
         imagePublicUrl,
         hasInsurance,
         details,
+        captureLocation,
+        latitude,
+        longitude,
+        address,
+        lastSeenLocation,
       });
 
       return ResponseUtil.success(res, result, "Item updated successfully");

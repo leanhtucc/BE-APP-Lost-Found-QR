@@ -1,9 +1,11 @@
 import { Router } from "express";
 import multer from "multer";
 import { authMiddleware } from "../../middlewares/auth.middleware";
+import { rateLimit } from "../../middlewares/rate-limit.middleware";
 import { validate } from "../../middlewares/validate.middleware";
 import { aiController } from "./ai.controller";
 import {
+  classifyItemSchema,
   conversationParamsSchema,
   createConversationSchema,
   sendAiMessageSchema,
@@ -25,12 +27,21 @@ const upload = multer({
   },
 });
 
-// POST /v1/ai/analyze-item
+// POST /v1/ai/analyze-item — Image-based analysis (Gemini)
 router.post(
   "/analyze-item",
   authMiddleware,
   upload.single("image"),
   aiController.analyzeImage
+);
+
+// POST /v1/ai/classify-item — Text-based classification (TypeSafe Jev)
+router.post(
+  "/classify-item",
+  authMiddleware,
+  rateLimit({ windowMs: 60_000, max: 10 }),
+  validate(classifyItemSchema),
+  aiController.classifyItem
 );
 
 router.post(

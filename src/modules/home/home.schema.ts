@@ -1,5 +1,6 @@
 import { z } from "zod";
 import { HOME_LOST_RADIUS_METERS } from "../../utils/constants";
+import { ITEM_CATEGORIES } from "../item/item.types";
 
 type NumberRange = {
   min?: number;
@@ -61,5 +62,18 @@ export const lostFeedSchema = z.object({
     radius: parseOptionalQueryNumber("radius", { min: 1 }).transform((value) =>
       Math.min(value ?? HOME_LOST_RADIUS_METERS, HOME_LOST_RADIUS_METERS)
     ),
+    category: z
+      .string()
+      .trim()
+      .optional()
+      .transform((val) =>
+        val && val.toLowerCase() !== "all" ? val : undefined
+      )
+      .refine(
+        (val) =>
+          val === undefined ||
+          (ITEM_CATEGORIES as readonly string[]).includes(val),
+        { message: "Invalid category" }
+      ),
   }),
 });

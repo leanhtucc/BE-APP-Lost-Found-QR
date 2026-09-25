@@ -33,11 +33,15 @@ export class MapController {
 
   autocomplete = async (req: Request, res: Response, next: NextFunction) => {
     try {
-      const input = String(req.query.input || req.query.q || req.query.query || "");
+      const input = String(
+        req.query.input || req.query.q || req.query.query || ""
+      );
       const lat = req.query.lat ? Number(req.query.lat) : undefined;
       const lng = req.query.lng ? Number(req.query.lng) : undefined;
       const radius = req.query.radius ? Number(req.query.radius) : undefined;
-      const sessionToken = req.query.sessiontoken ? String(req.query.sessiontoken) : undefined;
+      const sessionToken = req.query.sessiontoken
+        ? String(req.query.sessiontoken)
+        : undefined;
 
       const predictions = await mapService.autocomplete(input, {
         lat,
@@ -55,7 +59,9 @@ export class MapController {
   getPlaceDetails = async (req: Request, res: Response, next: NextFunction) => {
     try {
       const placeId = String(req.query.place_id || req.query.placeId || "");
-      const sessionToken = req.query.sessiontoken ? String(req.query.sessiontoken) : undefined;
+      const sessionToken = req.query.sessiontoken
+        ? String(req.query.sessiontoken)
+        : undefined;
 
       const details = await mapService.getPlaceDetails(placeId, sessionToken);
       if (!details) {
@@ -92,7 +98,9 @@ export class MapController {
 
   geocode = async (req: Request, res: Response, next: NextFunction) => {
     try {
-      const address = String(req.query.address || req.query.q || req.query.query || "");
+      const address = String(
+        req.query.address || req.query.q || req.query.query || ""
+      );
 
       const result = await mapService.geocode(address);
       if (!result) {
@@ -110,4 +118,3 @@ export class MapController {
 }
 
 export const mapController = new MapController();
-

@@ -7,6 +7,7 @@ export interface LostFeedQuery {
   lat: number;
   lng: number;
   radius: number; // metres, server-capped at 10 km
+  category?: string;
 }
 
 /** Lightweight pin for map radar rendering */

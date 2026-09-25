@@ -40,7 +40,20 @@ describe("Home lost-feed query contract", () => {
     { lat: "21", lng: "-181" },
     { lat: "NaN", lng: "105" },
     { lat: "21", lng: "105", radius: "0" },
+    { lat: "21", lng: "105", category: "invalid_category" },
   ])("rejects invalid coordinates or radius: %o", (query) => {
     expect(lostFeedSchema.safeParse({ query }).success).toBe(false);
+  });
+
+  it("accepts valid category and transforms 'all' to undefined", () => {
+    const withWallet = lostFeedSchema.parse({
+      query: { lat: "21.0278", lng: "105.8342", category: "wallet" },
+    });
+    expect(withWallet.query.category).toBe("wallet");
+
+    const withAll = lostFeedSchema.parse({
+      query: { lat: "21.0278", lng: "105.8342", category: "all" },
+    });
+    expect(withAll.query.category).toBeUndefined();
   });
 });

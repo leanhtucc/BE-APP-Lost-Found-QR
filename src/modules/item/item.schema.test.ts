@@ -79,4 +79,79 @@ describe("item flow contracts", () => {
     expect(parsed.body.lat).toBe(10.7769);
     expect(parsed.body.lng).toBe(106.7009);
   });
+
+  it("accepts valid captureLocation and coordinates in updateItemSchema including 0,0", () => {
+    const parsed = updateItemSchema.parse({
+      body: {
+        name: "Laptop cá nhân",
+        captureLocation: {
+          latitude: 0,
+          longitude: 0,
+          address: "Tòa nhà Landmark",
+          accuracyMeters: 5,
+        },
+      },
+    });
+
+    expect(parsed.body.captureLocation).toEqual({
+      latitude: 0,
+      longitude: 0,
+      address: "Tòa nhà Landmark",
+      accuracyMeters: 5,
+    });
+  });
+
+  it("rejects out-of-bounds or non-finite coordinates in updateItemSchema", () => {
+    expect(
+      updateItemSchema.safeParse({
+        body: {
+          captureLocation: {
+            latitude: 91,
+            longitude: 106.7009,
+          },
+        },
+      }).success
+    ).toBe(false);
+
+    expect(
+      updateItemSchema.safeParse({
+        body: {
+          captureLocation: {
+            latitude: 10.7769,
+            longitude: 181,
+          },
+        },
+      }).success
+    ).toBe(false);
+
+    expect(
+      updateItemSchema.safeParse({
+        body: {
+          latitude: 10.7769,
+          // Missing longitude
+        },
+      }).success
+    ).toBe(false);
+  });
+
+  it("accepts captureLocation: null to clear saved location in updateItemSchema", () => {
+    const parsed = updateItemSchema.parse({
+      body: {
+        name: "Laptop cá nhân",
+        captureLocation: null,
+      },
+    });
+
+    expect(parsed.body.captureLocation).toBeNull();
+  });
+
+  it("allows omitting captureLocation entirely in updateItemSchema", () => {
+    const parsed = updateItemSchema.parse({
+      body: {
+        name: "Laptop cá nhân đổi tên",
+      },
+    });
+
+    expect(parsed.body.captureLocation).toBeUndefined();
+  });
 });

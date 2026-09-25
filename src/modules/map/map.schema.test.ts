@@ -59,4 +59,3 @@ describe("map query validation", () => {
     expect(result.query.lng).toBe(105.8542);
   });
 });
-

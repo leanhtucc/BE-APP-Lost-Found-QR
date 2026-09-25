@@ -54,6 +54,16 @@ export interface UpdateItemDTO {
   imagePublicUrl?: string;
   hasInsurance?: boolean;
   details?: any; // JSONB
+  captureLocation?: CaptureLocation | null;
+  captureLatitude?: number | null;
+  captureLongitude?: number | null;
+  captureAddress?: string | null;
+  captureAccuracyMeters?: number | null;
+  capturedAt?: Date | string | null;
+  latitude?: number | null;
+  longitude?: number | null;
+  address?: string | null;
+  lastSeenLocation?: string | null;
 }
 
 export interface UpdateItemStatusDTO {

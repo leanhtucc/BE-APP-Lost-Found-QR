@@ -20,13 +20,13 @@ export const activeUsersSchema = z.object({
 export const autocompleteSchema = z.object({
   query: z
     .object({
-      input: z.string().min(1).optional(),
-      q: z.string().min(1).optional(),
-      query: z.string().min(1).optional(),
+      input: z.string().trim().min(1).max(200).optional(),
+      q: z.string().trim().min(1).max(200).optional(),
+      query: z.string().trim().min(1).max(200).optional(),
       lat: z.coerce.number().min(-90).max(90).optional(),
       lng: z.coerce.number().min(-180).max(180).optional(),
       radius: z.coerce.number().positive().optional(),
-      sessiontoken: z.string().optional(),
+      sessiontoken: z.string().trim().min(1).max(100).optional(),
     })
     .refine((data) => Boolean(data.input || data.q || data.query), {
       message: "input or q is required",
@@ -37,9 +37,9 @@ export const autocompleteSchema = z.object({
 export const placeDetailsSchema = z.object({
   query: z
     .object({
-      place_id: z.string().min(1).optional(),
-      placeId: z.string().min(1).optional(),
-      sessiontoken: z.string().optional(),
+      place_id: z.string().trim().min(1).max(300).optional(),
+      placeId: z.string().trim().min(1).max(300).optional(),
+      sessiontoken: z.string().trim().min(1).max(100).optional(),
     })
     .refine((data) => Boolean(data.place_id || data.placeId), {
       message: "place_id is required",

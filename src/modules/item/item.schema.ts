@@ -59,26 +59,52 @@ export const createItemSchema = z.object({
 
 // Schema cho cập nhật item
 export const updateItemSchema = z.object({
-  body: z.object({
-    name: z
-      .string()
-      .min(1, "Name is required")
-      .max(100, "Name must be less than 100 characters")
-      .optional(),
-    category: z.enum(ITEM_CATEGORIES).optional(),
-    description: z
-      .string()
-      .max(500, "Description must be less than 500 characters")
-      .optional()
-      .or(z.literal("")),
-    imagePublicUrl: z
-      .string()
-      .url("Invalid image URL")
-      .optional()
-      .or(z.literal("")),
-    hasInsurance: z.boolean().optional(),
-    details: z.any().optional(),
-  }),
+  body: z
+    .object({
+      name: z
+        .string()
+        .min(1, "Name is required")
+        .max(100, "Name must be less than 100 characters")
+        .optional(),
+      category: z.enum(ITEM_CATEGORIES).optional(),
+      description: z
+        .string()
+        .max(500, "Description must be less than 500 characters")
+        .optional()
+        .or(z.literal("")),
+      imagePublicUrl: z
+        .string()
+        .url("Invalid image URL")
+        .optional()
+        .or(z.literal("")),
+      hasInsurance: z.boolean().optional(),
+      details: z.any().optional(),
+      captureLocation: z
+        .object({
+          latitude: z.coerce.number().finite().min(-90).max(90),
+          longitude: z.coerce.number().finite().min(-180).max(180),
+          address: z.string().max(500).optional().nullable(),
+          accuracyMeters: z.coerce.number().finite().nonnegative().optional().nullable(),
+          capturedAt: z.union([z.string(), z.date()]).optional().nullable(),
+        })
+        .optional()
+        .nullable(),
+      latitude: z.coerce.number().finite().min(-90).max(90).optional().nullable(),
+      longitude: z.coerce.number().finite().min(-180).max(180).optional().nullable(),
+      address: z.string().max(255).optional().nullable(),
+      lastSeenLocation: z.string().max(500).optional().nullable(),
+    })
+    .superRefine((data, ctx) => {
+      const hasFlatLat = data.latitude !== undefined && data.latitude !== null;
+      const hasFlatLng = data.longitude !== undefined && data.longitude !== null;
+      if (hasFlatLat !== hasFlatLng) {
+        ctx.addIssue({
+          code: z.ZodIssueCode.custom,
+          message: "latitude and longitude must be provided together",
+          path: ["latitude"],
+        });
+      }
+    }),
 });
 
 // Schema cho update status

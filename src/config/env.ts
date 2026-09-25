@@ -56,6 +56,14 @@ const rawEnv = z
     GOOGLE_MAPS_API_KEY: z.string().optional(),
     GEMINI_API_KEY: z.string().optional(),
     AI_MODEL: z.string().default("gemini-2.5-flash"),
+
+    // TypeSafe AI (Jev)
+    TYPESAFE_API_KEY: z.string().optional(),
+    TYPESAFE_MODEL: z.string().default("jev-latest"),
+    TYPESAFE_API_URL: z
+      .string()
+      .url()
+      .default("https://api.typesafe.ai/v1/systemone"),
   })
   .parse(process.env);
 
@@ -153,6 +161,11 @@ export const ENV = {
     rawEnv.GOOGLE_API_KEY ||
     "",
   AI_MODEL: rawEnv.AI_MODEL,
+
+  // TypeSafe AI (Jev)
+  TYPESAFE_API_KEY: rawEnv.TYPESAFE_API_KEY || "",
+  TYPESAFE_MODEL: rawEnv.TYPESAFE_MODEL,
+  TYPESAFE_API_URL: rawEnv.TYPESAFE_API_URL,
 } as const;
 
 export const isDevelopment = ENV.NODE_ENV === "development";

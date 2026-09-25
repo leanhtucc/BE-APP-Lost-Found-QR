@@ -8,7 +8,13 @@ import {
   createFoundReportSchema,
   foundReportIdSchema,
 } from "./found-report.schema";
-import { createFoundReport, getFoundReport } from "./found-report.service";
+import {
+  createFoundReport,
+  getFoundFeed,
+  getFoundReport,
+} from "./found-report.service";
+import { lostFeedSchema } from "../home/home.schema";
+import { LostFeedQuery } from "../home/home.types";
 
 const router = Router();
 router.post(
@@ -24,6 +30,38 @@ router.post(
     }
   }
 );
+
+router.get(
+  "/feed",
+  optionalAuth,
+  validate(lostFeedSchema),
+  async (req, res, next) => {
+    try {
+      const validatedRequest = res.locals.validatedRequest as
+        { query?: LostFeedQuery } | undefined;
+      const query =
+        validatedRequest?.query ?? (req.query as unknown as LostFeedQuery);
+      const cards = await getFoundFeed(req.user?.id, query);
+      const pins = cards.map((c) => ({
+        itemId: c.itemId,
+        lat: c.lostLat!,
+        lng: c.lostLng!,
+        isOwn: c.isOwn,
+      }));
+      res.json({
+        success: true,
+        data: {
+          cards,
+          pins,
+          totalCount: cards.length,
+        },
+      });
+    } catch (error) {
+      next(error);
+    }
+  }
+);
+
 router.get(
   "/:id",
   optionalAuth,
