@@ -60,8 +60,8 @@ export interface MeetupProposal {
   proposedByName?: string;
   address: string;
   name?: string;
-  latitude: number;
-  longitude: number;
+  latitude?: number;
+  longitude?: number;
   scheduledTime: string; // ISO 8601 or 'ASAP'
   notes?: string;
   status: "PENDING" | "ACCEPTED" | "REJECTED" | "CANCELLED";

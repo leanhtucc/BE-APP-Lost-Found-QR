@@ -232,14 +232,16 @@ export class ReturnService {
           ? owner.displayName
           : finder.displayName;
 
+      const maySeePreciseDestination = latest.status === "ACCEPTED";
       meetup = {
         id: latest.id,
         proposedBy: latest.proposedBy,
         proposedByName,
         address: latest.address,
         name: latest.name || undefined,
-        latitude: latest.latitude,
-        longitude: latest.longitude,
+        ...(maySeePreciseDestination
+          ? { latitude: latest.latitude, longitude: latest.longitude }
+          : {}),
         scheduledTime: latest.scheduledTime,
         notes: latest.notes || undefined,
         status: latest.status,

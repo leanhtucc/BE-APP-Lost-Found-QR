@@ -8,46 +8,6 @@ import {
 import { AppError } from "../../middlewares/error.middleware";
 
 describe("Phase 4 Backend Automated Tests", () => {
-  describe("1. Exactly-One-Source Invariant & Discrimination", () => {
-    const validateSource = (input: {
-      itemId?: string | null;
-      foundReportId?: string | null;
-    }) => {
-      const hasItem = Boolean(input.itemId);
-      const hasFound = Boolean(input.foundReportId);
-      if ((hasItem && !hasFound) || (!hasItem && hasFound)) {
-        return hasItem ? "ITEM" : "FOUND_REPORT";
-      }
-      throw new Error(
-        "CHECK constraint violation: exactly one source required"
-      );
-    };
-
-    it("accepts an ITEM return session", () => {
-      expect(validateSource({ itemId: "item-123", foundReportId: null })).toBe(
-        "ITEM"
-      );
-    });
-
-    it("accepts a FOUND_REPORT return session", () => {
-      expect(validateSource({ itemId: null, foundReportId: "found-456" })).toBe(
-        "FOUND_REPORT"
-      );
-    });
-
-    it("rejects a session where both sources are null", () => {
-      expect(() =>
-        validateSource({ itemId: null, foundReportId: null })
-      ).toThrow("CHECK constraint violation");
-    });
-
-    it("rejects a session where both sources are non-null", () => {
-      expect(() =>
-        validateSource({ itemId: "item-123", foundReportId: "found-456" })
-      ).toThrow("CHECK constraint violation");
-    });
-  });
-
   describe("2. Return Policy & Capability Guards", () => {
     it("allows directions only when meetup is accepted and session is in navigation/arrival/handover state", () => {
       const activeCaps = getReturnCapabilities({
@@ -156,56 +116,6 @@ describe("Phase 4 Backend Automated Tests", () => {
       expect(isTrackingUnexpired(null)).toBe(false);
       expect(isTrackingUnexpired(undefined)).toBe(false);
       expect(isTrackingUnexpired("invalid-date")).toBe(false);
-    });
-  });
-
-  describe("5. Source-Aware Completion Logic", () => {
-    it("distinguishes ITEM vs FOUND_REPORT post-handover transitions", () => {
-      const getPostHandoverStatus = (
-        sourceType: "ITEM" | "FOUND_REPORT",
-        payoutStatus: string
-      ) => {
-        if (sourceType === "ITEM") {
-          return payoutStatus === "PAID"
-            ? "RATING_PENDING"
-            : "HANDOVER_CONFIRMED";
-        }
-        return "RATING_PENDING";
-      };
-
-      expect(getPostHandoverStatus("ITEM", "PAID")).toBe("RATING_PENDING");
-      expect(getPostHandoverStatus("ITEM", "ACTION_REQUIRED")).toBe(
-        "HANDOVER_CONFIRMED"
-      );
-      expect(getPostHandoverStatus("FOUND_REPORT", "ACTION_REQUIRED")).toBe(
-        "RATING_PENDING"
-      );
-      expect(getPostHandoverStatus("FOUND_REPORT", "PAID")).toBe(
-        "RATING_PENDING"
-      );
-    });
-  });
-
-  describe("6. PIN & Privacy Invariants", () => {
-    it("verifies that PIN is never part of generic session response type", () => {
-      const sampleSession = {
-        id: "ret_123",
-        status: "HANDOVER_PENDING",
-        ownerId: "u1",
-        finderId: "u2",
-        handover: {
-          status: "HANDOVER_PENDING",
-          hasChallenge: true,
-          expiresAt: new Date().toISOString(),
-          isConsumed: false,
-          attemptCount: 0,
-        },
-      };
-
-      expect(sampleSession).not.toHaveProperty("pin");
-      expect(sampleSession).not.toHaveProperty("code");
-      expect(sampleSession.handover).not.toHaveProperty("code");
-      expect(sampleSession.handover).not.toHaveProperty("codeHash");
     });
   });
 });

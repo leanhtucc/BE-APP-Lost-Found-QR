@@ -2,6 +2,7 @@ import { createServer } from "http";
 import app from "./app";
 import { connectDatabase, disconnectDatabase } from "./config/database";
 import { ENV } from "./config/env";
+import { assertPhase4TestDatabaseSafety } from "./config/phase4-test-safety";
 import { startDailyNotificationJob } from "./jobs/daily-notification.job";
 import { startRefundJob } from "./jobs/refund.job";
 import { startAccountDeletionJob } from "./jobs/account-deletion.job";
@@ -17,6 +18,19 @@ async function startServer() {
   logger.info("Initializing server startup...");
 
   try {
+    if (process.env.PHASE4_MANUAL_TEST === "true") {
+      assertPhase4TestDatabaseSafety({
+        databaseUrl: ENV.DATABASE_URL,
+        directUrl: ENV.DIRECT_URL,
+        testDatabaseUrl:
+          process.env.PHASE4_TEST_DATABASE_URL || process.env.DATABASE_URL_TEST,
+        productionDatabaseUrl: process.env.PHASE4_PRODUCTION_DATABASE_URL,
+        explicitlyConfirmed:
+          process.env.PHASE4_TEST_DATABASE_CONFIRMED === "true",
+      });
+      logger.success("Phase 4 TEST database safety guard passed");
+    }
+
     await connectDatabase();
 
     const httpServer = createServer(app);

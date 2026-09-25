@@ -183,12 +183,34 @@ export async function createFoundReportClaim(
   if (report.finderId === claimantId) {
     throw new AppError("Finder cannot claim their own report", 409);
   }
-  return prisma.foundReportClaim.upsert({
+  const existing = await prisma.foundReportClaim.findUnique({
     where: { foundReportId_claimantId: { foundReportId, claimantId } },
-    update: {},
-    create: { foundReportId, claimantId, ownershipProof },
-    select: claimPublicSelect,
+    select: { id: true },
   });
+  if (existing) {
+    throw new AppError(
+      "A claim already exists for this found report",
+      409,
+      true,
+      "FOUND_REPORT_CLAIM_ALREADY_EXISTS"
+    );
+  }
+  try {
+    return await prisma.foundReportClaim.create({
+      data: { foundReportId, claimantId, ownershipProof },
+      select: claimPublicSelect,
+    });
+  } catch (error: any) {
+    if (error?.code === "P2002") {
+      throw new AppError(
+        "A claim already exists for this found report",
+        409,
+        true,
+        "FOUND_REPORT_CLAIM_ALREADY_EXISTS"
+      );
+    }
+    throw error;
+  }
 }
 
 export async function getMyFoundReportClaim(
