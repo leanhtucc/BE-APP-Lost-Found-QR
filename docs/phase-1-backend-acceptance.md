@@ -132,39 +132,75 @@ Home tọa độ/radius/category sai trả validation error 400. Radius lớn h�
 
 ## J. Runtime Database Acceptance
 
-Audit runtime lần này KHÔNG chạy được vì môi trường chỉ có database production, không có dev/test DB đã xác minh.
+Runtime acceptance ngày 2026-09-26 được chạy hoàn toàn trên database local; production Supabase không bị migrate, seed hoặc mutate.
 
-- **Database:** PostgreSQL trên Supabase pooler (`aws-0-ap-south-1.pooler.supabase.com`, db `postgres`, schema `public`). Credentials không log.
-- **Environment:** `NODE_ENV=production` trong `.env` — KHÔNG phải development/test DB. `.env.docker` trỏ `db:5432/backend_db` nhưng `docker-compose.yml` không định nghĩa service `db` (chỉ có service `backend` đọc `.env` production), nên không có local dev/test DB dùng ngay được.
-- **Prisma connectivity:** `npx prisma migrate status` kết nối được (read-only). Tuy nhiên 3 migration CHƯA áp: `20260909220000_item_capture_location`, `20260925000000_phase4_found_claim_return_source`, `20260926000000_backend_owned_fcm_notifications` → schema DB đang lệch so với `prisma/schema.prisma`.
-- **Backend startup:** KHÔNG khởi động. Boot với config hiện tại sẽ chạy vào production DB, ngoài scope và không an toàn.
-- **Seed 0 items:** KHÔNG chạy. `seed-phase1.ts` tự chặn khi `NODE_ENV=production` (`assertDevelopmentEnvironment`), và prompt cấm seed/mutate production.
-- **Seed 20 items:** KHÔNG chạy (cùng lý do).
-- **Home / My Items / Item Detail / 401 / 403 / 404 / Pagination runtime:** UNVERIFIED — không có dev DB để chạy acceptance thực; các case này chỉ được phủ ở tầng unit/integration test mock Prisma (mục H), chưa qua HTTP + DB thật.
+- **Database requirement:** PostgreSQL + PostGIS. Migration đầu tiên chạy `CREATE EXTENSION IF NOT EXISTS postgis` và tạo `geography(Point,4326)`, do đó plain PostgreSQL không đủ.
+- **Local runtime:** PostgreSQL 14.24 + PostGIS 3.2 trong Ubuntu WSL, bind `localhost:5433`, database `lostfound_dev`. Acceptance WSL dùng local admin role `postgres` cho migration/runtime; credential chỉ nằm trong `.env.development.local` đã được Git ignore.
+- **Docker workflow:** thêm `docker-compose.dev.yml` dùng `postgis/postgis:16-3.4`, named volume và healthcheck; không thay `docker-compose.yml` production. Máy acceptance không có Docker CLI/service nên runtime thực tế dùng WSL.
+- **Environment:** `.env.development.local` (Git ignored), `NODE_ENV=development`, `DOTENV_CONFIG_PATH=.env.development.local`; `.env` production không bị overwrite.
+- **Backend:** boot thành công tại `http://localhost:3001`; `/health/live` trả HTTP 200; Prisma connect thành công; Firebase/SMTP được tắt khi không có local credential.
 
-Không thực hiện hành động destructive nào (không `migrate deploy`, không `migrate reset`, không seed) theo đúng safety rule của prompt (STOP destructive actions khi DB không xác minh được là dev/test).
+### Migration chain
+
+Fresh local database không có schema/extension dựng sẵn đã apply sạch đủ 8 migration hiện có; migration đầu tự tạo PostGIS. `prisma migrate status` sau deploy trả `Database schema is up to date`, bao gồm ba migration chưa được apply trên production:
+
+- `20260909220000_item_capture_location`
+- `20260925000000_phase4_found_claim_return_source`
+- `20260926000000_backend_owned_fcm_notifications`
+
+Không tạo migration mới và không apply migration nào lên production.
+
+### Seed 0
+
+`npm run seed:phase1:empty` PASS. Script chỉ xóa item của hai fixture user; không reset database. HTTP thật xác minh:
+
+- Login fixture: 200.
+- My Items: 200, `total=0`, `items=[]`.
+- Home lost feed với location hợp lệ: 200, `cards=[]`, `pins=[]`.
+- My Items không token: 401.
+- Item Detail không tồn tại: 404.
+- Home có `lat` không hợp lệ: 400.
+
+### Seed 20 và HTTP runtime
+
+`npm run seed:phase1` PASS. Owner fixture có đúng 20 item; một item thuộc fixture owner khác chỉ dùng để xác minh ownership.
+
+| Gate            | Kết quả | Evidence                                                                                                      |
+| --------------- | ------- | ------------------------------------------------------------------------------------------------------------- |
+| Local DB        | PASS    | PostgreSQL/PostGIS reachable tại `localhost:5433/lostfound_dev`.                                              |
+| Migration chain | PASS    | 8/8 migration applied; schema up to date.                                                                     |
+| Seed 0          | PASS    | My Items/Home empty qua HTTP thật.                                                                            |
+| Seed 20         | PASS    | Owner có đúng 20 item, đủ `SAFE/LOST/FOUND/RESOLVED`.                                                         |
+| Home            | PASS    | 5 LOST cards; guest và authenticated request đều 200; authenticated cards có `isOwn=true`; có image nullable. |
+| My Items        | PASS    | `total=20`, nullable images=7, mixed categories/statuses.                                                     |
+| Item Detail     | PASS    | Owner đọc được item ở cả 4 status; missing trả 404; item owner khác trả 403.                                  |
+| Pagination      | PASS    | Page 1=10, page 2=10, 20 ID unique, không duplicate; page/limit sai trả 400.                                  |
+| Errors          | PASS    | HTTP thật: 400/401/403/404; 500 được kiểm tra an toàn ở middleware test.                                      |
 
 ## Validation Results
 
 Chạy lại trong working tree hiện tại (2026-09-26), không dùng kết quả cũ:
 
-- **Build/typecheck:** `npm run typecheck` (`tsc --noEmit`) PASS — re-run lần này. `npm run build` PASS theo audit trước (mục H); không re-run trong lần này vì typecheck đã bao phủ TypeScript và không có thay đổi build config mới.
-- **Prisma:** `npx prisma validate` PASS — re-run lần này.
-- **Tests:** `npx vitest run src/modules/item src/modules/home` PASS — 7 files, 47 tests, re-run lần này.
-- **git diff --check:** PASS theo audit trước; không có thay đổi whitespace mới trong lần này.
+- **Build/typecheck:** `npm run typecheck` PASS; `npm run build` PASS.
+- **Prisma:** `prisma generate` PASS; `prisma validate` PASS; `prisma migrate status` PASS trên local DB.
+- **Related tests:** `vitest run src/modules/item src/modules/home` PASS — 7 files, 47 tests.
+- **Full suite:** PASS — 23 files PASS, 1 skipped; 161 tests PASS, 11 skipped. Middleware error contract chạy riêng cũng PASS — 2/2 tests.
+- **git diff --check:** PASS.
+- Repo không có script lint. `format:check` toàn repo vẫn có các cảnh báo baseline đã ghi ở mục H; các file mới/sửa được kiểm tra riêng bằng Prettier.
 
-## Unverified
+## Remaining scope
 
-- Runtime database/API acceptance toàn bộ (startup, seed 0/20, Home, My Items, Item Detail, pagination, error 401/403/404/500 qua HTTP + PostGIS thật) — không có dev/test DB.
-- Trạng thái schema thực tế sau khi áp 3 migration đang pending.
-- `npm run build` trong lần chạy này (chỉ typecheck được re-run).
+- Production vẫn còn ba migration pending theo audit trước; không xử lý trong Phase 1 và không được suy ra từ local PASS rằng production đã up to date.
+- Docker workflow đã được cấu hình nhưng chưa chạy trên máy này vì Docker CLI/service không được cài; WSL PostgreSQL/PostGIS là runtime local đã được xác minh.
+- Các hạng mục Phase 2+ ở mục I vẫn deferred.
 
 ## Kết luận
 
 ```
 BACKEND CODE ACCEPTANCE: PASS
-DATABASE ACCEPTANCE: UNVERIFIED
-BACKEND PHASE 1: PARTIAL
+LOCAL DATABASE ACCEPTANCE: PASS
+RUNTIME API ACCEPTANCE: PASS
+BACKEND PHASE 1: PASS
 ```
 
-Code contract, validation, fixture và automated tests (typecheck + prisma validate + 47 Home/Item test) đạt và đã được re-run trong tree hiện tại. Runtime database/API acceptance không thể chạy an toàn vì môi trường chỉ có production DB (`NODE_ENV=production`) và không có dev/test DB đã xác minh; do đó không ghi PASS tuyệt đối.
+Phase 1 đạt pass gate trên PostgreSQL/PostGIS local đã xác minh: migration chain sạch, backend boot, seed 0/20, Home/My Items/Item Detail/pagination/error contracts qua HTTP thật và toàn bộ validation tự động đều PASS. Không commit, push hoặc mutate production.

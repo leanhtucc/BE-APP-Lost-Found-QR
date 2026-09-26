@@ -12,6 +12,7 @@ dist/
 .env
 .env.local
 .env.*.local
+.env.development
 .env.render.generated
 
 # Keep .env.example for reference

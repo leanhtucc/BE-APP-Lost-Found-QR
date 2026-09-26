@@ -6,6 +6,9 @@ import { prisma } from "../src/libs/prisma";
 const OWNER_UID = "phase1-acceptance-owner";
 const OWNER_EMAIL = "phase1.owner@example.test";
 const OWNER_PASSWORD = "Phase1Test!234";
+const OTHER_OWNER_UID = "phase1-acceptance-other-owner";
+const OTHER_OWNER_EMAIL = "phase1.other@example.test";
+const OTHER_OWNER_ITEM_ID = "phase1-other-owner-item";
 const BASE_LAT = 21.0278;
 const BASE_LNG = 105.8342;
 
@@ -50,7 +53,21 @@ async function main(): Promise<void> {
     },
   });
 
-  await prisma.item.deleteMany({ where: { ownerId: owner.id } });
+  const otherOwner = await prisma.user.upsert({
+    where: { uid: OTHER_OWNER_UID },
+    update: { displayName: "Phase 1 Other Owner", password, isVerified: true },
+    create: {
+      uid: OTHER_OWNER_UID,
+      email: OTHER_OWNER_EMAIL,
+      displayName: "Phase 1 Other Owner",
+      password,
+      isVerified: true,
+    },
+  });
+
+  await prisma.item.deleteMany({
+    where: { ownerId: { in: [owner.id, otherOwner.id] } },
+  });
 
   if (emptyOnly) {
     console.log(`Phase 1 empty scenario ready for ${OWNER_EMAIL}`);
@@ -117,8 +134,27 @@ async function main(): Promise<void> {
       AND "lostLng" IS NOT NULL
   `;
 
+  await prisma.item.create({
+    data: {
+      ownerId: otherOwner.id,
+      itemId: OTHER_OWNER_ITEM_ID,
+      qrCodeId: "phase1-other-owner-qr",
+      securityToken: nanoid(32),
+      name: "Đồ dùng thuộc chủ sở hữu khác",
+      category: "other",
+      description:
+        "Fixture dùng để xác minh owner-only Item Detail trả HTTP 403.",
+      status: ItemStatus.SAFE,
+      imagePublicUrl: null,
+      captureLatitude: BASE_LAT,
+      captureLongitude: BASE_LNG,
+      captureAddress: "Hà Nội",
+      capturedAt: new Date(),
+      qrCodeUrl: `https://findback.vn/item/${OTHER_OWNER_ITEM_ID}`,
+    },
+  });
+
   console.log(`Phase 1 acceptance data ready: 20 items for ${OWNER_EMAIL}`);
-  console.log(`Development password: ${OWNER_PASSWORD}`);
 }
 
 main()

@@ -1,0 +1,22 @@
+services:
+  database:
+    image: postgis/postgis:16-3.4
+    container_name: findback-postgis-dev
+    restart: unless-stopped
+    ports:
+      - "127.0.0.1:5433:5432"
+    environment:
+      POSTGRES_DB: lostfound_dev
+      POSTGRES_USER: findback_dev
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-findback-local-development-only}
+    volumes:
+      - findback_postgis_dev_data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U findback_dev -d lostfound_dev"]
+      interval: 5s
+      timeout: 5s
+      retries: 12
+      start_period: 10s
+
+volumes:
+  findback_postgis_dev_data:
