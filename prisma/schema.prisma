@@ -161,6 +161,7 @@ model UserDevice {
   token        String   @unique @map("push_token")
   platform     String   @default("android") @db.VarChar(20) // android, ios, web
   deviceId     String   @map("device_id") @db.VarChar(255)
+  deviceName   String?  @map("device_name") @db.VarChar(255)
   appVersion   String?  @map("app_version")
   lastActiveAt DateTime @default(now()) @map("last_seen_at")
   isActive     Boolean  @default(true) @map("enabled")
@@ -193,7 +194,13 @@ model Notification {
   category       NotificationCategory
   type           String
   title          String
+  titleEn        String               @default("") @map("title_en")
   content        String
+  contentEn      String               @default("") @map("content_en")
+  attachment     String               @default("")
+  entityType     String?              @map("entity_type") @db.VarChar(40)
+  entityId       String?              @map("entity_id")
+  action         String?              @db.VarChar(60)
   metadata       Json?
   isRead         Boolean              @default(false) @map("is_read")
   dedupeKey      String?              @map("dedupe_key")
@@ -203,12 +210,15 @@ model Notification {
   deliveryStatus String               @default("SENT") @map("delivery_status") // PENDING, SENT, FAILED, OPENED
   pushMessageId  String?              @map("push_message_id")
   createdAt      DateTime             @default(now()) @map("created_at")
+  updatedAt      DateTime             @updatedAt @map("updated_at")
+  deletedAt      DateTime?            @map("deleted_at")
 
   receiver User @relation(fields: [receiverId], references: [id], onDelete: Cascade)
 
   @@unique([receiverId, dedupeKey])
   @@index([receiverId, createdAt])
   @@index([receiverId, isRead])
+  @@index([receiverId, deletedAt, createdAt])
   @@index([category])
   @@index([type])
   @@index([deliveryStatus])

@@ -21,6 +21,7 @@
     "seed": "prisma db seed",
     "seed:radar": "tsx prisma/seed-radar.ts",
     "smtp:verify": "tsx scripts/verify-smtp.ts",
+    "fcm:verify": "tsx scripts/verify-fcm.ts",
     "supabase:verify": "tsx scripts/verify-supabase.ts",
     "supabase:setup": "tsx scripts/setup-supabase.ts",
     "postinstall": "prisma generate"

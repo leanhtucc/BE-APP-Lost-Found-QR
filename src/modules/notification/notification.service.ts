@@ -1,7 +1,7 @@
-import { Notification, NotificationCategory } from "../../generated/prisma/client";
+import { createHash } from "crypto";
+import { NotificationCategory } from "../../generated/prisma/client";
 import admin from "../../config/firebaseAdmin";
 import { logger } from "../../libs/logger";
-import { prisma } from "../../libs/prisma";
 import { AppError } from "../../middlewares/error.middleware";
 import { emitInAppNotificationToUser } from "../../socket/radar.socket";
 import { notificationPreferenceRepository } from "./notification.preference.repository";
@@ -22,6 +22,7 @@ import {
   RegisterDeviceInput,
   StatusUpdateNotificationInput,
   UpdatePreferenceInput,
+  UserDeviceDTO,
 } from "./notification.types";
 
 const SOCIAL_NOTIFICATION_RETENTION_DAYS = 30;
@@ -40,23 +41,50 @@ export class NotificationService {
 
   private formatNotification(notification: any): NotificationDTO {
     return {
-      id: String(notification.id || ""),
-      receiver_id: String(notification.receiverId || ""),
-      category: notification.category,
+      _id: String(notification.id || ""),
       type: String(notification.type || ""),
-      title: String(notification.title || ""),
-      content: String(notification.content || ""),
-      metadata: notification.metadata ?? null,
-      is_read: Boolean(notification.isRead),
-      dedupe_key: notification.dedupeKey ?? null,
-      delivery_status: notification.deliveryStatus || "SENT",
-      opened_at: notification.openedAt
-        ? new Date(notification.openedAt).toISOString()
+      title: {
+        vi: String(notification.title || ""),
+        en: String(notification.titleEn || notification.title || ""),
+      },
+      content: {
+        vi: String(notification.content || ""),
+        en: String(notification.contentEn || notification.content || ""),
+      },
+      attachment: String(notification.attachment || ""),
+      status: notification.isRead ? "VIEW" : "UN_VIEW",
+      user_id: String(notification.receiverId || ""),
+      entity_type: notification.entityType ?? null,
+      entity_id: notification.entityId ?? null,
+      action: notification.action ?? null,
+      deleted_at: notification.deletedAt
+        ? new Date(notification.deletedAt).toISOString()
         : null,
       created_at: notification.createdAt
         ? new Date(notification.createdAt).toISOString()
         : new Date().toISOString(),
+      updated_at: notification.updatedAt
+        ? new Date(notification.updatedAt).toISOString()
+        : new Date().toISOString(),
     };
+  }
+
+  private formatDevice(device: any): UserDeviceDTO {
+    return {
+      _id: String(device.id),
+      platform: device.platform,
+      device_id: device.deviceId,
+      device_name: device.deviceName ?? null,
+      app_version: device.appVersion ?? null,
+      last_active_at: device.lastActiveAt.toISOString(),
+      is_active: device.isActive,
+      created_at: device.createdAt.toISOString(),
+      updated_at: device.updatedAt.toISOString(),
+    };
+  }
+
+  private normalizeLocalized(value: CreateNotificationInput["title"]) {
+    return typeof value === "string" ? { vi: value, en: value } : value;
   }
 
   private formatPreference(pref: any): NotificationPreferenceDTO {
@@ -86,20 +114,22 @@ export class NotificationService {
 
   private toFcmData(notification: NotificationDTO): Record<string, string> {
     return {
-      id: notification.id,
-      receiver_id: notification.receiver_id,
-      category: notification.category,
+      notification_id: notification._id,
       type: notification.type,
-      is_read: String(notification.is_read),
-      created_at: notification.created_at,
-      metadata: JSON.stringify(notification.metadata || {}),
+      entity_type: notification.entity_type || "",
+      entity_id: notification.entity_id || "",
+      action: notification.action || "",
     };
   }
 
   /**
    * Check if current time falls within user's configured quiet hours.
    */
-  private isWithinQuietHours(quietStart: string, quietEnd: string, now = new Date()): boolean {
+  private isWithinQuietHours(
+    quietStart: string,
+    quietEnd: string,
+    now = new Date()
+  ): boolean {
     const startParts = quietStart.split(":").map(Number);
     const endParts = quietEnd.split(":").map(Number);
     const startH = startParts[0] ?? 0;
@@ -125,6 +155,7 @@ export class NotificationService {
   private async sendPushNotification(
     receiverId: string,
     notification: NotificationDTO,
+    category: NotificationCategory,
     priority: "normal" | "high",
     collapseKey?: string
   ): Promise<void> {
@@ -133,18 +164,27 @@ export class NotificationService {
     }
 
     // 1. Check user notification preferences
-    const pref = await notificationPreferenceRepository.findByUserId(receiverId);
+    const pref =
+      await notificationPreferenceRepository.findByUserId(receiverId);
     if (!pref.pushEnabled) {
       return;
     }
 
     // Check category level toggle
     let categoryEnabled = true;
-    switch (notification.category) {
-      case "IMPORTANT": categoryEnabled = pref.importantEnabled; break;
-      case "TRANSACTION": categoryEnabled = pref.transactionEnabled; break;
-      case "ITEM": categoryEnabled = pref.itemEnabled; break;
-      case "SOCIAL": categoryEnabled = pref.socialEnabled; break;
+    switch (category) {
+      case "IMPORTANT":
+        categoryEnabled = pref.importantEnabled;
+        break;
+      case "TRANSACTION":
+        categoryEnabled = pref.transactionEnabled;
+        break;
+      case "ITEM":
+        categoryEnabled = pref.itemEnabled;
+        break;
+      case "SOCIAL":
+        categoryEnabled = pref.socialEnabled;
+        break;
     }
 
     if (!categoryEnabled) {
@@ -154,27 +194,19 @@ export class NotificationService {
     // Check quiet hours (IMPORTANT & TRANSACTION bypass quiet hours)
     if (
       pref.quietHoursEnabled &&
-      notification.category !== "IMPORTANT" &&
-      notification.category !== "TRANSACTION" &&
+      category !== "IMPORTANT" &&
+      category !== "TRANSACTION" &&
       this.isWithinQuietHours(pref.quietStart, pref.quietEnd)
     ) {
-      logger.info(`[PushNotification] Skipped push for user=${receiverId} due to quiet hours (${pref.quietStart}-${pref.quietEnd})`);
+      logger.info(
+        `[PushNotification] Skipped push for user=${receiverId} due to quiet hours (${pref.quietStart}-${pref.quietEnd})`
+      );
       return;
     }
 
     // 2. Fetch active device push tokens
-    let tokens = await userDeviceRepository.findActiveTokensByUserId(receiverId);
-
-    // Fallback: check User.pushToken column for legacy clients
-    if (!tokens.length) {
-      const user = await prisma.user.findUnique({
-        where: { id: receiverId },
-        select: { pushToken: true },
-      });
-      if (user?.pushToken) {
-        tokens = [user.pushToken];
-      }
-    }
+    const tokens =
+      await userDeviceRepository.findActiveTokensByUserId(receiverId);
 
     if (!tokens.length) {
       return;
@@ -184,8 +216,14 @@ export class NotificationService {
       const response = await admin.messaging().sendEachForMulticast({
         tokens,
         notification: {
-          title: notification.title,
-          body: notification.content,
+          title:
+            pref.language === "en"
+              ? notification.title.en
+              : notification.title.vi,
+          body:
+            pref.language === "en"
+              ? notification.content.en
+              : notification.content.vi,
         },
         data: this.toFcmData(notification),
         android: {
@@ -216,14 +254,16 @@ export class NotificationService {
       });
 
       if (invalidTokens.length > 0) {
-        logger.warn(`[PushNotification] Deactivating ${invalidTokens.length} invalid FCM token(s) for user=${receiverId}`);
+        logger.warn(
+          `[PushNotification] Deactivating ${invalidTokens.length} invalid FCM token(s) for user=${receiverId}`
+        );
         await userDeviceRepository.deactivateTokens(invalidTokens);
       }
 
-      await this.repository.updateDeliveryStatus(notification.id, "SENT");
+      await this.repository.updateDeliveryStatus(notification._id, "SENT");
     } catch (error) {
       logger.error("Failed to send multicast push notification", error);
-      await this.repository.updateDeliveryStatus(notification.id, "FAILED");
+      await this.repository.updateDeliveryStatus(notification._id, "FAILED");
     }
   }
 
@@ -239,12 +279,20 @@ export class NotificationService {
       }
     }
 
+    const title = this.normalizeLocalized(input.title);
+    const content = this.normalizeLocalized(input.content);
     const created = await this.repository.create({
       receiverId: input.receiverId,
       category: input.category,
       type: input.type,
-      title: input.title,
-      content: input.content,
+      title: title.vi,
+      titleEn: title.en,
+      content: content.vi,
+      contentEn: content.en,
+      attachment: input.attachment,
+      entityType: input.entityType,
+      entityId: input.entityId,
+      action: input.action,
       metadata: input.metadata,
       dedupeKey: input.dedupeKey,
     });
@@ -272,6 +320,7 @@ export class NotificationService {
       void this.sendPushNotification(
         input.receiverId,
         formatted,
+        input.category,
         effectivePriority,
         input.collapseKey
       );
@@ -285,26 +334,23 @@ export class NotificationService {
     query: NotificationListQuery
   ): Promise<NotificationListResponse> {
     const page = query.page || 1;
-    const limit = query.limit || 20;
-    const skip = (page - 1) * limit;
+    const perPage = query.perPage || 10;
+    const skip = (page - 1) * perPage;
 
     const { notifications, total, totalUnread } =
       await this.repository.findByReceiverId(receiverId, {
-        category: query.category,
         skip,
-        take: limit,
+        take: perPage,
+        isRead:
+          query.status === undefined ? undefined : query.status === "VIEW",
       });
 
     return {
-      data: notifications.map((item) => this.formatNotification(item)),
       total_unread: totalUnread,
-      pagination: {
-        page,
-        limit,
-        total,
-        totalPages: Math.max(1, Math.ceil(total / limit)),
-        hasNextPage: skip + notifications.length < total,
-      },
+      total,
+      page,
+      per_page: perPage,
+      items: notifications.map((item) => this.formatNotification(item)),
     };
   }
 
@@ -333,11 +379,26 @@ export class NotificationService {
     receiverId: string,
     notificationId: string
   ): Promise<NotificationDTO> {
-    const updated = await this.repository.markAsOpened(notificationId, receiverId);
+    const updated = await this.repository.markAsOpened(
+      notificationId,
+      receiverId
+    );
     if (!updated) {
       throw new AppError("Notification not found", 404);
     }
     return this.formatNotification(updated);
+  }
+
+  async markNotificationAsViewed(receiverId: string, notificationId: string) {
+    const notification = await this.markNotificationAsOpened(
+      receiverId,
+      notificationId
+    );
+    return {
+      _id: notification._id,
+      status: notification.status,
+      updated_at: notification.updated_at,
+    };
   }
 
   async getUnreadCount(receiverId: string): Promise<number> {
@@ -386,7 +447,10 @@ export class NotificationService {
       normalized.proximityEnabled = input.nearbyAlertsEnabled;
     }
 
-    const updated = await notificationPreferenceRepository.upsert(userId, normalized);
+    const updated = await notificationPreferenceRepository.upsert(
+      userId,
+      normalized
+    );
     return this.formatPreference(updated);
   }
 
@@ -396,33 +460,30 @@ export class NotificationService {
   }
 
   async registerDevice(userId: string, input: RegisterDeviceInput) {
+    const deviceId =
+      input.deviceId ||
+      `fcm-${createHash("sha256").update(input.token).digest("hex").slice(0, 32)}`;
     const device = await userDeviceRepository.upsertDevice({
       userId,
       token: input.token,
-      platform: input.platform || "android",
-      deviceId: input.deviceId,
+      platform: input.platform,
+      deviceId,
+      deviceName: input.deviceName,
       appVersion: input.appVersion,
     });
 
-    // Also sync User.pushToken for backward compatibility
-    await prisma.user.update({
-      where: { id: userId },
-      data: { pushToken: input.token },
-    }).catch(() => {/* ignore */});
-
-    return {
-      success: true,
-      deviceId: device.deviceId,
-      device_id: device.deviceId,
-      platform: device.platform,
-      enabled: device.isActive,
-      lastSeenAt: device.lastActiveAt.toISOString(),
-    };
+    return this.formatDevice(device);
   }
 
-  async unregisterDevice(userId: string, deviceId: string) {
-    const deleted = await userDeviceRepository.deleteByDeviceId(userId, deviceId);
-    return { success: deleted };
+  async getUserDevices(userId: string): Promise<UserDeviceDTO[]> {
+    return (await userDeviceRepository.findByUserId(userId)).map((device) =>
+      this.formatDevice(device)
+    );
+  }
+
+  async unregisterDeviceById(userId: string, id: string): Promise<void> {
+    const deactivated = await userDeviceRepository.deactivateById(userId, id);
+    if (!deactivated) throw new AppError("Device not found", 404);
   }
 
   // ─── Helper Builders for Application Events ──────────────────────────
@@ -432,8 +493,14 @@ export class NotificationService {
       receiverId: input.receiverId,
       category: "TRANSACTION",
       type: "ESCROW_LOCKED",
-      title: "Giao dịch an toàn",
-      content: `${input.amount.toLocaleString("vi-VN")}đ đã được khóa trong escrow`,
+      title: { vi: "Giao dịch an toàn", en: "Secure transaction" },
+      content: {
+        vi: `${input.amount.toLocaleString("vi-VN")}đ đã được khóa trong escrow`,
+        en: "Your reward funds are secured for the return.",
+      },
+      entityType: "ITEM",
+      entityId: input.postId,
+      action: "OPEN_ITEM",
       metadata: {
         amount: input.amount,
         transaction_id: input.transactionId,
@@ -450,8 +517,14 @@ export class NotificationService {
       receiverId: input.receiverId,
       category: "TRANSACTION",
       type: "REFUNDED",
-      title: "Hoàn tiền thành công",
-      content: `${input.amount.toLocaleString("vi-VN")}đ đã được hoàn về ví của bạn`,
+      title: { vi: "Hoàn tiền thành công", en: "Refund completed" },
+      content: {
+        vi: `${input.amount.toLocaleString("vi-VN")}đ đã được hoàn về ví của bạn`,
+        en: "The refund has been returned to your wallet.",
+      },
+      entityType: input.postId ? "ITEM" : undefined,
+      entityId: input.postId,
+      action: input.postId ? "OPEN_ITEM" : undefined,
       metadata: {
         amount: input.amount,
         transaction_id: input.transactionId,
@@ -468,8 +541,14 @@ export class NotificationService {
       receiverId: input.receiverId,
       category: "TRANSACTION",
       type: "RELEASED",
-      title: "Nhận thưởng thành công",
-      content: `${input.amount.toLocaleString("vi-VN")}đ đã được chuyển đến ví của bạn`,
+      title: { vi: "Nhận thưởng thành công", en: "Reward received" },
+      content: {
+        vi: `${input.amount.toLocaleString("vi-VN")}đ đã được chuyển đến ví của bạn`,
+        en: "The reward has been transferred to your wallet.",
+      },
+      entityType: input.postId ? "ITEM" : undefined,
+      entityId: input.postId,
+      action: input.postId ? "OPEN_ITEM" : undefined,
       metadata: {
         amount: input.amount,
         transaction_id: input.transactionId,
@@ -488,8 +567,14 @@ export class NotificationService {
       receiverId: input.receiverId,
       category: "IMPORTANT",
       type: "MATCH_FOUND",
-      title: "Tìm thấy tín hiệu phù hợp",
-      content: `${input.itemName} có người báo tìm thấy trong bán kính ${distance}`,
+      title: { vi: "Tìm thấy tín hiệu phù hợp", en: "Possible match found" },
+      content: {
+        vi: `${input.itemName} có người báo tìm thấy trong bán kính ${distance}`,
+        en: `A possible match for ${input.itemName} was reported nearby.`,
+      },
+      entityType: "ITEM",
+      entityId: input.postId,
+      action: "OPEN_ITEM",
       metadata: {
         distance,
         post_id: input.postId,
@@ -506,8 +591,14 @@ export class NotificationService {
       receiverId: input.receiverId,
       category: "IMPORTANT",
       type: "PROXIMITY",
-      title: "Bạn đang rất gần nhau",
-      content: `Khoảng cách hiện tại chỉ còn ${distance}`,
+      title: { vi: "Bạn đang rất gần nhau", en: "You are nearby" },
+      content: {
+        vi: `Khoảng cách hiện tại chỉ còn ${distance}`,
+        en: "You are close to the recovery location.",
+      },
+      entityType: input.postId ? "ITEM" : undefined,
+      entityId: input.postId,
+      action: input.postId ? "OPEN_ITEM" : undefined,
       metadata: {
         distance,
         post_id: input.postId,
@@ -521,12 +612,17 @@ export class NotificationService {
       receiverId: input.receiverId,
       category: "SOCIAL",
       type: "NEW_CHAT",
-      title: "Tin nhắn mới",
-      content: input.messagePreview,
+      title: { vi: "Tin nhắn mới", en: "New message" },
+      content: {
+        vi: "Bạn có tin nhắn mới về quá trình tìm và trả đồ.",
+        en: "You have a new message about an item recovery.",
+      },
+      entityType: "CHAT",
+      entityId: input.roomId,
+      action: "OPEN_CHAT",
       metadata: {
         sender_avatar: input.senderAvatar || "",
         room_id: input.roomId,
-        message_preview: input.messagePreview,
         item_id: input.itemId,
       },
       collapseKey: `chat:${input.roomId}`,
@@ -543,6 +639,9 @@ export class NotificationService {
       content: input.content,
       metadata: input.metadata,
       dedupeKey: input.dedupeKey,
+      entityType: input.entityType,
+      entityId: input.entityId,
+      action: input.action,
     });
   }
 
@@ -553,19 +652,105 @@ export class NotificationService {
     content: string;
     sessionId: string;
     itemId?: string;
+    dedupeKey?: string;
   }) {
+    const type =
+      input.type === "PARTNER_ARRIVED" ? "PARTICIPANT_ARRIVED" : input.type;
+    const localized = this.getReturnEventContent(
+      type,
+      input.title,
+      input.content
+    );
     return this.createNotification({
       receiverId: input.receiverId,
       category: "IMPORTANT",
-      type: input.type,
-      title: input.title,
-      content: input.content,
-      metadata: {
-        return_session_id: input.sessionId,
-        item_id: input.itemId,
-      },
+      type,
+      title: localized.title,
+      content: localized.content,
+      entityType: "RETURN_SESSION",
+      entityId: input.sessionId,
+      action: "OPEN_RETURN_SESSION",
+      dedupeKey: input.dedupeKey,
       pushPriority: "high",
     });
+  }
+
+  private getReturnEventContent(
+    type: string,
+    fallbackTitle: string,
+    fallbackContent: string
+  ) {
+    const copies: Record<
+      string,
+      { title: { vi: string; en: string }; content: { vi: string; en: string } }
+    > = {
+      RETURN_SESSION_CREATED: {
+        title: { vi: "Đã tạo phiên trao trả", en: "Return session created" },
+        content: {
+          vi: "Một phiên trao trả đồ đã được tạo.",
+          en: "A return session has been created.",
+        },
+      },
+      MEETUP_PROPOSED: {
+        title: { vi: "Đề xuất điểm hẹn mới", en: "New meetup proposal" },
+        content: {
+          vi: "Bạn nhận được đề xuất địa điểm gặp mặt.",
+          en: "You received a meetup location proposal.",
+        },
+      },
+      MEETUP_ACCEPTED: {
+        title: {
+          vi: "Địa điểm gặp mặt đã được chấp nhận",
+          en: "Meetup location accepted",
+        },
+        content: {
+          vi: "Đối phương đã chấp nhận địa điểm gặp mặt.",
+          en: "The other participant accepted the meetup location.",
+        },
+      },
+      MEETUP_CANCELLED: {
+        title: { vi: "Phiên gặp mặt đã bị hủy", en: "Meetup cancelled" },
+        content: {
+          vi: "Đối phương đã hủy phiên gặp mặt.",
+          en: "The other participant cancelled the meetup.",
+        },
+      },
+      PARTICIPANT_ARRIVED: {
+        title: { vi: "Đối phương đã đến", en: "Participant arrived" },
+        content: {
+          vi: "Đối phương đã có mặt tại điểm hẹn.",
+          en: "The other participant has arrived at the meetup.",
+        },
+      },
+      HANDOVER_READY: {
+        title: { vi: "Sẵn sàng bàn giao", en: "Ready for handover" },
+        content: {
+          vi: "Phiên trao trả đã sẵn sàng để xác nhận bàn giao.",
+          en: "The return is ready for handover confirmation.",
+        },
+      },
+      HANDOVER_CONFIRMED: {
+        title: { vi: "Bàn giao thành công", en: "Handover confirmed" },
+        content: {
+          vi: "Vật phẩm đã được xác nhận trao trả thành công.",
+          en: "The item return has been confirmed successfully.",
+        },
+      },
+      RETURN_COMPLETED: {
+        title: { vi: "Trao trả hoàn tất", en: "Return completed" },
+        content: {
+          vi: "Vật phẩm đã được trao trả thành công.",
+          en: "The item has been returned successfully.",
+        },
+      },
+    };
+
+    return (
+      copies[type] || {
+        title: { vi: fallbackTitle, en: fallbackTitle },
+        content: { vi: fallbackContent, en: fallbackContent },
+      }
+    );
   }
 
   async cleanupOldNonCriticalNotifications(): Promise<number> {

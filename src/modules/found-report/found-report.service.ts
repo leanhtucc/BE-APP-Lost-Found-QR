@@ -10,6 +10,14 @@ import { HOME_LOST_RADIUS_METERS } from "../../utils/constants";
 import { AppError } from "../../middlewares/error.middleware";
 import { nanoid } from "nanoid";
 import { createReturnChannel, upsertStreamUser } from "../../libs/stream-chat";
+import { logger } from "../../libs/logger";
+import { notificationService } from "../notification/notification.service";
+
+function safelyNotify(operation: Promise<unknown>, event: string): void {
+  void operation.catch((error) => {
+    logger.error(`[FoundReportNotification] ${event} delivery failed`, error);
+  });
+}
 
 const publicSelect = {
   id: true,
@@ -196,10 +204,29 @@ export async function createFoundReportClaim(
     );
   }
   try {
-    return await prisma.foundReportClaim.create({
+    const claim = await prisma.foundReportClaim.create({
       data: { foundReportId, claimantId, ownershipProof },
       select: claimPublicSelect,
     });
+    safelyNotify(
+      notificationService.createNotification({
+        receiverId: report.finderId,
+        category: "IMPORTANT",
+        type: "FOUND_REPORT_CLAIM_SUBMITTED",
+        title: { vi: "Có yêu cầu nhận lại đồ", en: "New ownership claim" },
+        content: {
+          vi: "Một người dùng đã gửi yêu cầu xác nhận quyền sở hữu.",
+          en: "A user submitted an ownership claim for the found item.",
+        },
+        entityType: "FOUND_REPORT",
+        entityId: foundReportId,
+        action: "OPEN_FOUND_REPORT",
+        dedupeKey: `found-claim-submitted:${claim.id}:${report.finderId}`,
+        pushPriority: "high",
+      }),
+      "claim submitted"
+    );
+    return claim;
   } catch (error: any) {
     if (error?.code === "P2002") {
       throw new AppError(
@@ -256,7 +283,7 @@ export async function rejectFoundReportClaim(
     throw new AppError("Forbidden", 403);
   if (claim.status !== "PENDING")
     throw new AppError("Claim is no longer pending", 409);
-  return prisma.foundReportClaim.update({
+  const rejected = await prisma.foundReportClaim.update({
     where: { id: claim.id },
     data: {
       status: "REJECTED",
@@ -265,6 +292,28 @@ export async function rejectFoundReportClaim(
     },
     select: claimPublicSelect,
   });
+  safelyNotify(
+    notificationService.createNotification({
+      receiverId: claim.claimantId,
+      category: "IMPORTANT",
+      type: "FOUND_REPORT_CLAIM_REJECTED",
+      title: {
+        vi: "Yêu cầu nhận đồ chưa được chấp nhận",
+        en: "Ownership claim rejected",
+      },
+      content: {
+        vi: "Yêu cầu xác nhận quyền sở hữu của bạn chưa được chấp nhận.",
+        en: "Your ownership claim was not accepted.",
+      },
+      entityType: "FOUND_REPORT",
+      entityId: foundReportId,
+      action: "OPEN_FOUND_REPORT",
+      dedupeKey: `found-claim-rejected:${claim.id}:${claim.claimantId}`,
+      pushPriority: "high",
+    }),
+    "claim rejected"
+  );
+  return rejected;
 }
 
 export async function acceptFoundReportClaim(
@@ -329,6 +378,27 @@ export async function acceptFoundReportClaim(
   });
 
   const session = accepted.returnSession!;
+  safelyNotify(
+    notificationService.createNotification({
+      receiverId: accepted.claimantId,
+      category: "IMPORTANT",
+      type: "FOUND_REPORT_CLAIM_ACCEPTED",
+      title: {
+        vi: "Yêu cầu nhận đồ đã được chấp nhận",
+        en: "Ownership claim accepted",
+      },
+      content: {
+        vi: "Yêu cầu của bạn đã được chấp nhận. Hãy tiếp tục quy trình trao trả.",
+        en: "Your claim was accepted. Continue to the return workflow.",
+      },
+      entityType: "RETURN_SESSION",
+      entityId: session.id,
+      action: "OPEN_RETURN_SESSION",
+      dedupeKey: `found-claim-accepted:${accepted.id}:${accepted.claimantId}`,
+      pushPriority: "high",
+    }),
+    "claim accepted"
+  );
   await Promise.all([
     upsertStreamUser({
       id: accepted.foundReport.finder.id,

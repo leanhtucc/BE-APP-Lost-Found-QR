@@ -5,6 +5,7 @@ import { Response } from "express";
  */
 
 export interface ApiResponse<T = any> {
+  status: number;
   success: boolean;
   message?: string;
   data?: T;
@@ -20,6 +21,7 @@ export class ResponseUtil {
     statusCode = 200
   ) {
     const response: ApiResponse<T> = {
+      status: statusCode,
       success: true,
       message,
       data,
@@ -39,6 +41,7 @@ export class ResponseUtil {
     error?: string
   ) {
     const response: ApiResponse = {
+      status: statusCode,
       success: false,
       message,
       ...(error && { error }),

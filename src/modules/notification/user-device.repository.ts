@@ -10,6 +10,7 @@ export class UserDeviceRepository {
     token: string;
     platform: string;
     deviceId: string;
+    deviceName?: string;
     appVersion?: string;
   }): Promise<UserDevice> {
     return prisma.$transaction(async (tx) => {
@@ -25,6 +26,15 @@ export class UserDeviceRepository {
         },
       });
 
+      await tx.userDevice.updateMany({
+        where: {
+          deviceId: data.deviceId,
+          userId: { not: data.userId },
+          isActive: true,
+        },
+        data: { isActive: false },
+      });
+
       return tx.userDevice.upsert({
         where: {
           userId_deviceId: {
@@ -37,6 +47,7 @@ export class UserDeviceRepository {
           token: data.token,
           platform: data.platform,
           deviceId: data.deviceId,
+          deviceName: data.deviceName,
           appVersion: data.appVersion,
           lastActiveAt: new Date(),
           isActive: true,
@@ -44,6 +55,7 @@ export class UserDeviceRepository {
         update: {
           token: data.token,
           platform: data.platform,
+          deviceName: data.deviceName,
           appVersion: data.appVersion,
           lastActiveAt: new Date(),
           isActive: true,
@@ -65,6 +77,13 @@ export class UserDeviceRepository {
     });
 
     return devices.map((d) => d.token).filter(Boolean);
+  }
+
+  async findByUserId(userId: string): Promise<UserDevice[]> {
+    return prisma.userDevice.findMany({
+      where: { userId },
+      orderBy: { createdAt: "desc" },
+    });
   }
 
   /**
@@ -102,6 +121,14 @@ export class UserDeviceRepository {
     } catch {
       return false;
     }
+  }
+
+  async deactivateById(userId: string, id: string): Promise<boolean> {
+    const result = await prisma.userDevice.updateMany({
+      where: { id, userId },
+      data: { isActive: false },
+    });
+    return result.count > 0;
   }
 
   /**

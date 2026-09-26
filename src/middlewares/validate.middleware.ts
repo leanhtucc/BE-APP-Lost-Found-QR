@@ -67,13 +67,15 @@ export function validate(schema: ZodSchema) {
         fields.notificationRadiusMeters || fields.nearbyRadius
       );
       const profileRequest = req.path.includes("/profile");
-      return res.status(invalidRadius ? 422 : 400).json({
+      const status = invalidRadius ? 422 : 400;
+      return res.status(status).json({
+        status,
         success: false,
         message: invalidRadius
           ? "Notification radius is invalid"
           : profileRequest
-          ? "Profile data is invalid"
-          : "Request data is invalid",
+            ? "Profile data is invalid"
+            : "Request data is invalid",
         error: {
           code: invalidRadius
             ? "INVALID_NOTIFICATION_RADIUS"

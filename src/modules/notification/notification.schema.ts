@@ -1,19 +1,5 @@
 import { z } from "zod";
 
-const NOTIFICATION_CATEGORIES = [
-  "IMPORTANT",
-  "TRANSACTION",
-  "ITEM",
-  "SOCIAL",
-] as const;
-
-function parseOptionalCategory(value: unknown): string | undefined {
-  if (value === undefined || value === null) return undefined;
-
-  const normalized = String(value).trim().toUpperCase();
-  return normalized || undefined;
-}
-
 function parsePositiveInt(
   value: unknown,
   defaultValue: number,
@@ -35,19 +21,20 @@ const timeRegex = /^([01]\d|2[0-3]):[0-5]\d$/;
 
 export const listNotificationsSchema = z.object({
   query: z.object({
-    category: z
-      .preprocess(
-        parseOptionalCategory,
-        z.enum(NOTIFICATION_CATEGORIES).optional()
-      )
-      .optional(),
     page: z.preprocess(
       (value) => parsePositiveInt(value, 1, 100000),
       z.number()
     ),
-    limit: z.preprocess(
-      (value) => parsePositiveInt(value, 20, 100),
+    per_page: z.preprocess(
+      (value) => parsePositiveInt(value, 10, 50),
       z.number()
+    ),
+    status: z.preprocess(
+      (value) =>
+        value === undefined || value === null || value === ""
+          ? undefined
+          : String(value).toUpperCase(),
+      z.enum(["VIEW", "UN_VIEW"]).optional()
     ),
   }),
 });
@@ -59,60 +46,67 @@ export const markNotificationReadSchema = z.object({
 });
 
 export const updatePreferenceSchema = z.object({
-  body: z.object({
-    pushEnabled: z.boolean().optional(),
-    emailEnabled: z.boolean().optional(),
-    proximityEnabled: z.boolean().optional(),
-    notificationRadiusMeters: z.number().int().min(100).max(5000).optional(),
-    language: z.enum(["vi", "en"]).optional(),
-    importantEnabled: z.boolean().optional(),
-    transactionEnabled: z.boolean().optional(),
-    itemEnabled: z.boolean().optional(),
-    socialEnabled: z.boolean().optional(),
-    dailyDigestEnabled: z.boolean().optional(),
-    nearbyAlertsEnabled: z.boolean().optional(),
-    quietHoursEnabled: z.boolean().optional(),
-    quietStart: z.string().regex(timeRegex, "quietStart must be in HH:mm format (e.g. 22:00)").optional(),
-    quietEnd: z.string().regex(timeRegex, "quietEnd must be in HH:mm format (e.g. 07:00)").optional(),
-    timezone: z.string().min(1).optional(),
-    dailyDigestTime: z.string().regex(timeRegex, "dailyDigestTime must be in HH:mm format (e.g. 19:30)").optional(),
-    nearbyRadius: z.number().int().min(100).max(5000).optional(),
-  }).strict().refine(
-    (body) => Object.keys(body).length > 0,
-    "At least one preference field is required"
-  ),
-});
-
-export const registerDeviceSchema = z.object({
   body: z
     .object({
-      token: z.string().min(1, "Push token is required").optional(),
-      pushToken: z.string().min(1, "Push token is required").optional(),
-      platform: z.enum(["android", "ios", "web"]).default("android"),
-      deviceId: z.string().trim().min(1, "Device ID is required").max(255),
-      appVersion: z.string().trim().max(50).optional(),
+      pushEnabled: z.boolean().optional(),
+      emailEnabled: z.boolean().optional(),
+      proximityEnabled: z.boolean().optional(),
+      notificationRadiusMeters: z.number().int().min(100).max(5000).optional(),
+      language: z.enum(["vi", "en"]).optional(),
+      importantEnabled: z.boolean().optional(),
+      transactionEnabled: z.boolean().optional(),
+      itemEnabled: z.boolean().optional(),
+      socialEnabled: z.boolean().optional(),
+      dailyDigestEnabled: z.boolean().optional(),
+      nearbyAlertsEnabled: z.boolean().optional(),
+      quietHoursEnabled: z.boolean().optional(),
+      quietStart: z
+        .string()
+        .regex(timeRegex, "quietStart must be in HH:mm format (e.g. 22:00)")
+        .optional(),
+      quietEnd: z
+        .string()
+        .regex(timeRegex, "quietEnd must be in HH:mm format (e.g. 07:00)")
+        .optional(),
+      timezone: z.string().min(1).optional(),
+      dailyDigestTime: z
+        .string()
+        .regex(
+          timeRegex,
+          "dailyDigestTime must be in HH:mm format (e.g. 19:30)"
+        )
+        .optional(),
+      nearbyRadius: z.number().int().min(100).max(5000).optional(),
     })
     .strict()
-    .superRefine((body, ctx) => {
-      if (!body.pushToken && !body.token) {
-        ctx.addIssue({
-          code: z.ZodIssueCode.custom,
-          path: ["pushToken"],
-          message: "Push token is required",
-        });
-      }
+    .refine(
+      (body) => Object.keys(body).length > 0,
+      "At least one preference field is required"
+    ),
+});
+
+export const registerUserDeviceSchema = z.object({
+  body: z
+    .object({
+      fcm_token: z.string().trim().min(1, "FCM token is required"),
+      platform: z.enum(["android", "ios"]),
+      device_id: z.string().trim().min(1).max(255).optional(),
+      device_name: z.string().trim().max(255).optional(),
+      app_version: z.string().trim().max(50).optional(),
     })
+    .strict()
     .transform((body) => ({
-      token: body.pushToken || body.token!,
+      token: body.fcm_token,
       platform: body.platform,
-      deviceId: body.deviceId,
-      appVersion: body.appVersion,
+      deviceId: body.device_id,
+      deviceName: body.device_name,
+      appVersion: body.app_version,
     })),
 });
 
-export const unregisterDeviceSchema = z.object({
+export const deleteUserDeviceSchema = z.object({
   params: z.object({
-    deviceId: z.string().min(1, "Device ID is required"),
+    id: z.string().min(1, "Device ID is required"),
   }),
 });
 

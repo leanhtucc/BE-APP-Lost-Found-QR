@@ -81,7 +81,6 @@ export class AuthController {
       const {
         displayName,
         photoURL,
-        pushToken,
         phoneNumber,
         bio,
         addressCity,
@@ -92,7 +91,6 @@ export class AuthController {
       const user = await authService.updateProfile(userId, {
         displayName,
         photoURL,
-        pushToken,
         phoneNumber,
         bio,
         addressCity,

@@ -8,7 +8,13 @@ export class NotificationRepository {
     category: NotificationCategory;
     type: string;
     title: string;
+    titleEn: string;
     content: string;
+    contentEn: string;
+    attachment?: string;
+    entityType?: string;
+    entityId?: string;
+    action?: string;
     metadata?: Prisma.InputJsonValue;
     dedupeKey?: string;
     scheduledAt?: Date;
@@ -25,14 +31,7 @@ export class NotificationRepository {
         logger.info(
           `[NotificationRepo] Deduplicated notification for receiver=${data.receiverId}, dedupeKey=${data.dedupeKey}`
         );
-        return prisma.notification.findUnique({
-          where: {
-            receiverId_dedupeKey: {
-              receiverId: data.receiverId,
-              dedupeKey: data.dedupeKey,
-            },
-          },
-        });
+        return null;
       }
       throw error;
     }
@@ -41,20 +40,22 @@ export class NotificationRepository {
   async findByReceiverId(
     receiverId: string,
     options: {
-      category?: NotificationCategory;
       skip: number;
       take: number;
+      isRead?: boolean;
     }
   ) {
     const where: {
       receiverId: string;
-      category?: NotificationCategory;
+      deletedAt: null;
+      isRead?: boolean;
     } = {
       receiverId,
+      deletedAt: null,
     };
 
-    if (options.category) {
-      where.category = options.category;
+    if (options.isRead !== undefined) {
+      where.isRead = options.isRead;
     }
 
     try {
@@ -69,7 +70,7 @@ export class NotificationRepository {
         }),
         prisma.notification.count({ where }),
         prisma.notification.count({
-          where: { receiverId, isRead: false },
+          where: { receiverId, isRead: false, deletedAt: null },
         }),
       ]);
 
@@ -85,6 +86,7 @@ export class NotificationRepository {
       where: {
         id,
         receiverId,
+        deletedAt: null,
       },
     });
   }
@@ -132,6 +134,7 @@ export class NotificationRepository {
       where: {
         receiverId,
         isRead: false,
+        deletedAt: null,
       },
       data: {
         isRead: true,
@@ -146,6 +149,7 @@ export class NotificationRepository {
       where: {
         receiverId,
         isRead: false,
+        deletedAt: null,
       },
     });
   }

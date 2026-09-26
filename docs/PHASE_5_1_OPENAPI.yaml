@@ -1,0 +1,223 @@
+openapi: 3.0.3
+info:
+  title: Lost & Found QR Notification API
+  version: 5.1.0
+servers:
+  - url: /v1
+security:
+  - bearerAuth: []
+tags:
+  - name: Thiết bị người dùng
+  - name: Thông báo
+paths:
+  /user-devices:
+    get:
+      tags: [Thiết bị người dùng]
+      summary: Lấy danh sách thiết bị người dùng
+      responses:
+        "200":
+          description: Get user devices successfully.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/UserDeviceListResponse"
+        "401": { $ref: "#/components/responses/Unauthorized" }
+    post:
+      tags: [Thiết bị người dùng]
+      summary: Thêm thiết bị của người dùng
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/RegisterDeviceRequest"
+      responses:
+        "200":
+          description: Device registered successfully.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/UserDeviceResponse"
+        "400": { description: Invalid device payload }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+  /user-devices/{id}:
+    delete:
+      tags: [Thiết bị người dùng]
+      summary: Xóa thiết bị của người dùng
+      parameters:
+        - in: path
+          name: id
+          required: true
+          schema: { type: string }
+      responses:
+        "200": { description: Device removed successfully. }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "404":
+          {
+            description: Device does not exist or is not owned by the current user,
+          }
+  /notifications:
+    get:
+      tags: [Thông báo]
+      summary: Lấy danh sách thông báo
+      parameters:
+        - in: query
+          name: page
+          schema: { type: integer, minimum: 1, default: 1 }
+        - in: query
+          name: per_page
+          schema: { type: integer, minimum: 1, maximum: 50, default: 10 }
+        - in: query
+          name: status
+          schema: { type: string, enum: [VIEW, UN_VIEW] }
+      responses:
+        "200":
+          description: Get notifications successfully.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/NotificationListResponse"
+              example:
+                status: 200
+                success: true
+                message: Get notifications successfully.
+                data:
+                  total_unread: 1
+                  total: 1
+                  page: 1
+                  per_page: 10
+                  items:
+                    - _id: 6aa90c7000577a4adc4c8c18
+                      type: MEETUP_ACCEPTED
+                      title:
+                        {
+                          vi: Đã chấp nhận địa điểm gặp mặt,
+                          en: Meetup location accepted,
+                        }
+                      content:
+                        {
+                          vi: Đối phương đã chấp nhận đề xuất gặp mặt.,
+                          en: The other participant accepted the meetup proposal.,
+                        }
+                      attachment: ""
+                      status: UN_VIEW
+                      user_id: user-id
+                      entity_type: RETURN_SESSION
+                      entity_id: return-session-id
+                      action: OPEN_RETURN_SESSION
+                      deleted_at: null
+                      created_at: "2026-09-26T00:00:00.000Z"
+                      updated_at: "2026-09-26T00:00:00.000Z"
+        "401": { $ref: "#/components/responses/Unauthorized" }
+  /notifications/{id}/view:
+    post:
+      tags: [Thông báo]
+      summary: Đánh dấu đã xem thông báo
+      parameters:
+        - in: path
+          name: id
+          required: true
+          schema: { type: string }
+      responses:
+        "200":
+          description: Notification marked as viewed successfully.
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "404":
+          {
+            description: Notification does not exist or is not owned by the current user,
+          }
+components:
+  securitySchemes:
+    bearerAuth:
+      type: http
+      scheme: bearer
+      bearerFormat: JWT
+  responses:
+    Unauthorized:
+      description: Missing or invalid access token
+  schemas:
+    RegisterDeviceRequest:
+      type: object
+      required: [fcm_token, platform]
+      properties:
+        fcm_token: { type: string, writeOnly: true }
+        platform: { type: string, enum: [android, ios] }
+        device_id: { type: string }
+        device_name: { type: string }
+        app_version: { type: string }
+    UserDevice:
+      type: object
+      properties:
+        _id: { type: string }
+        platform: { type: string, enum: [android, ios] }
+        device_id: { type: string }
+        device_name: { type: string, nullable: true }
+        app_version: { type: string, nullable: true }
+        is_active: { type: boolean }
+        last_active_at: { type: string, format: date-time }
+        created_at: { type: string, format: date-time }
+        updated_at: { type: string, format: date-time }
+    Notification:
+      type: object
+      properties:
+        _id: { type: string }
+        type: { type: string }
+        title: { $ref: "#/components/schemas/LocalizedText" }
+        content: { $ref: "#/components/schemas/LocalizedText" }
+        attachment: { type: string }
+        status: { type: string, enum: [VIEW, UN_VIEW] }
+        user_id: { type: string }
+        entity_type:
+          {
+            type: string,
+            enum: [ITEM, FOUND_REPORT, RETURN_SESSION, CHAT],
+            nullable: true,
+          }
+        entity_id: { type: string, nullable: true }
+        action:
+          {
+            type: string,
+            enum:
+              [OPEN_ITEM, OPEN_FOUND_REPORT, OPEN_CHAT, OPEN_RETURN_SESSION],
+            nullable: true,
+          }
+        deleted_at: { type: string, format: date-time, nullable: true }
+        created_at: { type: string, format: date-time }
+        updated_at: { type: string, format: date-time }
+    LocalizedText:
+      type: object
+      required: [vi, en]
+      properties:
+        vi: { type: string }
+        en: { type: string }
+    UserDeviceResponse:
+      type: object
+      properties:
+        status: { type: integer, example: 200 }
+        success: { type: boolean, example: true }
+        message: { type: string }
+        data: { $ref: "#/components/schemas/UserDevice" }
+    UserDeviceListResponse:
+      allOf:
+        - $ref: "#/components/schemas/UserDeviceResponse"
+        - type: object
+          properties:
+            data:
+              type: array
+              items: { $ref: "#/components/schemas/UserDevice" }
+    NotificationListResponse:
+      type: object
+      properties:
+        status: { type: integer, example: 200 }
+        success: { type: boolean, example: true }
+        message: { type: string }
+        data:
+          type: object
+          properties:
+            total_unread: { type: integer }
+            total: { type: integer }
+            page: { type: integer }
+            per_page: { type: integer }
+            items:
+              type: array
+              items: { $ref: "#/components/schemas/Notification" }

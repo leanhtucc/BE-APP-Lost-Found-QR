@@ -6,6 +6,7 @@ import homeRoutes from "./modules/home/home.routes";
 import itemRoutes from "./modules/item/item.routes";
 import mapRoutes from "./modules/map/map.routes";
 import notificationRoutes from "./modules/notification/notification.routes";
+import userDeviceRoutes from "./modules/notification/user-device.routes";
 import reportRoutes from "./modules/report/report.routes";
 import foundReportRoutes from "./modules/found-report/found-report.routes";
 import streamRoutes from "./modules/stream/stream.routes";
@@ -55,7 +56,6 @@ router.use(`${ENV.API_PREFIX}/auth`, authRoutes);
 router.use(`${ENV.API_PREFIX}/upload`, uploadRoutes);
 router.use(`${ENV.API_PREFIX}/stream`, streamRoutes);
 router.use(`${ENV.API_PREFIX}/map`, mapRoutes);
-router.use(`${ENV.API_PREFIX}/notifications`, notificationRoutes);
 router.use(`${ENV.API_PREFIX}/home`, homeRoutes);
 router.use(`${ENV.API_PREFIX}/reports`, reportRoutes);
 router.use(`${ENV.API_PREFIX}/found-reports`, foundReportRoutes);
@@ -80,6 +80,7 @@ router.post(
 );
 router.use("/v1/map", mapRoutes);
 router.use("/v1/notifications", notificationRoutes);
+router.use("/v1/user-devices", userDeviceRoutes);
 router.use("/v1/radar", radarRoutes);
 
 export default router;

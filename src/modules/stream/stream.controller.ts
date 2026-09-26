@@ -18,7 +18,6 @@ import {
   upsertStreamUser,
 } from "../../libs/stream-chat";
 import { ResponseUtil } from "../../utils/response";
-import { notificationService } from "../notification/notification.service";
 import { reportService } from "../report/report.service";
 import { createLostItemReturnChannel } from "./stream.service";
 
@@ -454,36 +453,11 @@ export class StreamChatController {
       const { activityType } = req.params;
       const metadata = req.query; // metadata từ query params
 
-      const getStringValue = (value: unknown): string => {
-        if (typeof value === "string") return value;
-        if (Array.isArray(value) && typeof value[0] === "string")
-          return value[0];
-        return "";
-      };
-
       const result = await logActivity(
         userId,
         activityType as any,
         metadata as any
       );
-
-      if (activityType === "new_message") {
-        const targetUserId = getStringValue(metadata.target_user_id);
-
-        if (targetUserId && targetUserId !== userId) {
-          const messagePreview =
-            getStringValue(metadata.message_preview) ||
-            "Bạn có một tin nhắn mới";
-
-          await notificationService.notifyNewChat({
-            receiverId: targetUserId,
-            senderAvatar: getStringValue(metadata.sender_avatar),
-            roomId: getStringValue(metadata.room_id),
-            messagePreview,
-            itemId: getStringValue(metadata.item_id),
-          });
-        }
-      }
 
       ResponseUtil.success(res, result, "Activity logged successfully");
     } catch (error) {

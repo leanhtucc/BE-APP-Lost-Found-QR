@@ -1,8 +1,6 @@
 import { NextFunction, Request, Response } from "express";
 import { ResponseUtil } from "../../utils/response";
 import { notificationService } from "./notification.service";
-import { notificationScheduler } from "./notification.scheduler";
-import { AppError } from "../../middlewares/error.middleware";
 
 export class NotificationController {
   getNotifications = async (
@@ -12,19 +10,20 @@ export class NotificationController {
   ): Promise<void> => {
     try {
       const userId = req.user!.id;
-      const { category, page, limit } = req.query as unknown as {
-        category?: "IMPORTANT" | "TRANSACTION" | "ITEM" | "SOCIAL";
+      const validatedQuery = res.locals.validatedRequest?.query ?? req.query;
+      const { page, per_page, status } = validatedQuery as {
         page: number;
-        limit: number;
+        per_page: number;
+        status?: "VIEW" | "UN_VIEW";
       };
 
       const result = await notificationService.getNotifications(userId, {
-        category,
         page,
-        limit,
+        perPage: per_page,
+        status,
       });
 
-      ResponseUtil.success(res, result, "Notifications retrieved successfully");
+      ResponseUtil.success(res, result, "Get notifications successfully.");
     } catch (error) {
       next(error);
     }
@@ -49,7 +48,7 @@ export class NotificationController {
     }
   };
 
-  markAsOpened = async (
+  markAsViewed = async (
     req: Request,
     res: Response,
     next: NextFunction
@@ -58,11 +57,15 @@ export class NotificationController {
       const userId = req.user!.id;
       const { id } = req.params;
 
-      const result = await notificationService.markNotificationAsOpened(
+      const result = await notificationService.markNotificationAsViewed(
         userId,
         id || ""
       );
-      ResponseUtil.success(res, result, "Notification marked as opened");
+      ResponseUtil.success(
+        res,
+        result,
+        "Notification marked as viewed successfully."
+      );
     } catch (error) {
       next(error);
     }
@@ -141,7 +144,10 @@ export class NotificationController {
   ): Promise<void> => {
     try {
       const userId = req.user!.id;
-      const result = await notificationService.updatePreferences(userId, req.body);
+      const result = await notificationService.updatePreferences(
+        userId,
+        req.body
+      );
 
       ResponseUtil.success(res, result, "Notification preferences updated");
     } catch (error) {
@@ -160,64 +166,6 @@ export class NotificationController {
         req.body
       );
       ResponseUtil.success(res, result, "Preferences updated successfully");
-    } catch (error) {
-      next(error);
-    }
-  };
-
-  registerDevice = async (
-    req: Request,
-    res: Response,
-    next: NextFunction
-  ): Promise<void> => {
-    try {
-      const userId = req.user!.id;
-      const result = await notificationService.registerDevice(userId, req.body);
-
-      ResponseUtil.success(res, result, "Device push token registered successfully");
-    } catch (error) {
-      next(error);
-    }
-  };
-
-  unregisterDevice = async (
-    req: Request,
-    res: Response,
-    next: NextFunction
-  ): Promise<void> => {
-    try {
-      const userId = req.user!.id;
-      const { deviceId } = req.params;
-
-      const result = await notificationService.unregisterDevice(userId, deviceId || "");
-      ResponseUtil.success(res, result, "Device unregistered");
-    } catch (error) {
-      next(error);
-    }
-  };
-
-  triggerDailyDigest = async (
-    req: Request,
-    res: Response,
-    next: NextFunction
-  ): Promise<void> => {
-    try {
-      const secretHeader = req.headers["x-internal-secret"];
-      const expectedSecret = process.env.INTERNAL_JOB_SECRET || "internal_secret_key_change_me";
-
-      if (secretHeader !== expectedSecret) {
-        throw new AppError("Forbidden: Invalid internal job secret", 403);
-      }
-
-      const dryRun = req.query.dryRun === "true";
-      const targetTimeBucket = req.query.timeBucket ? String(req.query.timeBucket) : undefined;
-
-      const digestResult = await notificationScheduler.runDailyDigestJob({
-        dryRun,
-        targetTimeBucket,
-      });
-
-      ResponseUtil.success(res, digestResult, "Daily digest job executed");
     } catch (error) {
       next(error);
     }

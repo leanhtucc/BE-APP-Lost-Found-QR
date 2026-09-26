@@ -148,30 +148,6 @@ router.get(
 );
 
 /**
- * ====================
- * NOTIFICATION ROUTES
- * ====================
- */
-
-/**
- * @route   GET /api/stream/notifications
- * @desc    Lấy danh sách notifications
- * @access  Protected
- */
-router.get("/notifications", authMiddleware, streamController.getNotifications);
-
-/**
- * @route   POST /api/stream/notifications/mark-read
- * @desc    Đánh dấu tất cả notifications đã đọc
- * @access  Protected
- */
-router.post(
-  "/notifications/mark-read",
-  authMiddleware,
-  streamController.markNotificationsRead
-);
-
-/**
  * @route   POST /api/stream/activity/:activityType
  * @desc    Log user activity (query params for metadata)
  * @access  Protected

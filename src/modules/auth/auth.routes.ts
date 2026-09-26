@@ -19,11 +19,7 @@ import {
 } from "./auth.schema";
 import { rateLimit } from "../../middlewares/rate-limit.middleware";
 import { notificationController } from "../notification/notification.controller";
-import {
-  registerDeviceSchema,
-  unregisterDeviceSchema,
-  updatePreferenceSchema,
-} from "../notification/notification.schema";
+import { updatePreferenceSchema } from "../notification/notification.schema";
 
 /**
  * Auth Routes
@@ -122,20 +118,6 @@ router.patch(
   authMiddleware,
   validate(updateProfileSchema),
   authController.updateProfile
-);
-
-router.post(
-  "/devices",
-  authMiddleware,
-  validate(registerDeviceSchema),
-  notificationController.registerDevice
-);
-
-router.delete(
-  "/devices/:deviceId",
-  authMiddleware,
-  validate(unregisterDeviceSchema),
-  notificationController.unregisterDevice
 );
 
 router.post(

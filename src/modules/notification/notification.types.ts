@@ -1,37 +1,44 @@
 import { NotificationCategory, Prisma } from "../../generated/prisma/client";
 
 export interface NotificationDTO {
-  id: string;
-  receiver_id: string;
-  category: NotificationCategory;
+  _id: string;
   type: string;
-  title: string;
-  content: string;
-  metadata: Prisma.JsonValue | null;
-  is_read: boolean;
-  dedupe_key?: string | null;
-  delivery_status?: string;
-  opened_at?: string | null;
+  title: LocalizedNotificationText;
+  content: LocalizedNotificationText;
+  attachment: string;
+  status: "VIEW" | "UN_VIEW";
+  user_id: string;
+  entity_type: NotificationEntityType | null;
+  entity_id: string | null;
+  action: NotificationAction | null;
+  deleted_at: string | null;
   created_at: string;
+  updated_at: string;
 }
 
 export interface NotificationListQuery {
-  category?: NotificationCategory;
   page: number;
-  limit: number;
+  perPage: number;
+  status?: "VIEW" | "UN_VIEW";
 }
 
 export interface NotificationListResponse {
-  data: NotificationDTO[];
   total_unread: number;
-  pagination: {
-    page: number;
-    limit: number;
-    total: number;
-    totalPages: number;
-    hasNextPage: boolean;
-  };
+  total: number;
+  page: number;
+  per_page: number;
+  items: NotificationDTO[];
 }
+
+export interface LocalizedNotificationText {
+  vi: string;
+  en: string;
+}
+
+export type NotificationEntityType =
+  "ITEM" | "FOUND_REPORT" | "RETURN_SESSION" | "CHAT";
+export type NotificationAction =
+  "OPEN_ITEM" | "OPEN_FOUND_REPORT" | "OPEN_CHAT" | "OPEN_RETURN_SESSION";
 
 export interface MarkAllReadResponse {
   updated_count: number;
@@ -81,20 +88,22 @@ export interface UpdatePreferenceInput {
 }
 
 export interface UserDeviceDTO {
-  id: string;
-  user_id: string;
-  token: string;
-  platform: string;
+  _id: string;
+  platform: "android" | "ios";
   device_id: string;
+  device_name: string | null;
+  app_version: string | null;
   last_active_at: string;
   is_active: boolean;
   created_at: string;
+  updated_at: string;
 }
 
 export interface RegisterDeviceInput {
   token: string;
-  platform?: "android" | "ios" | "web";
-  deviceId: string;
+  platform: "android" | "ios";
+  deviceId?: string;
+  deviceName?: string;
   appVersion?: string;
 }
 
@@ -102,8 +111,12 @@ export interface CreateNotificationInput {
   receiverId: string;
   category: NotificationCategory;
   type: string;
-  title: string;
-  content: string;
+  title: LocalizedNotificationText | string;
+  content: LocalizedNotificationText | string;
+  attachment?: string;
+  entityType?: NotificationEntityType;
+  entityId?: string;
+  action?: NotificationAction;
   metadata?: Prisma.InputJsonValue;
   dedupeKey?: string;
   collapseKey?: string;
@@ -153,8 +166,11 @@ export interface StatusUpdateNotificationInput {
   receiverId: string;
   category: NotificationCategory;
   type: string;
-  title: string;
-  content: string;
+  title: LocalizedNotificationText | string;
+  content: LocalizedNotificationText | string;
+  entityType?: NotificationEntityType;
+  entityId?: string;
+  action?: NotificationAction;
   metadata?: Prisma.InputJsonValue;
   dedupeKey?: string;
 }

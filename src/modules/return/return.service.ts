@@ -85,6 +85,12 @@ const VALID_TRANSITIONS: Record<ReturnSessionStatus, ReturnSessionStatus[]> = {
 };
 
 export class ReturnService {
+  private notifySafely(operation: Promise<unknown>, event: string): void {
+    void operation.catch((error) => {
+      logger.error(`[ReturnNotification] ${event} delivery failed`, error);
+    });
+  }
+
   private async clearLiveLocations(session: {
     id: string;
     ownerId: string;
@@ -462,6 +468,19 @@ export class ReturnService {
     logger.info(
       `[ReturnService] Return session created: ${created.id} for channel ${channelId}`
     );
+    const counterpartyId = userId === ownerId ? finderId : ownerId;
+    this.notifySafely(
+      notificationService.notifyReturnEvent({
+        receiverId: counterpartyId,
+        type: "RETURN_SESSION_CREATED",
+        title: "Đã tạo phiên trao trả",
+        content: "Một phiên trao trả đồ đã được tạo.",
+        sessionId: created.id,
+        itemId: created.itemId || undefined,
+        dedupeKey: `return-session-created:${created.id}:${counterpartyId}`,
+      }),
+      "return session created"
+    );
     return this.formatSession(created, userId);
   }
 
@@ -572,14 +591,18 @@ export class ReturnService {
     // Notify counterparty
     const counterpartyId =
       userId === session.ownerId ? session.finderId : session.ownerId;
-    void notificationService.notifyReturnEvent({
-      receiverId: counterpartyId,
-      type: "MEETUP_PROPOSED",
-      title: "Đề xuất điểm hẹn mới",
-      content: `Đối tác đã đề xuất điểm hẹn: ${req.address}`,
-      sessionId,
-      itemId: session.itemId || undefined,
-    });
+    this.notifySafely(
+      notificationService.notifyReturnEvent({
+        receiverId: counterpartyId,
+        type: "MEETUP_PROPOSED",
+        title: "Đề xuất điểm hẹn mới",
+        content: `Đối tác đã đề xuất điểm hẹn: ${req.address}`,
+        sessionId,
+        itemId: session.itemId || undefined,
+        dedupeKey: `meetup-proposed:${proposal.id}:${counterpartyId}`,
+      }),
+      "meetup proposed"
+    );
 
     return formatted;
   }
@@ -667,14 +690,18 @@ export class ReturnService {
     emitReturnSessionUpdated(sessionId, formatted);
 
     // Notify proposer
-    void notificationService.notifyReturnEvent({
-      receiverId: latestProposal.proposedBy,
-      type: "MEETUP_ACCEPTED",
-      title: "Điểm hẹn được chấp nhận",
-      content: `Đối tác đã chấp nhận điểm hẹn tại ${latestProposal.address}`,
-      sessionId,
-      itemId: session.itemId || undefined,
-    });
+    this.notifySafely(
+      notificationService.notifyReturnEvent({
+        receiverId: latestProposal.proposedBy,
+        type: "MEETUP_ACCEPTED",
+        title: "Điểm hẹn được chấp nhận",
+        content: `Đối tác đã chấp nhận điểm hẹn tại ${latestProposal.address}`,
+        sessionId,
+        itemId: session.itemId || undefined,
+        dedupeKey: `meetup-accepted:${latestProposal.id}:${latestProposal.proposedBy}`,
+      }),
+      "meetup accepted"
+    );
 
     return formatted;
   }
@@ -744,6 +771,20 @@ export class ReturnService {
 
     const formatted = await this.formatSession(updated, userId);
     emitReturnSessionUpdated(sessionId, formatted);
+    const counterpartyId =
+      userId === session.ownerId ? session.finderId : session.ownerId;
+    this.notifySafely(
+      notificationService.notifyReturnEvent({
+        receiverId: counterpartyId,
+        type: "MEETUP_CANCELLED",
+        title: "Phiên gặp mặt đã bị hủy",
+        content: "Đối phương đã hủy phiên gặp mặt.",
+        sessionId,
+        itemId: session.itemId || undefined,
+        dedupeKey: `meetup-cancelled:${latestProposal?.id || updated.serverRevision}:${counterpartyId}`,
+      }),
+      "meetup cancelled"
+    );
     return formatted;
   }
 
@@ -939,6 +980,20 @@ export class ReturnService {
     await this.clearLiveLocations(updated);
     const formatted = await this.formatSession(updated, userId);
     emitReturnSessionUpdated(sessionId, formatted);
+    const counterpartyId =
+      userId === session.ownerId ? session.finderId : session.ownerId;
+    this.notifySafely(
+      notificationService.notifyReturnEvent({
+        receiverId: counterpartyId,
+        type: "MEETUP_CANCELLED",
+        title: "Phiên gặp mặt đã bị hủy",
+        content: "Đối phương đã hủy phiên gặp mặt.",
+        sessionId,
+        itemId: session.itemId || undefined,
+        dedupeKey: `meetup-cancelled:${acceptedProposal?.id || updated.serverRevision}:${counterpartyId}`,
+      }),
+      "return cancelled"
+    );
     return formatted;
   }
 
@@ -1032,14 +1087,18 @@ export class ReturnService {
     emitReturnSessionUpdated(sessionId, formatted);
 
     // Notify counterparty
-    void notificationService.notifyReturnEvent({
-      receiverId: counterpartyId,
-      type: "PARTNER_ARRIVED",
-      title: "Đối tác đã đến điểm hẹn!",
-      content: `${role === "OWNER" ? "Chủ đồ" : "Người nhặt"} đã có mặt tại điểm hẹn.`,
-      sessionId,
-      itemId: session.itemId || undefined,
-    });
+    this.notifySafely(
+      notificationService.notifyReturnEvent({
+        receiverId: counterpartyId,
+        type: "PARTNER_ARRIVED",
+        title: "Đối tác đã đến điểm hẹn!",
+        content: `${role === "OWNER" ? "Chủ đồ" : "Người nhặt"} đã có mặt tại điểm hẹn.`,
+        sessionId,
+        itemId: session.itemId || undefined,
+        dedupeKey: `participant-arrived:${sessionId}:${userId}:${counterpartyId}`,
+      }),
+      "participant arrived"
+    );
 
     return formatted;
   }
@@ -1143,6 +1202,17 @@ export class ReturnService {
         ownerConfirmed: Boolean(ownerConf),
       },
       "HANDOVER_PENDING"
+    );
+    this.notifySafely(
+      notificationService.notifyReturnEvent({
+        receiverId: session.ownerId,
+        type: "HANDOVER_READY",
+        title: "Sẵn sàng bàn giao",
+        content: "Phiên trao trả đã sẵn sàng để xác nhận bàn giao.",
+        sessionId,
+        dedupeKey: `handover-ready:${sessionId}:${session.ownerId}`,
+      }),
+      "handover ready"
     );
     return handoverDetails;
   }
@@ -1505,29 +1575,37 @@ export class ReturnService {
     }
 
     // Send notifications to both participants
-    void notificationService.notifyReturnEvent({
-      receiverId: session.ownerId,
-      type: "HANDOVER_CONFIRMED",
-      title: "Bàn giao đồ thành công!",
-      content: `Món đồ "${session.item?.name || session.foundReport?.name || "Đồ vật"}" đã được hoàn trả thành công. Vui lòng gửi đánh giá cho người nhặt.`,
-      sessionId,
-      itemId: session.itemId || undefined,
-    });
+    this.notifySafely(
+      notificationService.notifyReturnEvent({
+        receiverId: session.ownerId,
+        type: "HANDOVER_CONFIRMED",
+        title: "Bàn giao đồ thành công!",
+        content: `Món đồ "${session.item?.name || session.foundReport?.name || "Đồ vật"}" đã được hoàn trả thành công. Vui lòng gửi đánh giá cho người nhặt.`,
+        sessionId,
+        itemId: session.itemId || undefined,
+        dedupeKey: `handover-confirmed:${sessionId}:${session.ownerId}`,
+      }),
+      "handover confirmed owner"
+    );
 
-    void notificationService.notifyReturnEvent({
-      receiverId: session.finderId,
-      type: isItemSource ? "REWARD_PAID" : "HANDOVER_CONFIRMED",
-      title: isItemSource
-        ? "Bàn giao thành công & Giải ngân thưởng!"
-        : "Bàn giao thành công!",
-      content: !isItemSource
-        ? "Bàn giao thành công. Cảm ơn bạn đã giúp hoàn trả đồ vật."
-        : isGuestFinder
-          ? "Bàn giao thành công. Vui lòng liên kết tài khoản để nhận tiền thưởng."
-          : `Bàn giao thành công. Phần thưởng ${rewardAmount.toLocaleString("vi-VN")} VND đang được chuyển.`,
-      sessionId,
-      itemId: session.itemId || undefined,
-    });
+    this.notifySafely(
+      notificationService.notifyReturnEvent({
+        receiverId: session.finderId,
+        type: isItemSource ? "REWARD_PAID" : "HANDOVER_CONFIRMED",
+        title: isItemSource
+          ? "Bàn giao thành công & Giải ngân thưởng!"
+          : "Bàn giao thành công!",
+        content: !isItemSource
+          ? "Bàn giao thành công. Cảm ơn bạn đã giúp hoàn trả đồ vật."
+          : isGuestFinder
+            ? "Bàn giao thành công. Vui lòng liên kết tài khoản để nhận tiền thưởng."
+            : `Bàn giao thành công. Phần thưởng ${rewardAmount.toLocaleString("vi-VN")} VND đang được chuyển.`,
+        sessionId,
+        itemId: session.itemId || undefined,
+        dedupeKey: `handover-confirmed:${sessionId}:${session.finderId}`,
+      }),
+      "handover confirmed finder"
+    );
 
     return formatted;
   }
@@ -1606,14 +1684,18 @@ export class ReturnService {
     // Notify counterparty
     const counterpartyId =
       userId === session.ownerId ? session.finderId : session.ownerId;
-    void notificationService.notifyReturnEvent({
-      receiverId: counterpartyId,
-      type: "HANDOVER_DISPUTED",
-      title: "Tranh chấp bàn giao",
-      content: `Phiên bàn giao đã bị khiếu nại: "${req.reason}". Đội ngũ hỗ trợ sẽ can thiệp.`,
-      sessionId,
-      itemId: session.itemId || undefined,
-    });
+    this.notifySafely(
+      notificationService.notifyReturnEvent({
+        receiverId: counterpartyId,
+        type: "HANDOVER_DISPUTED",
+        title: "Tranh chấp bàn giao",
+        content: `Phiên bàn giao đã bị khiếu nại: "${req.reason}". Đội ngũ hỗ trợ sẽ can thiệp.`,
+        sessionId,
+        itemId: session.itemId || undefined,
+        dedupeKey: `handover-disputed:${sessionId}:${updated.serverRevision}:${counterpartyId}`,
+      }),
+      "handover disputed"
+    );
 
     return formatted;
   }
@@ -1775,14 +1857,18 @@ export class ReturnService {
     emitReturnSessionUpdated(sessionId, formatted);
 
     // Notify finder
-    void notificationService.notifyReturnEvent({
-      receiverId: session.finderId,
-      type: "RATING_RECEIVED",
-      title: "Bạn vừa nhận được đánh giá mới!",
-      content: `Chủ đồ đã gửi đánh giá ${req.score} sao cho bạn. Cảm ơn sự giúp đỡ của bạn!`,
-      sessionId,
-      itemId: session.itemId || undefined,
-    });
+    this.notifySafely(
+      notificationService.notifyReturnEvent({
+        receiverId: session.finderId,
+        type: "RATING_RECEIVED",
+        title: "Bạn vừa nhận được đánh giá mới!",
+        content: `Chủ đồ đã gửi đánh giá ${req.score} sao cho bạn. Cảm ơn sự giúp đỡ của bạn!`,
+        sessionId,
+        itemId: session.itemId || undefined,
+        dedupeKey: `rating-received:${sessionId}:${session.finderId}`,
+      }),
+      "rating received"
+    );
 
     return formatted;
   }
