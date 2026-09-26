@@ -1,6 +1,8 @@
 import { describe, expect, it } from "vitest";
 import {
   initGuestChatSchema,
+  listItemsSchema,
+  searchItemsSchema,
   updateItemSchema,
   updateStatusSchemaWithCoordinates,
 } from "./item.schema";
@@ -153,5 +155,27 @@ describe("item flow contracts", () => {
     });
 
     expect(parsed.body.captureLocation).toBeUndefined();
+  });
+
+  it("normalizes item list filters and applies bounded pagination defaults", () => {
+    const parsed = listItemsSchema.parse({ query: { status: "lost" } });
+
+    expect(parsed.query).toEqual({ status: "LOST", page: 1, limit: 10 });
+    expect(
+      listItemsSchema.safeParse({ query: { page: "0", limit: "101" } }).success
+    ).toBe(false);
+  });
+
+  it("normalizes search status and rejects invalid pagination", () => {
+    const parsed = searchItemsSchema.parse({
+      query: { q: "ví", status: "resolved", page: "2", limit: "20" },
+    });
+
+    expect(parsed.query.status).toBe("RESOLVED");
+    expect(parsed.query.page).toBe(2);
+    expect(parsed.query.limit).toBe(20);
+    expect(
+      searchItemsSchema.safeParse({ query: { q: "ví", limit: "NaN" } }).success
+    ).toBe(false);
   });
 });

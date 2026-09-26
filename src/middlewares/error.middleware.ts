@@ -35,6 +35,7 @@ export function errorHandler(
   if (err instanceof AppError) {
     if (err.code) {
       return res.status(err.statusCode).json({
+        status: err.statusCode,
         success: false,
         message: err.message,
         error: { code: err.code },
@@ -65,6 +66,7 @@ export function errorHandler(
 
   // Default error
   return res.status(500).json({
+    status: 500,
     success: false,
     message: "Internal server error",
     error: {

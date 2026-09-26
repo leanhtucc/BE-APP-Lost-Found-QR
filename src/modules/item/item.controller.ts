@@ -130,13 +130,14 @@ export class ItemController {
   async listItems(req: Request, res: Response, next: NextFunction) {
     try {
       const userId = (req as any).user.id;
-      const { status, category, page, limit } = req.query as any;
+      const query = res.locals.validatedRequest?.query ?? req.query;
+      const { status, category, page, limit } = query as any;
 
       const result = await itemService.listItems(userId, {
         status,
         category,
-        page: page ? parseInt(page, 10) : 1,
-        limit: limit ? parseInt(limit, 10) : 10,
+        page,
+        limit,
       });
 
       return ResponseUtil.success(res, result);
@@ -285,14 +286,15 @@ export class ItemController {
   async searchItems(req: Request, res: Response, next: NextFunction) {
     try {
       const userId = (req as any).user.id;
-      const { q, status, category, page, limit } = req.query as any;
+      const query = res.locals.validatedRequest?.query ?? req.query;
+      const { q, status, category, page, limit } = query as any;
 
       const result = await itemService.searchItems(userId, {
         q,
         status,
         category,
-        page: page ? parseInt(page, 10) : 1,
-        limit: limit ? parseInt(limit, 10) : 10,
+        page,
+        limit,
       });
 
       return ResponseUtil.success(res, result);

@@ -20,6 +20,7 @@
     "prisma:deploy": "prisma migrate deploy",
     "seed": "prisma db seed",
     "seed:radar": "tsx prisma/seed-radar.ts",
+    "seed:phase1": "tsx prisma/seed-phase1.ts",
     "smtp:verify": "tsx scripts/verify-smtp.ts",
     "fcm:verify": "tsx scripts/verify-fcm.ts",
     "supabase:verify": "tsx scripts/verify-supabase.ts",

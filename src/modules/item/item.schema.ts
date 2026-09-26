@@ -34,7 +34,12 @@ export const createItemSchema = z.object({
           latitude: z.coerce.number().finite().min(-90).max(90),
           longitude: z.coerce.number().finite().min(-180).max(180),
           address: z.string().max(500).optional().nullable(),
-          accuracyMeters: z.coerce.number().finite().nonnegative().optional().nullable(),
+          accuracyMeters: z.coerce
+            .number()
+            .finite()
+            .nonnegative()
+            .optional()
+            .nullable(),
           capturedAt: z.union([z.string(), z.date()]).optional().nullable(),
         })
         .optional()
@@ -84,19 +89,37 @@ export const updateItemSchema = z.object({
           latitude: z.coerce.number().finite().min(-90).max(90),
           longitude: z.coerce.number().finite().min(-180).max(180),
           address: z.string().max(500).optional().nullable(),
-          accuracyMeters: z.coerce.number().finite().nonnegative().optional().nullable(),
+          accuracyMeters: z.coerce
+            .number()
+            .finite()
+            .nonnegative()
+            .optional()
+            .nullable(),
           capturedAt: z.union([z.string(), z.date()]).optional().nullable(),
         })
         .optional()
         .nullable(),
-      latitude: z.coerce.number().finite().min(-90).max(90).optional().nullable(),
-      longitude: z.coerce.number().finite().min(-180).max(180).optional().nullable(),
+      latitude: z.coerce
+        .number()
+        .finite()
+        .min(-90)
+        .max(90)
+        .optional()
+        .nullable(),
+      longitude: z.coerce
+        .number()
+        .finite()
+        .min(-180)
+        .max(180)
+        .optional()
+        .nullable(),
       address: z.string().max(255).optional().nullable(),
       lastSeenLocation: z.string().max(500).optional().nullable(),
     })
     .superRefine((data, ctx) => {
       const hasFlatLat = data.latitude !== undefined && data.latitude !== null;
-      const hasFlatLng = data.longitude !== undefined && data.longitude !== null;
+      const hasFlatLng =
+        data.longitude !== undefined && data.longitude !== null;
       if (hasFlatLat !== hasFlatLng) {
         ctx.addIssue({
           code: z.ZodIssueCode.custom,
@@ -166,19 +189,11 @@ export const listItemsSchema = z.object({
     status: z
       .string()
       .transform((val) => val.toUpperCase())
-      .pipe(
-        z.enum(["SAFE", "LOST", "FOUND", "RESOLVED", "ALL"])
-      )
+      .pipe(z.enum(["SAFE", "LOST", "FOUND", "RESOLVED", "ALL"]))
       .optional(),
     category: z.enum(ITEM_CATEGORIES).optional(),
-    page: z
-      .string()
-      .optional()
-      .transform((val) => (val ? parseInt(val, 10) : 1)),
-    limit: z
-      .string()
-      .optional()
-      .transform((val) => (val ? parseInt(val, 10) : 10)),
+    page: z.coerce.number().int().min(1).default(1),
+    limit: z.coerce.number().int().min(1).max(100).default(10),
   }),
 });
 
@@ -204,16 +219,12 @@ export const searchItemsSchema = z.object({
       .min(1, "Search query is required")
       .max(100, "Search query must be less than 100 characters"),
     status: z
-      .enum(["SAFE", "LOST", "FOUND", "RESOLVED", "ALL"])
+      .string()
+      .transform((val) => val.toUpperCase())
+      .pipe(z.enum(["SAFE", "LOST", "FOUND", "RESOLVED", "ALL"]))
       .optional(),
     category: z.enum(ITEM_CATEGORIES).optional(),
-    page: z
-      .string()
-      .optional()
-      .transform((val) => (val ? parseInt(val, 10) : 1)),
-    limit: z
-      .string()
-      .optional()
-      .transform((val) => (val ? parseInt(val, 10) : 10)),
+    page: z.coerce.number().int().min(1).default(1),
+    limit: z.coerce.number().int().min(1).max(100).default(10),
   }),
 });
