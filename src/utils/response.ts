@@ -9,11 +9,34 @@ export interface ApiResponse<T = any> {
   success: boolean;
   message?: string;
   data?: T;
-  error?: string;
+  error?: {
+    code: string;
+    details?: unknown;
+    fields?: Record<string, string>;
+  };
   timestamp: string;
 }
 
 export class ResponseUtil {
+  private static defaultErrorCode(statusCode: number): string {
+    switch (statusCode) {
+      case 400:
+        return "BAD_REQUEST";
+      case 401:
+        return "UNAUTHORIZED";
+      case 403:
+        return "FORBIDDEN";
+      case 404:
+        return "NOT_FOUND";
+      case 409:
+        return "CONFLICT";
+      case 429:
+        return "RATE_LIMITED";
+      default:
+        return "INTERNAL_ERROR";
+    }
+  }
+
   static success<T>(
     res: Response,
     data: T,
@@ -38,20 +61,24 @@ export class ResponseUtil {
     res: Response,
     message = "Internal server error",
     statusCode = 500,
-    error?: string
+    code = ResponseUtil.defaultErrorCode(statusCode),
+    details?: unknown
   ) {
     const response: ApiResponse = {
       status: statusCode,
       success: false,
       message,
-      ...(error && { error }),
+      error: {
+        code,
+        ...(details !== undefined ? { details } : {}),
+      },
       timestamp: new Date().toISOString(),
     };
     return res.status(statusCode).json(response);
   }
 
-  static badRequest(res: Response, message = "Bad request", error?: string) {
-    return this.error(res, message, 400, error);
+  static badRequest(res: Response, message = "Bad request", code?: string) {
+    return this.error(res, message, 400, code);
   }
 
   static unauthorized(res: Response, message = "Unauthorized") {
@@ -68,5 +95,12 @@ export class ResponseUtil {
 
   static conflict(res: Response, message = "Conflict") {
     return this.error(res, message, 409);
+  }
+
+  static tooManyRequests(
+    res: Response,
+    message = "Too many requests, please try again later"
+  ) {
+    return this.error(res, message, 429, "RATE_LIMITED");
   }
 }

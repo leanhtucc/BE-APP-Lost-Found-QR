@@ -157,6 +157,8 @@ describe("Item Flow and Multi-ID Resolution", () => {
     expect(res.body.data.status).toBe("SAFE");
     expect(res.body.data.publicItemId).toBe("cuid_public_456");
     expect(res.body.data.qrCodeId).toBe("qr_nano_789");
+    expect(res.body.data.securityToken).toBeUndefined();
+    expect(res.body.data.qrCodeUrl).toBeUndefined();
     expect(res.body.data.captureLocation.latitude).toBe(10.7769);
     expect(res.body.data.captureLocation.longitude).toBe(106.7009);
 
@@ -292,12 +294,17 @@ describe("Item Flow and Multi-ID Resolution", () => {
     expect(res.status).toBe(200);
     expect(res.body.success).toBe(true);
     expect(res.body.data.name).toBe("Ví da màu đen");
+    expect(res.body.data.id).toBe("qr_nano_789");
+    expect(res.body.data.qrCodeId).toBe("qr_nano_789");
+    expect(res.body.data.publicItemId).toBe("cuid_public_456");
     expect(res.body.data.lostMessage).toBe("Đánh rơi ở quán cà phê");
     expect(res.body.data.lostAddress).toBe("123 Lê Lợi, Q1");
     // Không chứa vị trí cất giữ SAFE
     expect(res.body.data.captureLatitude).toBeUndefined();
     expect(res.body.data.captureLongitude).toBeUndefined();
     expect(res.body.data.captureAddress).toBeUndefined();
+    expect(res.body.data.securityToken).toBeUndefined();
+    expect(res.body.data.ownerId).toBeUndefined();
   });
 
   it("8. QR code quét bằng qrCodeId thành công", async () => {

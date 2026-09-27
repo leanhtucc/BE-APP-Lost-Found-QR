@@ -7,6 +7,7 @@ const repositoryMocks = vi.hoisted(() => ({
   findById: vi.fn(),
   createUser: vi.fn(),
   updateUser: vi.fn(),
+  revokeTokens: vi.fn(),
 }));
 
 const googleOAuthMocks = vi.hoisted(() => ({
@@ -36,6 +37,7 @@ vi.mock("./auth.repository", () => ({
     findById = repositoryMocks.findById;
     createUser = repositoryMocks.createUser;
     updateUser = repositoryMocks.updateUser;
+    revokeTokens = repositoryMocks.revokeTokens;
   },
 }));
 
@@ -62,11 +64,143 @@ vi.mock("../../libs/email", () => ({
 vi.mock("../../utils/hash", () => ({
   hashPassword: vi.fn().mockResolvedValue("hashed_password"),
   comparePassword: vi.fn().mockImplementation((input, hash) => {
-    return Promise.resolve(input === "Password123" && hash === "hashed_password");
+    return Promise.resolve(
+      input === "Password123" && hash === "hashed_password"
+    );
   }),
 }));
 
 import { AuthService } from "./auth.service";
+import jwt from "jsonwebtoken";
+import { ENV } from "../../config/env";
+import { generateRefreshToken } from "../../libs/jwt";
+
+const activeUser = {
+  id: "user-123",
+  uid: "user_original_uid",
+  memberId: "USER_original_uid",
+  email: "test@example.com",
+  displayName: "Test User",
+  password: "hashed_password",
+  googleId: null,
+  isVerified: true,
+  tokenVersion: 3,
+  scheduledDeletionAt: null,
+  createdAt: new Date(),
+  updatedAt: new Date(),
+};
+
+function refreshTokenFor(user = activeUser): string {
+  return generateRefreshToken({
+    id: user.id,
+    uid: user.uid,
+    email: user.email,
+    tokenVersion: user.tokenVersion,
+  });
+}
+
+async function expectRefreshCode(
+  promise: Promise<unknown>,
+  code: string
+): Promise<void> {
+  await expect(promise).rejects.toMatchObject({
+    statusCode: 401,
+    code,
+  });
+}
+
+describe("AuthService refresh-token contract", () => {
+  let authService: AuthService;
+
+  beforeEach(() => {
+    vi.clearAllMocks();
+    authService = new AuthService();
+    repositoryMocks.findById.mockResolvedValue(activeUser);
+  });
+
+  it("returns a fresh access/refresh pair for a valid token", async () => {
+    const result = await authService.refreshToken(refreshTokenFor());
+
+    expect(result.accessToken).toEqual(expect.any(String));
+    expect(result.refreshToken).toEqual(expect.any(String));
+    expect(result.user.id).toBe(activeUser.id);
+  });
+
+  it("classifies malformed or wrongly signed tokens as invalid", async () => {
+    await expectRefreshCode(
+      authService.refreshToken("not-a-jwt"),
+      "INVALID_REFRESH_TOKEN"
+    );
+  });
+
+  it("classifies expired tokens separately", async () => {
+    const expired = jwt.sign(
+      {
+        id: activeUser.id,
+        uid: activeUser.uid,
+        email: activeUser.email,
+        tokenVersion: activeUser.tokenVersion,
+      },
+      ENV.JWT_REFRESH_SECRET,
+      { expiresIn: -1 }
+    );
+
+    await expectRefreshCode(
+      authService.refreshToken(expired),
+      "REFRESH_TOKEN_EXPIRED"
+    );
+  });
+
+  it("rejects a token whose version has been revoked", async () => {
+    repositoryMocks.findById.mockResolvedValue({
+      ...activeUser,
+      tokenVersion: activeUser.tokenVersion + 1,
+    });
+
+    await expectRefreshCode(
+      authService.refreshToken(refreshTokenFor()),
+      "REFRESH_TOKEN_REVOKED"
+    );
+  });
+
+  it("does not disclose whether the user is deleted or disabled", async () => {
+    repositoryMocks.findById.mockResolvedValue(null);
+
+    await expectRefreshCode(
+      authService.refreshToken(refreshTokenFor()),
+      "UNAUTHORIZED"
+    );
+  });
+
+  it("documents stateless reuse: the same valid token remains usable", async () => {
+    const token = refreshTokenFor();
+    const first = await authService.refreshToken(token);
+    const second = await authService.refreshToken(token);
+
+    expect(first.accessToken).toEqual(expect.any(String));
+    expect(second.accessToken).toEqual(expect.any(String));
+    expect(repositoryMocks.findById).toHaveBeenCalledTimes(2);
+  });
+
+  it("documents parallel semantics: both valid calls succeed", async () => {
+    const token = refreshTokenFor();
+    const results = await Promise.all([
+      authService.refreshToken(token),
+      authService.refreshToken(token),
+    ]);
+
+    expect(results).toHaveLength(2);
+    expect(results.every((result) => Boolean(result.refreshToken))).toBe(true);
+  });
+
+  it("revokes the current token version on logout", async () => {
+    repositoryMocks.revokeTokens.mockResolvedValue(activeUser);
+
+    await authService.logout(activeUser.id);
+
+    expect(repositoryMocks.revokeTokens).toHaveBeenCalledWith(activeUser.id);
+  });
+});
 
 describe("AuthService - Account Linking & Google Login", () => {
   let authService: AuthService;
@@ -187,7 +321,9 @@ describe("AuthService - Account Linking & Google Login", () => {
 
     const result = await authService.googleAuthWithIdToken("valid-id-token");
 
-    expect(repositoryMocks.findByGoogleId).toHaveBeenCalledWith("google-uid-999");
+    expect(repositoryMocks.findByGoogleId).toHaveBeenCalledWith(
+      "google-uid-999"
+    );
     expect(repositoryMocks.createUser).not.toHaveBeenCalled();
     expect(result.isNewUser).toBe(false);
   });

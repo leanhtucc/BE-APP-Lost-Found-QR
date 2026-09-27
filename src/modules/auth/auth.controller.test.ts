@@ -4,12 +4,14 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
 const authServiceMocks = vi.hoisted(() => ({
   register: vi.fn(),
   verifyOtp: vi.fn(),
+  logout: vi.fn(),
 }));
 
 vi.mock("./auth.service", () => ({
   AuthService: class {
     register = authServiceMocks.register;
     verifyOtp = authServiceMocks.verifyOtp;
+    logout = authServiceMocks.logout;
   },
 }));
 
@@ -101,6 +103,26 @@ describe("AuthController registration flow", () => {
       message: "OK",
       data: tokenData,
     });
+    expect(next).not.toHaveBeenCalled();
+  });
+
+  it("revokes server-side tokens before returning logout success", async () => {
+    authServiceMocks.logout.mockResolvedValue(undefined);
+    const controller = new AuthController();
+    const response = createResponse();
+    const next = vi.fn() as NextFunction;
+
+    await controller.logout(
+      { user: { id: "user-123" } } as Request,
+      response,
+      next
+    );
+
+    expect(authServiceMocks.logout).toHaveBeenCalledWith("user-123");
+    expect(response.status).toHaveBeenCalledWith(200);
+    expect(response.json).toHaveBeenCalledWith(
+      expect.objectContaining({ success: true, message: "Logout successful" })
+    );
     expect(next).not.toHaveBeenCalled();
   });
 });

@@ -163,11 +163,10 @@ export class AuthController {
     }
   }
 
-  // POST /api/auth/logout - Đăng xuất (client-side xóa token)
+  // POST /api/auth/logout - Revoke all current access and refresh tokens
   async logout(req: Request, res: Response, next: NextFunction) {
     try {
-      // Với JWT, logout chủ yếu xử lý ở client (xóa token)
-      // Hoặc có thể implement blacklist token ở đây nếu cần
+      await authService.logout(req.user!.id);
       return ResponseUtil.success(res, null, "Logout successful");
     } catch (error) {
       next(error);

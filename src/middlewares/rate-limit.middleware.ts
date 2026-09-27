@@ -46,12 +46,7 @@ export function rateLimit(config: RateLimitConfig) {
     }
 
     if (record.count >= config.max) {
-      return res.status(429).json({
-        success: false,
-        message: "Too many requests, please try again later",
-        error: { code: "RATE_LIMITED" },
-        timestamp: new Date().toISOString(),
-      });
+      return ResponseUtil.tooManyRequests(res);
     }
 
     record.count++;

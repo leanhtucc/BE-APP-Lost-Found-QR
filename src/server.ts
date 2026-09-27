@@ -3,6 +3,7 @@ import app from "./app";
 import { connectDatabase, disconnectDatabase } from "./config/database";
 import { ENV } from "./config/env";
 import { assertPhase4TestDatabaseSafety } from "./config/phase4-test-safety";
+import { assertNonProductionDatabaseSafety } from "./config/database-safety";
 import { startDailyNotificationJob } from "./jobs/daily-notification.job";
 import { startRefundJob } from "./jobs/refund.job";
 import { startAccountDeletionJob } from "./jobs/account-deletion.job";
@@ -18,6 +19,14 @@ async function startServer() {
   logger.info("Initializing server startup...");
 
   try {
+    assertNonProductionDatabaseSafety({
+      nodeEnv: ENV.NODE_ENV,
+      databaseUrl: ENV.DATABASE_URL,
+      directUrl: ENV.DIRECT_URL,
+      allowRemoteNonProductionDatabase:
+        ENV.ALLOW_REMOTE_NON_PRODUCTION_DATABASE,
+    });
+
     if (process.env.PHASE4_MANUAL_TEST === "true") {
       assertPhase4TestDatabaseSafety({
         databaseUrl: ENV.DATABASE_URL,

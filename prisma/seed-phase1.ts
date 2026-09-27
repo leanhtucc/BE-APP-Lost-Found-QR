@@ -2,6 +2,7 @@ import bcrypt from "bcrypt";
 import { nanoid } from "nanoid";
 import { ItemStatus } from "../src/generated/prisma/enums";
 import { prisma } from "../src/libs/prisma";
+import { assertNonProductionDatabaseSafety } from "../src/config/database-safety";
 
 const OWNER_UID = "phase1-acceptance-owner";
 const OWNER_EMAIL = "phase1.owner@example.test";
@@ -34,6 +35,15 @@ function assertDevelopmentEnvironment(): void {
   if (process.env.NODE_ENV === "production") {
     throw new Error("Phase 1 acceptance seed is disabled in production");
   }
+
+  const databaseUrl = process.env.DATABASE_URL || "";
+  assertNonProductionDatabaseSafety({
+    nodeEnv: process.env.NODE_ENV === "test" ? "test" : "development",
+    databaseUrl,
+    directUrl: process.env.DIRECT_URL || databaseUrl,
+    allowRemoteNonProductionDatabase:
+      process.env.ALLOW_REMOTE_NON_PRODUCTION_DATABASE === "true",
+  });
 }
 
 async function main(): Promise<void> {

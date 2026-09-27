@@ -100,8 +100,14 @@ export class ItemService {
     }
 
     // Fallback to item known coordinates saved during item protection/creation
-    const parsedItemLat = itemLatitude !== null && itemLatitude !== undefined ? Number(itemLatitude) : null;
-    const parsedItemLng = itemLongitude !== null && itemLongitude !== undefined ? Number(itemLongitude) : null;
+    const parsedItemLat =
+      itemLatitude !== null && itemLatitude !== undefined
+        ? Number(itemLatitude)
+        : null;
+    const parsedItemLng =
+      itemLongitude !== null && itemLongitude !== undefined
+        ? Number(itemLongitude)
+        : null;
     if (
       parsedItemLat !== null &&
       parsedItemLng !== null &&
@@ -165,7 +171,9 @@ export class ItemService {
               longitude: item.captureLongitude,
               address: item.captureAddress,
               accuracyMeters: item.captureAccuracyMeters,
-              capturedAt: item.capturedAt ? new Date(item.capturedAt).toISOString() : null,
+              capturedAt: item.capturedAt
+                ? new Date(item.capturedAt).toISOString()
+                : null,
             }
           : null,
       createdAt: item.createdAt,
@@ -182,7 +190,7 @@ export class ItemService {
     const serial =
       typeof rawSerial === "string" && rawSerial.length > 7
         ? `${rawSerial.slice(0, 4)}...${rawSerial.slice(-3)}`
-        : rawSerial ?? null;
+        : (rawSerial ?? null);
 
     return {
       id: item.id,
@@ -285,7 +293,9 @@ export class ItemService {
         securityToken,
       });
 
-      logger.info(`Item created: ${item.qrCodeId} (status: SAFE) by user ${userId}`);
+      logger.info(
+        `Item created: ${item.qrCodeId} (status: SAFE) by user ${userId}`
+      );
 
       return this.formatItemResponse(item);
     } catch (error) {
@@ -338,6 +348,7 @@ export class ItemService {
     if (item.status !== "LOST") {
       return {
         id: item.qrCodeId,
+        qrCodeId: item.qrCodeId,
         publicItemId: item.itemId,
         name: item.name,
         category: item.category,
@@ -353,6 +364,7 @@ export class ItemService {
 
     return {
       id: item.qrCodeId,
+      qrCodeId: item.qrCodeId,
       publicItemId: item.itemId,
       name: item.name,
       category: item.category,
@@ -706,7 +718,9 @@ export class ItemService {
       take: 100,
     });
 
-    return { items: items.map((item) => this.formatEligibleItemResponse(item)) };
+    return {
+      items: items.map((item) => this.formatEligibleItemResponse(item)),
+    };
   }
 
   // Lấy danh sách items của user
@@ -776,7 +790,8 @@ export class ItemService {
         updatePayload.captureLatitude = cLat;
         updatePayload.captureLongitude = cLng;
         updatePayload.captureAddress = data.captureLocation.address || null;
-        updatePayload.captureAccuracyMeters = data.captureLocation.accuracyMeters ?? null;
+        updatePayload.captureAccuracyMeters =
+          data.captureLocation.accuracyMeters ?? null;
         updatePayload.capturedAt = data.captureLocation.capturedAt
           ? new Date(data.captureLocation.capturedAt)
           : new Date();
@@ -792,7 +807,8 @@ export class ItemService {
         }
         updatePayload.captureLatitude = data.latitude;
         updatePayload.captureLongitude = data.longitude;
-        updatePayload.captureAddress = data.address || data.lastSeenLocation || null;
+        updatePayload.captureAddress =
+          data.address || data.lastSeenLocation || null;
         updatePayload.capturedAt = new Date();
       } else if (data.latitude === null && data.longitude === null) {
         updatePayload.captureLatitude = null;
@@ -903,17 +919,13 @@ export class ItemService {
         ITEM_GEOHASH_PRECISION
       );
 
-      updated = await itemRepository.markLost(
-        item.id,
-        userId,
-        {
-          lostMessage,
-          lostAddress: coordinates.address,
-          latitude: reportedCoordinates.latitude,
-          longitude: reportedCoordinates.longitude,
-          geohash,
-        }
-      );
+      updated = await itemRepository.markLost(item.id, userId, {
+        lostMessage,
+        lostAddress: coordinates.address,
+        latitude: reportedCoordinates.latitude,
+        longitude: reportedCoordinates.longitude,
+        geohash,
+      });
 
       if (!updated) {
         throw new AppError(
@@ -935,7 +947,9 @@ export class ItemService {
           imagePublicUrl: updated.imagePublicUrl || undefined,
           latitude: reportedCoordinates.latitude,
           longitude: reportedCoordinates.longitude,
-          reportedAt: new Date(updated.locationUpdatedAt ?? updated.updatedAt).toISOString(),
+          reportedAt: new Date(
+            updated.locationUpdatedAt ?? updated.updatedAt
+          ).toISOString(),
         });
       } catch (error) {
         logger.error("Item marked LOST but radar broadcast failed", error);

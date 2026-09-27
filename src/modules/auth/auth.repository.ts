@@ -113,26 +113,29 @@ export class AuthRepository {
   async findProfileById(
     id: string
   ): Promise<{ user: any; statistics: ProfileStatistics } | null> {
-    const [user, protectedItems, safeItems, lostItems, activeLostReports, qrScans] =
-      await prisma.$transaction([
-        prisma.user.findUnique({
-          where: { id },
-          include: { notificationPreference: true },
-        }),
-        prisma.item.count({ where: { ownerId: id } }),
-        prisma.item.count({ where: { ownerId: id, status: "SAFE" } }),
-        prisma.item.count({
-          where: {
-            ownerId: id,
-            OR: [
-              { status: "LOST" },
-              { posts: { some: { status: "ACTIVE" } } },
-            ],
-          },
-        }),
-        prisma.post.count({ where: { ownerId: id, status: "ACTIVE" } }),
-        prisma.qrScan.count({ where: { item: { ownerId: id } } }),
-      ]);
+    const [
+      user,
+      protectedItems,
+      safeItems,
+      lostItems,
+      activeLostReports,
+      qrScans,
+    ] = await prisma.$transaction([
+      prisma.user.findUnique({
+        where: { id },
+        include: { notificationPreference: true },
+      }),
+      prisma.item.count({ where: { ownerId: id } }),
+      prisma.item.count({ where: { ownerId: id, status: "SAFE" } }),
+      prisma.item.count({
+        where: {
+          ownerId: id,
+          OR: [{ status: "LOST" }, { posts: { some: { status: "ACTIVE" } } }],
+        },
+      }),
+      prisma.post.count({ where: { ownerId: id, status: "ACTIVE" } }),
+      prisma.qrScan.count({ where: { item: { ownerId: id } } }),
+    ]);
 
     if (!user) return null;
 
@@ -287,7 +290,11 @@ export class AuthRepository {
     });
   }
 
-  async updatePassword(id: string, hashedPassword: string, revokeTokens = false) {
+  async updatePassword(
+    id: string,
+    hashedPassword: string,
+    revokeTokens = false
+  ) {
     return prisma.$transaction(async (tx) => {
       const updated = await tx.user.update({
         where: { id },
@@ -307,6 +314,24 @@ export class AuthRepository {
       }
 
       return updated;
+    });
+  }
+
+  async revokeTokens(id: string, action = "LOGOUT") {
+    return prisma.$transaction(async (tx) => {
+      const user = await tx.user.update({
+        where: { id },
+        data: {
+          tokenValidAfter: new Date(),
+          tokenVersion: { increment: 1 },
+        },
+      });
+
+      await tx.securityAuditLog.create({
+        data: { userId: id, action },
+      });
+
+      return user;
     });
   }
 }

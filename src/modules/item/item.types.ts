@@ -196,7 +196,9 @@ export interface DashboardSummary {
 }
 
 export interface PublicItemResponse {
+  /** Legacy alias of qrCodeId; retained for mobile compatibility. */
   id: string;
+  qrCodeId: string;
   publicItemId: string;
   name: string;
   category: string;
@@ -216,4 +218,3 @@ export interface PublicItemResponse {
   };
   message?: string;
 }
-

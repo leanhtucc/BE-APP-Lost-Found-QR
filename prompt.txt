@@ -1,75 +1,81 @@
 # ROLE
 
-Bạn là Senior Backend Engineer + QA Engineer.
+Bạn là Senior Backend Engineer, API Architect và Security-minded Reviewer.
 
-Bạn đang làm việc trong backend của dự án:
+Project:
+Lost & Found QR / FindBack backend.
 
-Lost & Found QR / FindBack
+Phase 1 đã CLOSED/PASS.
 
-Phase 1 đã được triển khai và static validation trước đó đã đạt:
+Nhiệm vụ:
 
-- Backend build/typecheck/Prisma: PASS
-- Home/Item tests: 47 tests PASS
-- Backend Phase 1 hiện tại: PARTIAL
+PHASE 2 — ARCHITECTURE STABILIZATION
 
-Lý do chưa PASS:
-- Chưa chạy backend với database thật.
-- Chưa xác minh seed/runtime integration thực tế.
+Mục tiêu:
+ổn định contract backend để mobile có thể xây dựng Central API Client,
+single refresh-token queue và QR/Finder architecture ở phase tiếp theo.
 
-Nhiệm vụ hiện tại:
-
-PHASE 1 — FINAL BACKEND RUNTIME ACCEPTANCE
-
-Mục tiêu duy nhất:
-xác minh backend Phase 1 chạy thực tế với database development và đóng Phase 1 nếu đủ bằng chứng.
-
-KHÔNG mở rộng sang Phase 2.
+KHÔNG implement QR Resolver/Finder Flow trong phase này.
 
 ==================================================
-1. STRICT SCOPE
+1. CURRENT CONTEXT
 ==================================================
 
-Chỉ kiểm tra các phần Phase 1:
+Phase 1 đã xác minh:
 
-- Item contract.
-- Home lost feed.
-- My Items.
-- Item Detail.
-- Pagination.
-- Status.
-- Error responses.
-- Phase 1 seed.
-- Runtime database integration.
+- PostgreSQL/PostGIS local dev DB hoạt động.
+- Migration chain local PASS.
+- Home/My Items/Item Detail runtime PASS.
+- Full backend tests PASS.
 
-KHÔNG sửa:
+Production Supabase vẫn có pending migrations.
 
-- QR Resolver.
-- Scan routing.
-- Guest Finder.
-- Chat.
-- Return Session.
-- Payment.
-- Refresh-token architecture.
-- Radar lifecycle.
-- Security architecture.
+KHÔNG migrate production trong Phase 2.
 
-Nếu phát hiện vấn đề ngoài scope:
-ghi vào Deferred Issues,
-không tự triển khai.
+Không thay đổi production data.
 
 ==================================================
-2. BEFORE TESTING
+2. STRICT SCOPE
+==================================================
+
+Phase 2 Backend chỉ tập trung:
+
+A. Auth/token contract
+B. Error response contract
+C. Identifier contract
+D. Item API consistency
+E. Environment/config cleanup
+F. Architecture tests/documentation
+
+Không implement:
+
+- QR resolver
+- guest finder
+- scanner routing
+- real chat
+- Return Session redesign
+- payment redesign
+- Radar lifecycle
+- production migration deployment
+
+==================================================
+3. BEFORE CODING
 ==================================================
 
 Đọc:
 
-- AGENTS.md / AI-AGENT.md / README nếu có.
-- package.json.
-- Prisma schema.
-- env validation/config.
-- Phase 1 backend acceptance report.
-- prisma/seed-phase1.ts.
-- routes/controllers/services/tests liên quan Home và Item.
+AGENTS.md / AI-AGENT.md / README
+package.json
+Prisma schema
+env/config
+auth module
+JWT/refresh token implementation
+error middleware
+item module
+home module
+found/report modules liên quan identifier
+tests
+docs/phase-1-backend-acceptance.md
 
 Kiểm tra:
 
@@ -78,360 +84,364 @@ git diff --stat
 git diff
 git diff --check
 
-Không ghi đè thay đổi hiện tại.
+Không overwrite Phase 1 work.
 
 Không commit/push.
 
 ==================================================
-3. DATABASE ENVIRONMENT
+4. AUTH TOKEN CONTRACT AUDIT
 ==================================================
 
-Xác minh development database thật đang được cấu hình.
+Tìm implementation thực tế của:
 
-Kiểm tra:
+login
+register
+refresh token
+logout
+access token verification
 
-- DATABASE_URL tồn tại.
-- Prisma kết nối được.
-- Database đúng environment.
-- Không chạy seed Phase 1 vào production database.
-- Không chạy destructive reset nếu chưa chắc đó là development/test DB.
+Document chính xác:
 
-Nếu không thể xác minh DB là development/test:
-STOP destructive actions.
+- Access token TTL.
+- Refresh token TTL.
+- Refresh token rotation có hay không.
+- Refresh endpoint path.
+- Request body.
+- Response body.
+- Error response.
+- Refresh token reuse behavior.
+- Logout/revoke behavior.
 
-Có thể chạy các lệnh an toàn tương ứng project như:
-
-npx prisma validate
-npx prisma generate
-npx prisma migrate status
-
-Chỉ chạy migrate/reset/seed theo workflow thật của repo.
-
-Không tự tạo migration nếu schema không thay đổi.
+Không dựa vào README nếu khác source.
 
 ==================================================
-4. START BACKEND WITH REAL DATABASE
+5. DEFINE REFRESH CONTRACT
 ==================================================
 
-Khởi động backend bằng script thực tế của package.json.
+Mobile Phase 2 cần một contract đủ rõ để chỉ có một refresh request chạy tại một thời điểm.
+
+Backend phải đảm bảo refresh endpoint có behavior deterministic.
+
+Xác minh các case:
+
+valid refresh token
+expired refresh token
+invalid token
+revoked token
+token reuse
+parallel refresh calls
+user deleted/disabled
+
+Nếu refresh token rotation đang dùng:
+document rõ behavior.
+
+Không redesign authentication nếu implementation hiện tại đã đúng.
+
+Chỉ sửa bug thực tế.
+
+==================================================
+6. ERROR CONTRACT
+==================================================
+
+Audit tất cả error middleware/handlers.
+
+Mục tiêu là mobile có thể parse lỗi thống nhất.
+
+Ưu tiên shape hiện tại của project.
+
+Ví dụ concept:
+
+{
+  "error": {
+    "code": "...",
+    "message": "...",
+    "details": ...
+  }
+}
+
+KHÔNG đổi toàn hệ thống chỉ vì ví dụ này.
+
+Hãy dùng convention thật của repo.
+
+Mobile cần phân biệt ít nhất:
+
+VALIDATION_ERROR
+UNAUTHORIZED
+FORBIDDEN
+NOT_FOUND
+CONFLICT
+RATE_LIMIT
+INTERNAL_ERROR
+
+Nếu backend hiện chỉ có status/message:
+có thể bổ sung stable machine-readable code theo hướng backward-compatible.
+
+Không leak:
+
+stack
+database error
+JWT
+secrets
+credentials
+
+==================================================
+7. IDENTIFIER CONTRACT
+==================================================
+
+Đây là deliverable quan trọng nhất.
+
+Audit toàn bộ source và Prisma schema để xác định:
+
+id
+itemId
+qrCodeId
+publicId
+reportId
+channelId
+returnSessionId
+
+hoặc các field thực tế.
+
+Với từng identifier ghi:
+
+- Type.
+- Internal hay public.
+- Stable hay mutable.
+- Unique?
+- Nullable?
+- Safe to expose?
+- Safe to display?
+- Dùng trong API path?
+- Dùng cho QR trong tương lai?
+- Dùng trong navigation?
+
+Không implement QR resolver.
+
+Không đổi QR payload.
+
+Mục tiêu chỉ là khóa semantics.
+
+==================================================
+8. ITEM CONTRACT CLEANUP
+==================================================
+
+Tìm các API có field tương tự nhưng naming khác nhau.
 
 Ví dụ:
 
-npm run dev
+id vs itemId
 
-hoặc script tương ứng.
+Không rename breaking API nếu mobile đang dùng.
 
-Xác minh:
+Nếu cần:
+thêm compatibility field hoặc mapper,
+nhưng chỉ khi thật sự có inconsistency gây architecture debt.
 
-- Server boot thành công.
-- Prisma connection thành công.
-- Không crash startup.
-- Không có env validation error.
-- Không có unhandled promise rejection.
+Ưu tiên:
 
-Ghi:
+backend DTO / serializer rõ ràng
 
-Backend URL:
-Port:
-Database environment:
-Startup result:
+thay vì để controller tự trả Prisma object không kiểm soát.
+
+Không over-engineer.
 
 ==================================================
-5. TEST PHASE 1 SEED — ZERO ITEMS
+9. API VERSION / BASE CONTRACT
 ==================================================
 
-Sử dụng seed/reset mechanism hiện có.
+Audit:
 
-Test scenario user có 0 items.
+/api
+/v1
+/api/v1
 
-Không thêm mock trong API.
+và các route naming.
 
-Xác minh:
+Không đổi route hàng loạt trong Phase 2.
 
-My Items:
-- Response thành công.
-- Empty collection đúng contract.
-- Không trả 404 chỉ vì user chưa có item.
+Chỉ document canonical API base và các legacy paths nếu có.
 
-Home:
-- Empty lost feed đúng contract nếu không có nearby lost items.
-
-Item Detail:
-- ID không tồn tại trả đúng 404.
-
-Ghi response status và shape,
-không log token/secrets.
+Mobile cần biết một base URL và endpoint source of truth.
 
 ==================================================
-6. TEST PHASE 1 SEED — 20 ITEMS
+10. ENVIRONMENT CONFIG
 ==================================================
 
-Chạy seed Phase 1 với dataset 20 items.
+Audit:
 
-Xác minh dữ liệu thực sự được insert.
+.env
+.env.development
+.env.production
+.env.test
+.env.example
+docker-compose*
+config/env.*
 
-Dataset cần bao phủ nếu seed hiện hỗ trợ:
+Mục tiêu:
 
-- SAFE.
-- LOST.
-- Các status thật khác.
-- image null.
-- image hợp lệ.
-- title dài.
-- description dài.
-- mixed categories.
+- development không vô tình trỏ production.
+- test không trỏ production.
+- production secret không commit.
+- local PostGIS workflow rõ.
+- startup fail fast khi env sai.
 
-Không tạo status không tồn tại trong schema.
+Không thay production DB.
 
-==================================================
-7. MY ITEMS RUNTIME TEST
-==================================================
-
-Dùng authenticated development user.
-
-Test:
-
-A. List items
-B. Empty list
-C. Pagination page 1
-D. Pagination page tiếp theo
-E. Invalid pagination
-F. Search/filter nếu endpoint thật hỗ trợ
-G. Item thiếu image
-H. Long title
-I. Mixed statuses
-
-Xác minh:
-
-- Không lặp item giữa pages.
-- Không mất item.
-- total/count đúng.
-- page metadata đúng.
-- Internal ownership đúng.
-- Không trả item của user khác.
+Không migrate production.
 
 ==================================================
-8. HOME LOST FEED RUNTIME TEST
+11. TESTS — AUTH
 ==================================================
 
-Test endpoint thực tế mobile Home sử dụng.
+Bổ sung hoặc củng cố tests:
 
-Các case:
+- valid refresh.
+- invalid refresh.
+- expired refresh nếu test infrastructure cho phép.
+- unauthorized endpoint.
+- forbidden endpoint.
+- logout/revocation nếu implemented.
+- parallel refresh semantics nếu backend behavior cần bảo đảm.
 
-- Không có lost item.
-- Có lost item.
-- Có nhiều lost items.
-- Missing image.
-- Missing/invalid optional field nếu schema cho phép.
-- Radius/location params hợp lệ.
-- Radius/location params không hợp lệ.
-- Unauthorized nếu endpoint yêu cầu auth.
-
-Không thay Radar/socket architecture.
-
-Mục tiêu chỉ kiểm tra HTTP snapshot/feed Phase 1.
+Nếu race test khó ở unit layer:
+viết integration test phù hợp.
 
 ==================================================
-9. ITEM DETAIL RUNTIME TEST
+12. TESTS — ERROR CONTRACT
 ==================================================
 
 Test:
 
-- Owner + valid item.
-- Non-owner nếu endpoint private.
-- Invalid ID.
-- Valid-format but missing ID.
-- Deleted/not-found item nếu flow hỗ trợ.
-- Item không có image.
-- SAFE.
-- LOST.
-- Các status thật khác.
-
-Xác minh:
-
-200
+400 validation
 401
 403
 404
+409 nếu dùng
+429 nếu dùng
 500
 
-theo contract hiện tại.
-
-Không sửa API chỉ vì muốn đổi style response.
+Xác minh shape nhất quán.
 
 ==================================================
-10. ERROR RESPONSE VALIDATION
+13. TESTS — IDENTIFIER CONTRACT
 ==================================================
 
-Xác minh lỗi runtime thực tế:
+Test:
 
-401 Unauthorized
-403 Forbidden
-404 Not Found
-400 Validation Error nếu có
-500 chỉ khi thực sự có server error
+- item internal ID unique.
+- qrCodeId unique nếu schema có.
+- serializer trả đúng field.
+- không vô tình expose field private.
+- owner/public DTO đúng scope.
 
-Không tạo lỗi 500 artificial vào production code.
-
-Có thể dùng test/mocking layer để xác minh 500 nếu cần.
-
-Đảm bảo error response không leak:
-
-- stack trace production-style.
-- database credentials.
-- JWT.
-- refresh token.
-- secrets.
+Không implement public Finder endpoint mới.
 
 ==================================================
-11. RE-RUN STATIC VALIDATION
+14. DEVELOPMENT DOC
 ==================================================
 
-Sau runtime test và bất kỳ bugfix Phase 1 nào:
+Tạo hoặc cập nhật:
 
-chạy các command thật của repo.
+docs/phase-2-backend-architecture.md
 
-Tối thiểu:
+Nội dung bắt buộc:
 
-- build/type-check
-- lint nếu có
-- Prisma validate
-- Home/Item related tests
-- full relevant backend test suite nếu khả thi
-- git diff --check
+# Phase 2 Backend Architecture
 
-Không dùng kết quả cũ.
-
-Ghi chính xác command và result.
-
-==================================================
-12. ONLY FIX PHASE 1 BUGS
-==================================================
-
-Được phép sửa nếu runtime phát hiện:
-
-- pagination sai.
-- empty response sai.
-- status serialization sai.
-- nullable image gây crash.
-- Item detail 404 sai.
-- ownership regression.
-- seed script lỗi.
-- validation lỗi thuộc endpoint Phase 1.
-
-KHÔNG được nhân cơ hội refactor architecture.
-
-Sau mỗi sửa:
-rerun affected tests.
+## Auth Contract
+## Refresh Token Contract
+## Error Contract
+## Identifier Contract
+## Item DTO Contract
+## Environment Strategy
+## API Base Convention
+## Known Legacy Compatibility
+## Deferred to Phase 3
 
 ==================================================
-13. UPDATE REPORT
+15. DO NOT CHANGE
 ==================================================
 
-Cập nhật:
+Không implement:
 
-docs/phase-1-backend-acceptance.md
+QR resolving
+deep linking
+guest sessions
+scanner
+chat
+return workflow
+payment
+radar lifecycle
 
-Bổ sung:
+Không apply production migrations.
 
-## Runtime Database Acceptance
+Không đổi database schema nếu không thực sự cần.
 
-Database:
-Environment:
-Backend startup:
-Seed 0 items:
-Seed 20 items:
-Home:
-My Items:
-Item Detail:
-401:
-403:
-404:
-Pagination:
-
-## Validation Results
-
-Build/typecheck:
-Prisma:
-Tests:
-git diff --check:
-
-## Unverified
-
-Chỉ ghi thứ thực sự chưa test.
+Nếu buộc phải migration:
+giải thích rõ trước và chỉ validate local dev.
 
 ==================================================
-14. PASS RULE
+16. VALIDATION
 ==================================================
 
-Chỉ kết luận:
+Chạy scripts thật trong repo:
 
-BACKEND PHASE 1: PASS
+typecheck/build
+lint nếu có
+prettier/check nếu có
+prisma validate
+relevant auth/item tests
+full suite nếu khả thi
+git diff --check
 
-nếu:
+Nếu local dev DB cần cho integration tests:
+dùng local DB đã thiết lập ở Phase 1.
 
-- Backend chạy với DB development thật.
-- Seed chạy thật.
-- 0-item scenario pass.
-- 20-item scenario pass.
-- Home runtime pass.
-- My Items runtime pass.
-- Item Detail runtime pass.
-- Pagination runtime pass.
-- Error contract được xác minh.
-- Build/typecheck pass.
-- Prisma validation pass.
-- Tests liên quan pass.
-- Không có P0/P1 Phase 1 backend bug còn mở.
-
-Nếu DB không kết nối được:
-
-BACKEND CODE ACCEPTANCE: PASS
-DATABASE ACCEPTANCE: UNVERIFIED
-BACKEND PHASE 1: PARTIAL
-
-Không được tự ghi PASS.
+Không dùng production.
 
 ==================================================
-15. FINAL OUTPUT
+17. ACCEPTANCE CRITERIA
 ==================================================
 
-Cuối cùng trả về:
+BACKEND PHASE 2 chỉ PASS khi:
 
-# BACKEND PHASE 1 FINAL ACCEPTANCE
+- Auth/refresh contract được xác minh và document.
+- Error shape ổn định.
+- Mobile có machine-readable error semantics đủ dùng.
+- Identifier semantics rõ.
+- id vs itemId vs qrCodeId không còn mơ hồ.
+- Environment strategy không dễ nối nhầm production.
+- Tests auth/error/identifier pass.
+- Không breaking Phase 1 APIs.
+- Full relevant validation pass.
+- Không có P0/P1 architecture bug còn mở trong scope.
 
-Overall:
+==================================================
+18. FINAL REPORT
+==================================================
+
+Tạo:
+
+docs/phase-2-backend-acceptance.md
+
+Report:
+
+A. Files changed
+B. Auth contract
+C. Refresh contract
+D. Error contract
+E. Identifier contract
+F. Environment cleanup
+G. Tests added
+H. Validation results
+I. Breaking changes: YES/NO
+J. Deferred Phase 3 issues
+
+Kết luận:
+
+BACKEND PHASE 2:
 PASS / PARTIAL / FAIL
-
-Runtime DB:
-PASS / FAIL / UNVERIFIED
-
-Seed:
-PASS / FAIL
-
-Home:
-PASS / FAIL
-
-My Items:
-PASS / FAIL
-
-Item Detail:
-PASS / FAIL
-
-Validation:
-PASS / FAIL
-
-Files changed:
-...
-
-Bugs fixed:
-...
-
-Deferred:
-...
 
 Không commit.
 Không push.
-Không bắt đầu Phase 2.
-
-Bắt đầu bằng việc kiểm tra environment và database safety trước.
+Không bắt đầu Phase 3.

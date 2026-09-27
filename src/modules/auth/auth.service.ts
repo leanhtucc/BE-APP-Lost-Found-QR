@@ -1,5 +1,6 @@
 import { User } from "../../generated/prisma/client";
 import { randomInt } from "crypto";
+import { JsonWebTokenError, TokenExpiredError } from "jsonwebtoken";
 import { nanoid } from "nanoid";
 import { ENV } from "../../config/env";
 import admin from "../../config/firebaseAdmin";
@@ -74,7 +75,9 @@ export class AuthService {
     const id = String(user.id || user.uid || "");
     const rawUid = user.uid ? String(user.uid).replace("user_", "") : id;
     const memberId = String(user.memberId || `USER_${rawUid}`);
-    const displayName = String(user.displayName || user.full_name || user.name || "");
+    const displayName = String(
+      user.displayName || user.full_name || user.name || ""
+    );
     const email = String(user.email || "");
     const phoneNumber = user.phoneNumber || user.phone || null;
     const photoURL = user.photoURL || user.avatar_url || user.avatar || null;
@@ -84,39 +87,40 @@ export class AuthService {
 
     let trustScore = 50;
     if (typeof user.trustScore === "number") {
-      trustScore = user.trustScore <= 5 ? Math.round(user.trustScore * 20) : user.trustScore;
+      trustScore =
+        user.trustScore <= 5
+          ? Math.round(user.trustScore * 20)
+          : user.trustScore;
     }
 
-    const totalReturned = typeof user.totalReturned === "number" ? user.totalReturned : 0;
+    const totalReturned =
+      typeof user.totalReturned === "number" ? user.totalReturned : 0;
     const itemsLost = typeof user.itemsLost === "number" ? user.itemsLost : 0;
     trustScore = Math.max(0, Math.min(100, Math.round(trustScore)));
     const trustLevel =
       trustScore >= 90
         ? "PLATINUM"
         : trustScore >= 70
-        ? "GOLD"
-        : trustScore >= 50
-        ? "SILVER"
-        : "BRONZE";
+          ? "GOLD"
+          : trustScore >= 50
+            ? "SILVER"
+            : "BRONZE";
 
     const authProvider = user.password
       ? "password"
       : user.googleId
-      ? "google"
-      : user.phoneNumber
-      ? "firebase_phone"
-      : "apple";
+        ? "google"
+        : user.phoneNumber
+          ? "firebase_phone"
+          : "apple";
 
     const preference = user.notificationPreference;
     const preferences = {
       pushEnabled: preference?.pushEnabled ?? true,
       emailEnabled: preference?.emailEnabled ?? false,
       proximityEnabled: preference?.proximityEnabled ?? true,
-      notificationRadiusMeters:
-        preference?.notificationRadiusMeters ?? 3000,
-      language: (preference?.language === "en" ? "en" : "vi") as
-        | "vi"
-        | "en",
+      notificationRadiusMeters: preference?.notificationRadiusMeters ?? 3000,
+      language: (preference?.language === "en" ? "en" : "vi") as "vi" | "en",
     };
 
     const statistics: ProfileStatistics = profileStatistics || {
@@ -132,14 +136,14 @@ export class AuthService {
       user.createdAt instanceof Date
         ? user.createdAt.toISOString()
         : typeof user.createdAt === "string"
-        ? user.createdAt
-        : new Date().toISOString();
+          ? user.createdAt
+          : new Date().toISOString();
     const updatedAtIso =
       user.updatedAt instanceof Date
         ? user.updatedAt.toISOString()
         : typeof user.updatedAt === "string"
-        ? user.updatedAt
-        : createdAtIso;
+          ? user.updatedAt
+          : createdAtIso;
 
     return {
       // Exact fields expected by Frontend (ProfileScreen, UserInfoCard, OwnerInfoCard)
@@ -359,10 +363,15 @@ export class AuthService {
       // Get user
       const user = await authRepository.findById(decoded.id);
       if (!user || user.scheduledDeletionAt) {
-        throw new AppError("User not found", 404);
+        throw new AppError("Account is not active", 401, true, "UNAUTHORIZED");
       }
       if ((decoded.tokenVersion ?? 0) !== user.tokenVersion) {
-        throw new AppError("Session has been revoked", 401);
+        throw new AppError(
+          "Session has been revoked",
+          401,
+          true,
+          "REFRESH_TOKEN_REVOKED"
+        );
       }
 
       // Generate new tokens
@@ -386,8 +395,29 @@ export class AuthService {
         user: this.formatUserResponse(user),
       };
     } catch (error) {
-      throw new AppError("Invalid refresh token", 401);
+      if (error instanceof AppError) throw error;
+      if (error instanceof TokenExpiredError) {
+        throw new AppError(
+          "Refresh token expired",
+          401,
+          true,
+          "REFRESH_TOKEN_EXPIRED"
+        );
+      }
+      if (error instanceof JsonWebTokenError) {
+        throw new AppError(
+          "Invalid refresh token",
+          401,
+          true,
+          "INVALID_REFRESH_TOKEN"
+        );
+      }
+      throw error;
     }
+  }
+
+  async logout(userId: string): Promise<void> {
+    await authRepository.revokeTokens(userId);
   }
 
   async getProfile(userId: string): Promise<UserResponse> {
@@ -556,7 +586,9 @@ export class AuthService {
     await authRepository.updateUser(userId, payload);
     await authRepository.createAuditLog(userId, "PROFILE_UPDATED", {
       fields: Object.entries(data)
-        .filter(([field, value]) => field !== "pushToken" && value !== undefined)
+        .filter(
+          ([field, value]) => field !== "pushToken" && value !== undefined
+        )
         .map(([field]) => field),
     });
     return this.getProfile(userId);
@@ -584,7 +616,12 @@ export class AuthService {
       );
     }
     if (!(await comparePassword(data.currentPassword, user.password))) {
-      throw new AppError("Current password is incorrect", 401, true, "UNAUTHORIZED");
+      throw new AppError(
+        "Current password is incorrect",
+        401,
+        true,
+        "UNAUTHORIZED"
+      );
     }
 
     const hashedPassword = await hashPassword(data.newPassword);

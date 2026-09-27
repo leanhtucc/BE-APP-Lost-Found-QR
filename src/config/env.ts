@@ -9,6 +9,7 @@ const rawEnv = z
     PORT: z.coerce.number().int().positive().default(3000),
     DATABASE_URL: z.string().min(1),
     DIRECT_URL: z.string().min(1).optional(),
+    ALLOW_REMOTE_NON_PRODUCTION_DATABASE: z.string().optional(),
     JWT_SECRET: z.string().min(16),
     JWT_REFRESH_SECRET: z.string().min(16),
     JWT_EXPIRES_IN: z.string().default("1d"),
@@ -74,6 +75,8 @@ export const ENV = {
   // Database
   DATABASE_URL: rawEnv.DATABASE_URL,
   DIRECT_URL: rawEnv.DIRECT_URL || rawEnv.DATABASE_URL,
+  ALLOW_REMOTE_NON_PRODUCTION_DATABASE:
+    rawEnv.ALLOW_REMOTE_NON_PRODUCTION_DATABASE === "true",
 
   // JWT
   JWT_SECRET: rawEnv.JWT_SECRET,
@@ -157,9 +160,7 @@ export const ENV = {
   SUPABASE_STORAGE_BUCKET: rawEnv.SUPABASE_STORAGE_BUCKET,
   GOOGLE_API_KEY: rawEnv.GOOGLE_API_KEY || rawEnv.GEMINI_API_KEY || "",
   GOOGLE_MAPS_API_KEY:
-    rawEnv.GOOGLE_MAPS_API_KEY ||
-    rawEnv.GOOGLE_API_KEY ||
-    "",
+    rawEnv.GOOGLE_MAPS_API_KEY || rawEnv.GOOGLE_API_KEY || "",
   AI_MODEL: rawEnv.AI_MODEL,
 
   // TypeSafe AI (Jev)

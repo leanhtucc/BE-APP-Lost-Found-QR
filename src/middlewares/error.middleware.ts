@@ -1,7 +1,6 @@
 import { Request, Response, NextFunction } from "express";
 import { logger } from "../libs/logger";
 import { ResponseUtil } from "../utils/response";
-import { isDevelopment } from "../config/env";
 
 /**
  * Global Error Handler Middleware
@@ -33,26 +32,19 @@ export function errorHandler(
   });
 
   if (err instanceof AppError) {
-    if (err.code) {
-      return res.status(err.statusCode).json({
-        status: err.statusCode,
-        success: false,
-        message: err.message,
-        error: { code: err.code },
-        timestamp: new Date().toISOString(),
-      });
-    }
-    return ResponseUtil.error(
-      res,
-      err.message,
-      err.statusCode,
-      isDevelopment ? err.stack : undefined
-    );
+    return ResponseUtil.error(res, err.message, err.statusCode, err.code);
   }
 
   // Prisma errors
   if (err.name === "PrismaClientKnownRequestError") {
-    return ResponseUtil.error(res, "Database error", 400);
+    const prismaCode = (err as Error & { code?: string }).code;
+    if (prismaCode === "P2002") {
+      return ResponseUtil.conflict(res, "Resource already exists");
+    }
+    if (prismaCode === "P2025") {
+      return ResponseUtil.notFound(res, "Resource not found");
+    }
+    return ResponseUtil.error(res);
   }
 
   // JWT errors
@@ -65,16 +57,7 @@ export function errorHandler(
   }
 
   // Default error
-  return res.status(500).json({
-    status: 500,
-    success: false,
-    message: "Internal server error",
-    error: {
-      code: "INTERNAL_ERROR",
-      ...(isDevelopment ? { detail: err.message } : {}),
-    },
-    timestamp: new Date().toISOString(),
-  });
+  return ResponseUtil.error(res);
 }
 
 export function notFoundHandler(
