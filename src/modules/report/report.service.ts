@@ -23,7 +23,11 @@ const PAYMENT_SESSION_MS = 15 * 60 * 1000;
 const REPORT_PAYMENT_WINDOW_MS = 24 * 60 * 60 * 1000;
 const EARTH_RADIUS_METERS = 6_371_000;
 
-function guardianError(message: string, statusCode: number, code: string): AppError {
+function guardianError(
+  message: string,
+  statusCode: number,
+  code: string
+): AppError {
   return new AppError(message, statusCode, true, code);
 }
 
@@ -38,20 +42,38 @@ function vnPayDate(value: Date): string {
 }
 
 function canonicalSignaturePayload(values: Record<string, unknown>): string {
-  return Object.entries(values)
-    .filter(([key, value]) => value !== undefined && value !== null && key !== "signature" && key !== "vnp_SecureHash" && key !== "vnp_SecureHashType")
-    .filter(([key]) => key.startsWith("vnp_") || !Object.keys(values).some((candidate) => candidate.startsWith("vnp_")))
-    .sort(([a], [b]) => a.localeCompare(b))
-    // VNPay's official SDK signs the sorted query string with spaces encoded
-    // as '+', not '%20'. Use the same representation in the URL and HMAC.
-    .map(([key, value]) =>
-      `${encodeURIComponent(key)}=${encodeURIComponent(String(value)).replace(/%20/g, "+")}`
-    )
-    .join("&");
+  return (
+    Object.entries(values)
+      .filter(
+        ([key, value]) =>
+          value !== undefined &&
+          value !== null &&
+          key !== "signature" &&
+          key !== "vnp_SecureHash" &&
+          key !== "vnp_SecureHashType"
+      )
+      .filter(
+        ([key]) =>
+          key.startsWith("vnp_") ||
+          !Object.keys(values).some((candidate) => candidate.startsWith("vnp_"))
+      )
+      .sort(([a], [b]) => a.localeCompare(b))
+      // VNPay's official SDK signs the sorted query string with spaces encoded
+      // as '+', not '%20'. Use the same representation in the URL and HMAC.
+      .map(
+        ([key, value]) =>
+          `${encodeURIComponent(key)}=${encodeURIComponent(String(value)).replace(/%20/g, "+")}`
+      )
+      .join("&")
+  );
 }
 
 export class ReportService {
-  async countNearbyActiveUsers(lat: number, lng: number, radiusMeters: number): Promise<number> {
+  async countNearbyActiveUsers(
+    lat: number,
+    lng: number,
+    radiusMeters: number
+  ): Promise<number> {
     const rows = await prisma.$queryRawUnsafe<{ count: bigint }[]>(
       `SELECT COUNT(*)::bigint AS count
        FROM "UserLocation" ul
@@ -69,7 +91,11 @@ export class ReportService {
 
   private assertPaymentConfiguration(): void {
     if (!ENV.VNPAY_TMN_CODE || !ENV.VNPAY_HASH_SECRET) {
-      throw guardianError("Payment gateway is not configured", 503, "PAYMENT_GATEWAY_NOT_CONFIGURED");
+      throw guardianError(
+        "Payment gateway is not configured",
+        503,
+        "PAYMENT_GATEWAY_NOT_CONFIGURED"
+      );
     }
   }
 
@@ -123,7 +149,10 @@ export class ReportService {
     );
   }
 
-  async createLostReport(userId: string, params: ReportLostItemParams): Promise<ReportLostItemResponse> {
+  async createLostReport(
+    userId: string,
+    params: ReportLostItemParams
+  ): Promise<ReportLostItemResponse> {
     this.assertPaymentConfiguration();
     const rawKey = params.idempotencyKey?.trim();
     const idempotencyKey = rawKey || randomUUID();
@@ -134,8 +163,16 @@ export class ReportService {
         include: { payments: { orderBy: { createdAt: "desc" }, take: 1 } },
       });
       if (retry) {
-        if (retry.ownerId !== userId || retry.status !== "PENDING_PAYMENT" || !retry.payments[0]) {
-          throw guardianError("The idempotency key cannot be reused for this request", 409, "IDEMPOTENCY_KEY_REUSED");
+        if (
+          retry.ownerId !== userId ||
+          retry.status !== "PENDING_PAYMENT" ||
+          !retry.payments[0]
+        ) {
+          throw guardianError(
+            "The idempotency key cannot be reused for this request",
+            409,
+            "IDEMPOTENCY_KEY_REUSED"
+          );
         }
         return { post: retry, payment: retry.payments[0] };
       }
@@ -148,8 +185,16 @@ export class ReportService {
         include: { payments: { orderBy: { createdAt: "desc" }, take: 1 } },
       });
       if (concurrentRetry) {
-        if (concurrentRetry.ownerId !== userId || concurrentRetry.status !== "PENDING_PAYMENT" || !concurrentRetry.payments[0]) {
-          throw guardianError("The idempotency key cannot be reused for this request", 409, "IDEMPOTENCY_KEY_REUSED");
+        if (
+          concurrentRetry.ownerId !== userId ||
+          concurrentRetry.status !== "PENDING_PAYMENT" ||
+          !concurrentRetry.payments[0]
+        ) {
+          throw guardianError(
+            "The idempotency key cannot be reused for this request",
+            409,
+            "IDEMPOTENCY_KEY_REUSED"
+          );
         }
         return { post: concurrentRetry, payment: concurrentRetry.payments[0] };
       }
@@ -165,27 +210,51 @@ export class ReportService {
       if (!item) {
         throw guardianError("Item not found", 404, "ITEM_NOT_FOUND");
       }
-      if (item.ownerId !== userId) throw guardianError("You do not own this item", 403, "ITEM_NOT_OWNED");
+      if (item.ownerId !== userId)
+        throw guardianError("You do not own this item", 403, "ITEM_NOT_OWNED");
       if (item.status !== "SAFE") {
-        throw guardianError("Item is not eligible for a Guardian report", 409, "ITEM_NOT_ELIGIBLE");
+        throw guardianError(
+          "Item is not eligible for a Guardian report",
+          409,
+          "ITEM_NOT_ELIGIBLE"
+        );
       }
 
-      const owner = await tx.user.findUnique({ where: { id: userId }, select: { isVerified: true } });
+      const owner = await tx.user.findUnique({
+        where: { id: userId },
+        select: { isVerified: true },
+      });
       if (!owner?.isVerified && !ENV.SKIP_EMAIL_VERIFICATION) {
-        throw guardianError("User must verify their account before creating a report", 403, "USER_NOT_VERIFIED");
+        throw guardianError(
+          "User must verify their account before creating a report",
+          403,
+          "USER_NOT_VERIFIED"
+        );
       }
 
       const existing = await tx.post.findFirst({
-        where: { itemId: item.id, status: { in: ["PENDING_PAYMENT", "ACTIVE"] } },
+        where: {
+          itemId: item.id,
+          status: { in: ["PENDING_PAYMENT", "ACTIVE"] },
+        },
         select: { id: true },
       });
-      if (existing) throw guardianError(`Item already has an open Guardian report: ${existing.id}`, 409, "REPORT_ALREADY_EXISTS");
+      if (existing)
+        throw guardianError(
+          `Item already has an open Guardian report: ${existing.id}`,
+          409,
+          "REPORT_ALREADY_EXISTS"
+        );
 
-      const serviceFee = Math.round(params.reward.baseAmount * SYSTEM_FEE_PERCENTAGE);
+      const serviceFee = Math.round(
+        params.reward.baseAmount * SYSTEM_FEE_PERCENTAGE
+      );
       const totalToPay = params.reward.baseAmount + serviceFee;
       const now = new Date();
       const paymentExpiresAt = new Date(now.getTime() + PAYMENT_SESSION_MS);
-      const reportExpiresAt = new Date(now.getTime() + REPORT_PAYMENT_WINDOW_MS);
+      const reportExpiresAt = new Date(
+        now.getTime() + REPORT_PAYMENT_WINDOW_MS
+      );
       const providerOrderId = randomUUID();
       const paymentUrl = this.buildPaymentUrl({
         providerOrderId,
@@ -206,7 +275,10 @@ export class ReportService {
           serviceFee,
           currency: "VND",
           status: "PENDING_PAYMENT",
-          radarConfig: { radius: params.radar.radius, duration_hours: params.radar.durationHours },
+          radarConfig: {
+            radius: params.radar.radius,
+            duration_hours: params.radar.durationHours,
+          },
           radarRadius: params.radar.radius,
           durationHours: params.radar.durationHours,
           expiresAt: reportExpiresAt,
@@ -228,7 +300,11 @@ export class ReportService {
       return { post, payment };
     });
 
-    return { report_id: result.post.id, status: "PENDING_PAYMENT", payment: this.toPaymentSession(result.post, result.payment) };
+    return {
+      report_id: result.post.id,
+      status: "PENDING_PAYMENT",
+      payment: this.toPaymentSession(result.post, result.payment),
+    };
   }
 
   private signatureIsValid(payload: WebhookPaymentPayload): boolean {
@@ -238,36 +314,79 @@ export class ReportService {
       .digest("hex");
     const actual = payload.signature.toLowerCase();
     if (actual.length !== expected.length) return false;
-    return timingSafeEqual(Buffer.from(actual, "hex"), Buffer.from(expected, "hex"));
+    return timingSafeEqual(
+      Buffer.from(actual, "hex"),
+      Buffer.from(expected, "hex")
+    );
   }
 
   async handlePaymentWebhook(payload: WebhookPaymentPayload): Promise<void> {
     if (!this.signatureIsValid(payload)) {
-      throw guardianError("Invalid payment signature", 400, "INVALID_PAYMENT_SIGNATURE");
+      throw guardianError(
+        "Invalid payment signature",
+        400,
+        "INVALID_PAYMENT_SIGNATURE"
+      );
     }
 
     const activatedItem = await prisma.$transaction(async (tx: any) => {
-      const payment = await tx.payment.findUnique({ where: { providerOrderId: payload.providerOrderId } });
-      if (!payment) throw guardianError("Payment not found", 404, "PAYMENT_NOT_FOUND");
-      await tx.$queryRawUnsafe('SELECT "id" FROM "Payment" WHERE "id" = $1 FOR UPDATE', payment.id);
-      const report = await tx.post.findUnique({ where: { id: payment.reportId } });
-      if (!report) throw guardianError("Report not found", 404, "REPORT_NOT_FOUND");
-      await tx.$queryRawUnsafe('SELECT "id" FROM "Post" WHERE "id" = $1 FOR UPDATE', report.id);
+      const payment = await tx.payment.findUnique({
+        where: { providerOrderId: payload.providerOrderId },
+      });
+      if (!payment)
+        throw guardianError("Payment not found", 404, "PAYMENT_NOT_FOUND");
+      await tx.$queryRawUnsafe(
+        'SELECT "id" FROM "Payment" WHERE "id" = $1 FOR UPDATE',
+        payment.id
+      );
+      const report = await tx.post.findUnique({
+        where: { id: payment.reportId },
+      });
+      if (!report)
+        throw guardianError("Report not found", 404, "REPORT_NOT_FOUND");
+      await tx.$queryRawUnsafe(
+        'SELECT "id" FROM "Post" WHERE "id" = $1 FOR UPDATE',
+        report.id
+      );
 
       if (payment.status === "PAID" && report.status === "ACTIVE") return null;
       if (payment.expiresAt <= new Date()) {
-        await tx.payment.update({ where: { id: payment.id }, data: { status: "EXPIRED", rawCallback: payload.raw } });
-        throw guardianError("Payment session has expired", 409, "PAYMENT_EXPIRED");
+        await tx.payment.update({
+          where: { id: payment.id },
+          data: { status: "EXPIRED", rawCallback: payload.raw },
+        });
+        throw guardianError(
+          "Payment session has expired",
+          409,
+          "PAYMENT_EXPIRED"
+        );
       }
-      if (payment.amount !== payload.amount || payment.currency !== payload.currency.toUpperCase()) {
-        throw guardianError("Payment amount or currency does not match the order", 400, "PAYMENT_AMOUNT_MISMATCH");
+      if (
+        payment.amount !== payload.amount ||
+        payment.currency !== payload.currency.toUpperCase()
+      ) {
+        throw guardianError(
+          "Payment amount or currency does not match the order",
+          400,
+          "PAYMENT_AMOUNT_MISMATCH"
+        );
       }
       if (report.status !== "PENDING_PAYMENT") {
-        throw guardianError("Report cannot accept this payment", 409, "REPORT_NOT_ELIGIBLE");
+        throw guardianError(
+          "Report cannot accept this payment",
+          409,
+          "REPORT_NOT_ELIGIBLE"
+        );
       }
       if (!payload.paid) {
-        await tx.payment.update({ where: { id: payment.id }, data: { status: "FAILED", rawCallback: payload.raw } });
-        await tx.post.update({ where: { id: report.id }, data: { status: "PAYMENT_FAILED" } });
+        await tx.payment.update({
+          where: { id: payment.id },
+          data: { status: "FAILED", rawCallback: payload.raw },
+        });
+        await tx.post.update({
+          where: { id: report.id },
+          data: { status: "PAYMENT_FAILED" },
+        });
         return null;
       }
 
@@ -275,11 +394,22 @@ export class ReportService {
       const geohash = encodeGeoHash(report.lat, report.lng, 6);
       await tx.payment.update({
         where: { id: payment.id },
-        data: { status: "PAID", providerTransactionId: payload.providerTransactionId, paidAt: now, rawCallback: payload.raw },
+        data: {
+          status: "PAID",
+          providerTransactionId: payload.providerTransactionId,
+          paidAt: now,
+          rawCallback: payload.raw,
+        },
       });
       await tx.post.update({
         where: { id: report.id },
-        data: { status: "ACTIVE", activatedAt: now, expiresAt: new Date(now.getTime() + (report.durationHours || 24) * 60 * 60 * 1000) },
+        data: {
+          status: "ACTIVE",
+          activatedAt: now,
+          expiresAt: new Date(
+            now.getTime() + (report.durationHours || 24) * 60 * 60 * 1000
+          ),
+        },
       });
       const itemTransition = await tx.item.updateMany({
         where: { id: report.itemId, ownerId: report.ownerId, status: "SAFE" },
@@ -327,45 +457,100 @@ export class ReportService {
           imagePublicUrl: activatedItem.imagePublicUrl || undefined,
           latitude: activatedItem.lostLat as number,
           longitude: activatedItem.lostLng as number,
-          reportedAt: new Date(activatedItem.locationUpdatedAt ?? activatedItem.updatedAt).toISOString(),
+          reportedAt: new Date(
+            activatedItem.locationUpdatedAt ?? activatedItem.updatedAt
+          ).toISOString(),
         });
       } catch (error) {
-        logger.error("Guardian report activated but radar broadcast failed", error);
+        logger.error(
+          "Guardian report activated but radar broadcast failed",
+          error
+        );
       }
     }
   }
 
-  async getReportStatus(userId: string, reportId: string): Promise<ReportStatusResponse> {
+  async getReportStatus(
+    userId: string,
+    reportId: string
+  ): Promise<ReportStatusResponse> {
     const report = await prisma.post.findUnique({
       where: { id: reportId },
-      include: { item: { select: { status: true } }, payments: { orderBy: { createdAt: "desc" }, take: 1 } },
+      include: {
+        item: { select: { status: true } },
+        payments: { orderBy: { createdAt: "desc" }, take: 1 },
+      },
     });
-    if (!report) throw guardianError("Report not found", 404, "REPORT_NOT_FOUND");
-    if (report.ownerId !== userId) throw guardianError("You do not own this report", 403, "REPORT_NOT_OWNED");
+    if (!report)
+      throw guardianError("Report not found", 404, "REPORT_NOT_FOUND");
+    if (report.ownerId !== userId)
+      throw guardianError(
+        "You do not own this report",
+        403,
+        "REPORT_NOT_OWNED"
+      );
     return {
       report_id: report.id,
       report_status: report.status as ReportStatusResponse["report_status"],
-      payment_status: (report.payments[0]?.status as ReportStatusResponse["payment_status"]) ?? null,
+      payment_status:
+        (report.payments[0]
+          ?.status as ReportStatusResponse["payment_status"]) ?? null,
       item_status: report.item.status,
       activated_at: report.activatedAt?.toISOString() ?? null,
     };
   }
 
-  async createOrGetPaymentSession(userId: string, reportId: string, requestIp: string): Promise<PaymentSession> {
+  async createOrGetPaymentSession(
+    userId: string,
+    reportId: string,
+    requestIp: string
+  ): Promise<PaymentSession> {
     this.assertPaymentConfiguration();
     return prisma.$transaction(async (tx: any) => {
-      const reportExists = await tx.post.findUnique({ where: { id: reportId }, select: { id: true } });
-      if (!reportExists) throw guardianError("Report not found", 404, "REPORT_NOT_FOUND");
-      await tx.$queryRawUnsafe('SELECT "id" FROM "Post" WHERE "id" = $1 FOR UPDATE', reportId);
-      const report = await tx.post.findUnique({ where: { id: reportId }, include: { payments: { orderBy: { createdAt: "desc" } } } });
-      if (!report) throw guardianError("Report not found", 404, "REPORT_NOT_FOUND");
-      if (report.ownerId !== userId) throw guardianError("You do not own this report", 403, "REPORT_NOT_OWNED");
-      if (report.status !== "PENDING_PAYMENT") throw guardianError("Report is no longer awaiting payment", 409, "REPORT_NOT_ELIGIBLE");
-      if (report.expiresAt && report.expiresAt <= new Date()) throw guardianError("Report payment window has expired", 409, "PAYMENT_EXPIRED");
+      const reportExists = await tx.post.findUnique({
+        where: { id: reportId },
+        select: { id: true },
+      });
+      if (!reportExists)
+        throw guardianError("Report not found", 404, "REPORT_NOT_FOUND");
+      await tx.$queryRawUnsafe(
+        'SELECT "id" FROM "Post" WHERE "id" = $1 FOR UPDATE',
+        reportId
+      );
+      const report = await tx.post.findUnique({
+        where: { id: reportId },
+        include: { payments: { orderBy: { createdAt: "desc" } } },
+      });
+      if (!report)
+        throw guardianError("Report not found", 404, "REPORT_NOT_FOUND");
+      if (report.ownerId !== userId)
+        throw guardianError(
+          "You do not own this report",
+          403,
+          "REPORT_NOT_OWNED"
+        );
+      if (report.status !== "PENDING_PAYMENT")
+        throw guardianError(
+          "Report is no longer awaiting payment",
+          409,
+          "REPORT_NOT_ELIGIBLE"
+        );
+      if (report.expiresAt && report.expiresAt <= new Date())
+        throw guardianError(
+          "Report payment window has expired",
+          409,
+          "PAYMENT_EXPIRED"
+        );
 
-      const current = report.payments.find((payment: any) => payment.status === "PENDING" && payment.expiresAt > new Date());
+      const current = report.payments.find(
+        (payment: any) =>
+          payment.status === "PENDING" && payment.expiresAt > new Date()
+      );
       if (current) return this.toPaymentSession(report, current);
-      await tx.payment.updateMany({ where: { reportId, status: "PENDING" }, data: { status: "EXPIRED" } });
+      await tx.payment.updateMany({
+        where: { reportId, status: "PENDING" },
+        data: { status: "EXPIRED" },
+      });
 
       const expiresAt = new Date(Date.now() + PAYMENT_SESSION_MS);
       const providerOrderId = randomUUID();
@@ -376,7 +561,12 @@ export class ReportService {
           providerOrderId,
           amount: report.totalPaid,
           currency: "VND",
-          paymentUrl: this.buildPaymentUrl({ providerOrderId, amount: report.totalPaid, requestIp, expiresAt }),
+          paymentUrl: this.buildPaymentUrl({
+            providerOrderId,
+            amount: report.totalPaid,
+            requestIp,
+            expiresAt,
+          }),
           expiresAt,
         },
       });
@@ -385,45 +575,102 @@ export class ReportService {
   }
 
   async expirePendingReports(): Promise<number> {
-    const due = await prisma.post.findMany({ where: { status: "PENDING_PAYMENT", expiresAt: { lte: new Date() } }, select: { id: true } });
+    const due = await prisma.post.findMany({
+      where: { status: "PENDING_PAYMENT", expiresAt: { lte: new Date() } },
+      select: { id: true },
+    });
     for (const report of due) {
       await prisma.$transaction(async (tx: any) => {
-        await tx.payment.updateMany({ where: { reportId: report.id, status: "PENDING" }, data: { status: "EXPIRED" } });
-        await tx.post.updateMany({ where: { id: report.id, status: "PENDING_PAYMENT" }, data: { status: "EXPIRED" } });
+        await tx.payment.updateMany({
+          where: { reportId: report.id, status: "PENDING" },
+          data: { status: "EXPIRED" },
+        });
+        await tx.post.updateMany({
+          where: { id: report.id, status: "PENDING_PAYMENT" },
+          data: { status: "EXPIRED" },
+        });
       });
     }
     return due.length;
   }
 
-  async cancelEscrowForItem(ownerId: string, itemId: string): Promise<CancelTransactionResult | null> {
-    const report = await prisma.post.findFirst({ where: { ownerId, itemId, status: { in: ["PENDING_PAYMENT", "ACTIVE"] } }, orderBy: { createdAt: "desc" }, include: { escrowTransactions: true } });
-    if (!report) return null;
-    const holding = report.escrowTransactions.find((transaction) => transaction.status === "HOLDING");
-    await prisma.$transaction(async (tx: any) => {
-      await tx.post.update({ where: { id: report.id }, data: { status: "CANCELLED" } });
-      await tx.payment.updateMany({ where: { reportId: report.id, status: "PENDING" }, data: { status: "CANCELLED" } });
-      if (holding) await tx.escrowTransaction.update({ where: { id: holding.id }, data: { status: "REFUNDED" } });
+  async cancelEscrowForItem(
+    ownerId: string,
+    itemId: string
+  ): Promise<CancelTransactionResult | null> {
+    const report = await prisma.post.findFirst({
+      where: { ownerId, itemId, status: { in: ["PENDING_PAYMENT", "ACTIVE"] } },
+      orderBy: { createdAt: "desc" },
+      include: { escrowTransactions: true },
     });
-    return { postId: report.id, postStatus: "CANCELLED", transactionStatus: holding ? "REFUNDED" : null, refundedAmount: holding?.amount ?? 0 };
+    if (!report) return null;
+    const holding = report.escrowTransactions.find(
+      (transaction) => transaction.status === "HOLDING"
+    );
+    await prisma.$transaction(async (tx: any) => {
+      await tx.post.update({
+        where: { id: report.id },
+        data: { status: "CANCELLED" },
+      });
+      await tx.payment.updateMany({
+        where: { reportId: report.id, status: "PENDING" },
+        data: { status: "CANCELLED" },
+      });
+      if (holding)
+        await tx.escrowTransaction.update({
+          where: { id: holding.id },
+          data: { status: "REFUNDED" },
+        });
+    });
+    return {
+      postId: report.id,
+      postStatus: "CANCELLED",
+      transactionStatus: holding ? "REFUNDED" : null,
+      refundedAmount: holding?.amount ?? 0,
+    };
   }
 
-  async completeEscrowFromChannel(ownerId: string, channelId: string): Promise<CompleteTransactionResult | null> {
+  async completeEscrowFromChannel(
+    ownerId: string,
+    channelId: string
+  ): Promise<CompleteTransactionResult | null> {
     if (!channelId.startsWith("item_")) return null;
     const [itemId, ...finderParts] = channelId.slice(5).split("_");
     const finderId = finderParts.join("_");
     if (!itemId || !finderId) return null;
-    const report = await prisma.post.findFirst({ where: { itemId, ownerId, status: { in: ["ACTIVE", "FOUND", "COMPLETED"] } }, orderBy: { createdAt: "desc" }, include: { escrowTransactions: true } });
+    const report = await prisma.post.findFirst({
+      where: {
+        itemId,
+        ownerId,
+        status: { in: ["ACTIVE", "FOUND", "COMPLETED"] },
+      },
+      orderBy: { createdAt: "desc" },
+      include: { escrowTransactions: true },
+    });
     if (!report) return null;
-    const holding = report.escrowTransactions.find((transaction) => transaction.status === "HOLDING");
+    const holding = report.escrowTransactions.find(
+      (transaction) => transaction.status === "HOLDING"
+    );
     await prisma.$transaction(async (tx: any) => {
-      await tx.post.update({ where: { id: report.id }, data: { status: "COMPLETED" } });
-      if (holding) await tx.escrowTransaction.update({ where: { id: holding.id }, data: { status: "RELEASED" } });
+      await tx.post.update({
+        where: { id: report.id },
+        data: { status: "COMPLETED" },
+      });
+      if (holding)
+        await tx.escrowTransaction.update({
+          where: { id: holding.id },
+          data: { status: "RELEASED" },
+        });
       const itemTransition = await tx.item.updateMany({
         where: { id: itemId, status: "FOUND" },
         data: { status: "RESOLVED" },
       });
       if (itemTransition.count !== 1) {
-        throw guardianError("Item must be FOUND before settlement can complete", 409, "INVALID_ITEM_STATUS_TRANSITION");
+        throw guardianError(
+          "Item must be FOUND before settlement can complete",
+          409,
+          "INVALID_ITEM_STATUS_TRANSITION"
+        );
       }
     });
 
@@ -439,9 +686,7 @@ export class ReportService {
         },
       });
       if (resolvedItem) {
-        const latitude = Number(
-          resolvedItem.lostLat ?? resolvedItem.latitude
-        );
+        const latitude = Number(resolvedItem.lostLat ?? resolvedItem.latitude);
         const longitude = Number(
           resolvedItem.lostLng ?? resolvedItem.longitude
         );
@@ -459,7 +704,13 @@ export class ReportService {
       logger.error("Failed to emit radar removal on escrow settlement", err);
     }
 
-    return { postId: report.id, postStatus: "COMPLETED", transactionStatus: holding ? "RELEASED" : null, releasedAmount: report.bountyAmount, finderId };
+    return {
+      postId: report.id,
+      postStatus: "COMPLETED",
+      transactionStatus: holding ? "RELEASED" : null,
+      releasedAmount: report.bountyAmount,
+      finderId,
+    };
   }
 }
 

@@ -35,7 +35,8 @@ export interface ReportLostItemResponse {
 export interface ReportStatusResponse {
   report_id: string;
   report_status: GuardianStatus;
-  payment_status: "PENDING" | "PAID" | "FAILED" | "CANCELLED" | "EXPIRED" | "REFUNDED" | null;
+  payment_status:
+    "PENDING" | "PAID" | "FAILED" | "CANCELLED" | "EXPIRED" | "REFUNDED" | null;
   item_status: "SAFE" | "LOST" | "FOUND" | "RESOLVED";
   activated_at: string | null;
 }

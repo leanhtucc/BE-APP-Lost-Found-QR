@@ -13,3 +13,17 @@ coverage
 .DS_Store
 uploads/*
 !uploads/README.md
+
+
+build/
+.expo/
+.env*
+!.env.example
+*.pem
+*.key
+firebase-service-account.json
+android-service-account.json
+credentials/
+coverage/
+
+!.env*.example

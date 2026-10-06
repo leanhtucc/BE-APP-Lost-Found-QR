@@ -9,7 +9,9 @@ import { notificationScheduler } from "../modules/notification/notification.sche
  */
 export function startDailyNotificationJob(): ScheduledTask {
   const task = cron.schedule("*/15 * * * *", () => {
-    logger.info("[DailyNotificationJob] Triggering 15-minute notification digest sweep...");
+    logger.info(
+      "[DailyNotificationJob] Triggering 15-minute notification digest sweep..."
+    );
     notificationScheduler
       .runDailyDigestJob()
       .then((res) => {
@@ -18,10 +20,15 @@ export function startDailyNotificationJob(): ScheduledTask {
         );
       })
       .catch((err) => {
-        logger.error("[DailyNotificationJob] Unhandled error during digest sweep:", err);
+        logger.error(
+          "[DailyNotificationJob] Unhandled error during digest sweep:",
+          err
+        );
       });
   });
 
-  logger.info("[DailyNotificationJob] Daily notification digest job scheduled (every 15 mins)");
+  logger.info(
+    "[DailyNotificationJob] Daily notification digest job scheduled (every 15 mins)"
+  );
   return task;
 }

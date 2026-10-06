@@ -32,3 +32,17 @@ firebase/*.json
 # OS files
 .DS_Store
 Thumbs.db
+
+
+build/
+.expo/
+.env*
+!.env.example
+*.pem
+*.key
+firebase-service-account.json
+android-service-account.json
+credentials/
+coverage/
+
+!.env*.example

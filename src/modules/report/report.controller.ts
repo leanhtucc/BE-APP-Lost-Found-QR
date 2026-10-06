@@ -29,9 +29,7 @@ export class ReportController {
         radar: {
           radius: rawBody.radar?.radius ?? 500,
           durationHours:
-            rawBody.radar?.duration_hours ??
-            rawBody.radar?.durationHours ??
-            24,
+            rawBody.radar?.duration_hours ?? rawBody.radar?.durationHours ?? 24,
         },
         reward: {
           baseAmount:
@@ -57,11 +55,14 @@ export class ReportController {
       const genericStatus = String(raw.status ?? "").toLowerCase();
       await reportService.handlePaymentWebhook({
         providerOrderId: String(raw.provider_order_id ?? raw.vnp_TxnRef),
-        providerTransactionId: String(raw.provider_transaction_id ?? raw.vnp_TransactionNo),
+        providerTransactionId: String(
+          raw.provider_transaction_id ?? raw.vnp_TransactionNo
+        ),
         amount: isVnPay ? Number(raw.vnp_Amount) / 100 : Number(raw.amount),
         currency: String(raw.currency ?? raw.vnp_CurrCode ?? "VND"),
         paid: isVnPay
-          ? vnpResponseCode === "00" && (!vnpTransactionStatus || vnpTransactionStatus === "00")
+          ? vnpResponseCode === "00" &&
+            (!vnpTransactionStatus || vnpTransactionStatus === "00")
           : genericStatus === "paid" || genericStatus === "success",
         signature: String(raw.signature ?? raw.vnp_SecureHash),
         raw,
@@ -75,7 +76,10 @@ export class ReportController {
 
   getReportStatus = async (req: Request, res: Response, next: NextFunction) => {
     try {
-      const result = await reportService.getReportStatus(req.user!.id, req.params.reportId!);
+      const result = await reportService.getReportStatus(
+        req.user!.id,
+        req.params.reportId!
+      );
       res.json({ success: true, data: result });
     } catch (err) {
       next(err);

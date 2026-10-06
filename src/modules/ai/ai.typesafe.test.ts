@@ -303,7 +303,9 @@ describe("POST /api/ai/classify-item — TypeSafe Item Classification", () => {
     expect(res.status).toBe(502);
 
     // Server still responds to other requests
-    const healthRes = await request(app).get("/api/ai/conversations").set("Authorization", "Bearer valid-token");
+    const healthRes = await request(app)
+      .get("/api/ai/conversations")
+      .set("Authorization", "Bearer valid-token");
     // This should not crash (returns whatever the mocked service returns)
     expect([200, 500]).toContain(healthRes.status);
   });

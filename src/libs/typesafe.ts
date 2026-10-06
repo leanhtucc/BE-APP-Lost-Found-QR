@@ -31,8 +31,7 @@ const CATEGORY_CRITERIA: Record<ItemCategory, string> = {
   jewelry:
     "Rings, necklaces, bracelets, earrings, watches, or other jewelry and accessories",
   phone: "Mobile phones, smartphones, or phone cases with a phone inside",
-  other:
-    "Any item that does not clearly fit into the categories above",
+  other: "Any item that does not clearly fit into the categories above",
 };
 
 let clientInstance: TypeSafeClient | null = null;
@@ -86,9 +85,7 @@ export async function classifyItemCategory(
     const selectedCategory = answer.choice as string;
 
     // Validate the returned category is one of our known categories
-    if (
-      !ITEM_CATEGORIES.includes(selectedCategory as ItemCategory)
-    ) {
+    if (!ITEM_CATEGORIES.includes(selectedCategory as ItemCategory)) {
       logger.warn(
         `TypeSafe returned unexpected category: ${selectedCategory}, falling back to "other"`
       );

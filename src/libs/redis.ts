@@ -55,7 +55,9 @@ export class RedisClient {
 
     if (!ENV.REDIS_URL) {
       this.useInMemoryFallback = true;
-      logger.warn("Redis: no credentials configured – using in-memory fallback");
+      logger.warn(
+        "Redis: no credentials configured – using in-memory fallback"
+      );
       return;
     }
 
@@ -66,9 +68,14 @@ export class RedisClient {
 
     this.client.on("error", (error: any) => {
       if (error?.code === "ECONNREFUSED" || error?.name === "AggregateError") {
-        logger.warn("Redis TCP connection refused – switching to in-memory fallback");
+        logger.warn(
+          "Redis TCP connection refused – switching to in-memory fallback"
+        );
       } else {
-        logger.warn("Redis TCP error – switching to in-memory fallback", error?.message || error);
+        logger.warn(
+          "Redis TCP error – switching to in-memory fallback",
+          error?.message || error
+        );
       }
       this.useInMemoryFallback = true;
     });

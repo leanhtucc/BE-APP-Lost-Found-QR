@@ -39,8 +39,7 @@ export class NotificationScheduler {
     targetTimeBucket?: string;
   }): Promise<DigestResult> {
     const isDryRun = options?.dryRun ?? false;
-    const timeBucket =
-      options?.targetTimeBucket ?? this.getCurrentTimeBucket();
+    const timeBucket = options?.targetTimeBucket ?? this.getCurrentTimeBucket();
     const todayDateStr = new Date().toISOString().slice(0, 10);
 
     logger.info(

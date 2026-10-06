@@ -17,6 +17,8 @@ export function startRefundJob(): ScheduledTask {
       logger.error("[GuardianPaymentExpiry] Unhandled error:", error)
     );
   });
-  logger.info("[GuardianPaymentExpiry] Pending-payment expiry job scheduled (every 15 minutes)");
+  logger.info(
+    "[GuardianPaymentExpiry] Pending-payment expiry job scheduled (every 15 minutes)"
+  );
   return task;
 }

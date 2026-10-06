@@ -24,8 +24,6 @@ export const queryToBody = (
 
     // Copy query params sang body
     req.body = { ...req.query };
-
-    console.log("[QUERY_TO_BODY] Body after copy:", req.body);
   }
 
   next();

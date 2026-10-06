@@ -93,8 +93,9 @@ describe("auth registration schemas", () => {
 
   it("rejects insecure avatar URLs and protected profile fields", () => {
     expect(
-      updateProfileSchema.safeParse({ body: { photoURL: "http://example.com/a.jpg" } })
-        .success
+      updateProfileSchema.safeParse({
+        body: { photoURL: "http://example.com/a.jpg" },
+      }).success
     ).toBe(false);
     expect(
       updateProfileSchema.safeParse({ body: { trustScore: 100 } }).success
@@ -104,7 +105,10 @@ describe("auth registration schemas", () => {
   it("validates password changes and deletion confirmation", () => {
     expect(
       changePasswordSchema.safeParse({
-        body: { currentPassword: "OldPassword123", newPassword: "NewPassword456" },
+        body: {
+          currentPassword: "OldPassword123",
+          newPassword: "NewPassword456",
+        },
       }).success
     ).toBe(true);
     expect(
