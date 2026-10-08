@@ -21,11 +21,11 @@ dist/
 # Prisma generated files
 /generated/prisma
 /src/generated/prisma/
+.agents/skills
+public/uploads/
 
 # Uploads folder
 uploads/
-public/uploads/
-
 # Firebase service-account private keys
 firebase/*.json
 
