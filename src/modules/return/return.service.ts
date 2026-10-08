@@ -33,6 +33,7 @@ import {
   getReturnCapabilities,
   RETURN_TERMINAL_OR_PRIVATE_REVOKED_STATES,
 } from "./return.policy";
+import { parseItemChannelId } from "../item/item-channel-id";
 
 const CODE_SALT = "lost_found_handover_salt_2026";
 const HANDOVER_CODE_TTL_SECONDS = 300; // 5 minutes
@@ -381,16 +382,10 @@ export class ReturnService {
 
     // 2. Parse channelId to determine itemId and finderId if possible
     // Convention: item_{itemId}_{finderId}
+    const parsedChannel = parseItemChannelId(channelId);
     let itemId = input.itemId;
-    let finderId: string | null = null;
-
-    if (channelId.startsWith("item_")) {
-      const parts = channelId.slice(5).split("_");
-      if (parts.length >= 2) {
-        if (!itemId) itemId = parts[0];
-        finderId = parts.slice(1).join("_");
-      }
-    }
+    let finderId: string | null = parsedChannel?.finderId ?? null;
+    if (parsedChannel) itemId = parsedChannel.qrCodeId;
 
     if (!itemId) {
       throw new AppError(
@@ -400,12 +395,17 @@ export class ReturnService {
     }
 
     // 3. Query item and owner
-    const item = await prisma.item.findFirst({
-      where: {
-        OR: [{ id: itemId }, { itemId }],
-      },
-      include: { owner: true },
-    });
+    const item = parsedChannel
+      ? await prisma.item.findUnique({
+          where: { qrCodeId: parsedChannel.qrCodeId },
+          include: { owner: true },
+        })
+      : await prisma.item.findFirst({
+          where: {
+            OR: [{ id: itemId }, { itemId }, { qrCodeId: itemId }],
+          },
+          include: { owner: true },
+        });
 
     if (!item) {
       throw new AppError("Item not found", 404);

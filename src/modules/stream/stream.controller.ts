@@ -19,6 +19,7 @@ import {
 } from "../../libs/stream-chat";
 import { ResponseUtil } from "../../utils/response";
 import { reportService } from "../report/report.service";
+import { prisma } from "../../libs/prisma";
 import { createLostItemReturnChannel } from "./stream.service";
 
 export class StreamChatController {
@@ -131,8 +132,23 @@ export class StreamChatController {
     next: NextFunction
   ): Promise<void> => {
     try {
-      const userId = req.user!.id;
+      const userId = req.guest?.id ?? req.user!.id;
       const { channelId } = req.params;
+
+      const session = await prisma.returnSession.findUnique({
+        where: { channelId },
+        select: { ownerId: true, finderId: true },
+      });
+      if (!session)
+        throw new AppError("Channel not found", 404, true, "CHANNEL_NOT_FOUND");
+      if (userId !== session.ownerId && userId !== session.finderId) {
+        throw new AppError(
+          "You are not a participant in this return",
+          403,
+          true,
+          "RETURN_FORBIDDEN"
+        );
+      }
 
       if (!channelId) {
         ResponseUtil.badRequest(res, "Channel ID is required");

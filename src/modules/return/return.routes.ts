@@ -1,5 +1,6 @@
 import { Router } from "express";
 import { authMiddleware } from "../../middlewares/auth.middleware";
+import { guestOrUserAuth } from "../../middlewares/guest-auth.middleware";
 import { validate } from "../../middlewares/validate.middleware";
 import { returnController } from "./return.controller";
 import {
@@ -12,15 +13,13 @@ import {
 
 const router = Router();
 
-// Tất cả endpoints đều yêu cầu authenticated token
-router.use(authMiddleware);
-
 /**
  * @route   POST /v1/returns
  * @desc    Tạo hoặc lấy phiên hoàn trả theo channelId
  */
 router.post(
   "/",
+  authMiddleware,
   validate(createOrGetSessionSchema),
   returnController.createOrGetSession
 );
@@ -29,7 +28,14 @@ router.post(
  * @route   GET /v1/returns/:id
  * @desc    Lấy chi tiết phiên hoàn trả
  */
-router.get("/:id", returnController.getSession);
+router.get("/:id", guestOrUserAuth, returnController.getSession);
+
+/** Owner cancels an active guest claim. */
+router.post(
+  "/:id/claim/reject",
+  authMiddleware,
+  returnController.rejectGuestClaim
+);
 
 /**
  * @route   POST /v1/returns/:id/meetup/propose
@@ -37,6 +43,7 @@ router.get("/:id", returnController.getSession);
  */
 router.post(
   "/:id/meetup/propose",
+  guestOrUserAuth,
   validate(proposeMeetupSchema),
   returnController.proposeMeetup
 );
@@ -45,39 +52,59 @@ router.post(
  * @route   POST /v1/returns/:id/meetup/accept
  * @desc    Chấp nhận điểm hẹn
  */
-router.post("/:id/meetup/accept", returnController.acceptMeetup);
+router.post(
+  "/:id/meetup/accept",
+  guestOrUserAuth,
+  returnController.acceptMeetup
+);
 
 /**
  * @route   POST /v1/returns/:id/meetup/reject
  * @desc    Từ chối hoặc hủy điểm hẹn
  */
-router.post("/:id/meetup/reject", returnController.rejectMeetup);
+router.post(
+  "/:id/meetup/reject",
+  guestOrUserAuth,
+  returnController.rejectMeetup
+);
 
 /**
  * @route   POST /v1/returns/:id/tracking/start
  * @desc    Bắt đầu live tracking
  */
-router.post("/:id/tracking/start", returnController.startTracking);
+router.post(
+  "/:id/tracking/start",
+  guestOrUserAuth,
+  returnController.startTracking
+);
 
 /**
  * @route   POST /v1/returns/:id/tracking/stop
  * @desc    Dừng live tracking
  */
-router.post("/:id/tracking/stop", returnController.stopTracking);
+router.post(
+  "/:id/tracking/stop",
+  guestOrUserAuth,
+  returnController.stopTracking
+);
 
 /**
  * @route   POST /v1/returns/:id/arrival
  * @desc    Khai báo đã đến điểm hẹn
  */
-router.post("/:id/arrival", returnController.notifyArrival);
+router.post("/:id/arrival", guestOrUserAuth, returnController.notifyArrival);
 
-router.post("/:id/cancel", returnController.cancelReturn);
+router.post("/:id/cancel", guestOrUserAuth, returnController.cancelReturn);
 
 /**
  * @route   POST /v1/returns/:id/handover/init
  * @desc    Khởi tạo bàn giao và sinh mã PIN 6 số bảo mật
  */
-router.post("/:id/handover/init", returnController.initHandover);
+router.post(
+  "/:id/handover/init",
+  guestOrUserAuth,
+  returnController.initHandover
+);
 
 /**
  * @route   POST /v1/returns/:id/handover/confirm
@@ -85,6 +112,7 @@ router.post("/:id/handover/init", returnController.initHandover);
  */
 router.post(
   "/:id/handover/confirm",
+  authMiddleware,
   validate(confirmHandoverSchema),
   returnController.confirmHandover
 );
@@ -95,6 +123,7 @@ router.post(
  */
 router.post(
   "/:id/handover/dispute",
+  authMiddleware,
   validate(disputeHandoverSchema),
   returnController.disputeHandover
 );
@@ -103,7 +132,7 @@ router.post(
  * @route   GET /v1/returns/:id/reward
  * @desc    Lấy trạng thái giải ngân phần thưởng
  */
-router.get("/:id/reward", returnController.getRewardStatus);
+router.get("/:id/reward", guestOrUserAuth, returnController.getRewardStatus);
 
 /**
  * @route   POST /v1/returns/:id/rating
@@ -111,6 +140,7 @@ router.get("/:id/reward", returnController.getRewardStatus);
  */
 router.post(
   "/:id/rating",
+  authMiddleware,
   validate(submitRatingSchema),
   returnController.submitRating
 );

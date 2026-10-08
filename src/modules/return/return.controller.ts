@@ -1,5 +1,10 @@
 import { NextFunction, Request, Response } from "express";
 import { returnService } from "./return.service";
+import { guestClaimLifecycleService } from "./guest-claim-lifecycle.service";
+
+function actorId(req: Request): string {
+  return req.guest?.id ?? req.user!.id;
+}
 
 function getIfMatch(req: Request): number | undefined {
   const header = req.header("If-Match") || req.header("if-match");
@@ -11,6 +16,27 @@ function getIfMatch(req: Request): number | undefined {
 }
 
 export class ReturnController {
+  rejectGuestClaim = async (
+    req: Request,
+    res: Response,
+    next: NextFunction
+  ) => {
+    try {
+      const ownerId = actorId(req);
+      const sessionId = req.params.id as string;
+      await guestClaimLifecycleService.rejectByOwner(ownerId, sessionId);
+      const result = await returnService.getSession(ownerId, sessionId);
+      res.status(200).json({
+        success: true,
+        data: result,
+        message: "Guest claim rejected",
+        timestamp: new Date().toISOString(),
+      });
+    } catch (err) {
+      next(err);
+    }
+  };
+
   // POST /v1/returns
   createOrGetSession = async (
     req: Request,
@@ -18,7 +44,7 @@ export class ReturnController {
     next: NextFunction
   ) => {
     try {
-      const userId = req.user!.id;
+      const userId = actorId(req);
       const { channelId, itemId } = req.body;
       const result = await returnService.createOrGetSession(userId, {
         channelId,
@@ -39,7 +65,7 @@ export class ReturnController {
   // GET /v1/returns/:id
   getSession = async (req: Request, res: Response, next: NextFunction) => {
     try {
-      const userId = req.user!.id;
+      const userId = actorId(req);
       const sessionId = req.params.id as string;
       const result = await returnService.getSession(userId, sessionId);
 
@@ -56,7 +82,7 @@ export class ReturnController {
   // POST /v1/returns/:id/meetup/propose
   proposeMeetup = async (req: Request, res: Response, next: NextFunction) => {
     try {
-      const userId = req.user!.id;
+      const userId = actorId(req);
       const sessionId = req.params.id as string;
       const ifMatch = getIfMatch(req);
       const result = await returnService.proposeMeetup(
@@ -80,7 +106,7 @@ export class ReturnController {
   // POST /v1/returns/:id/meetup/accept
   acceptMeetup = async (req: Request, res: Response, next: NextFunction) => {
     try {
-      const userId = req.user!.id;
+      const userId = actorId(req);
       const sessionId = req.params.id as string;
       const ifMatch = getIfMatch(req);
       const result = await returnService.acceptMeetup(
@@ -103,7 +129,7 @@ export class ReturnController {
   // POST /v1/returns/:id/meetup/reject
   rejectMeetup = async (req: Request, res: Response, next: NextFunction) => {
     try {
-      const userId = req.user!.id;
+      const userId = actorId(req);
       const sessionId = req.params.id as string;
       const ifMatch = getIfMatch(req);
       const result = await returnService.rejectMeetup(
@@ -126,7 +152,7 @@ export class ReturnController {
   // POST /v1/returns/:id/tracking/start
   startTracking = async (req: Request, res: Response, next: NextFunction) => {
     try {
-      const userId = req.user!.id;
+      const userId = actorId(req);
       const sessionId = req.params.id as string;
       const ifMatch = getIfMatch(req);
       const result = await returnService.startTracking(
@@ -149,7 +175,7 @@ export class ReturnController {
   // POST /v1/returns/:id/tracking/stop
   stopTracking = async (req: Request, res: Response, next: NextFunction) => {
     try {
-      const userId = req.user!.id;
+      const userId = actorId(req);
       const sessionId = req.params.id as string;
       const ifMatch = getIfMatch(req);
       const result = await returnService.stopTracking(
@@ -172,7 +198,7 @@ export class ReturnController {
   // POST /v1/returns/:id/arrival
   notifyArrival = async (req: Request, res: Response, next: NextFunction) => {
     try {
-      const userId = req.user!.id;
+      const userId = actorId(req);
       const sessionId = req.params.id as string;
       const ifMatch = getIfMatch(req);
       const result = await returnService.notifyArrival(
@@ -196,7 +222,7 @@ export class ReturnController {
   cancelReturn = async (req: Request, res: Response, next: NextFunction) => {
     try {
       const result = await returnService.cancelReturn(
-        req.user!.id,
+        actorId(req),
         req.params.id as string,
         getIfMatch(req)
       );
@@ -214,7 +240,7 @@ export class ReturnController {
   // POST /v1/returns/:id/handover/init
   initHandover = async (req: Request, res: Response, next: NextFunction) => {
     try {
-      const userId = req.user!.id;
+      const userId = actorId(req);
       const sessionId = req.params.id as string;
       const result = await returnService.initHandover(userId, sessionId);
 
@@ -232,7 +258,7 @@ export class ReturnController {
   // POST /v1/returns/:id/handover/confirm
   confirmHandover = async (req: Request, res: Response, next: NextFunction) => {
     try {
-      const userId = req.user!.id;
+      const userId = actorId(req);
       const sessionId = req.params.id as string;
       const ifMatch = getIfMatch(req);
       const result = await returnService.confirmHandover(
@@ -256,7 +282,7 @@ export class ReturnController {
   // POST /v1/returns/:id/handover/dispute
   disputeHandover = async (req: Request, res: Response, next: NextFunction) => {
     try {
-      const userId = req.user!.id;
+      const userId = actorId(req);
       const sessionId = req.params.id as string;
       const ifMatch = getIfMatch(req);
       const result = await returnService.disputeHandover(
@@ -280,7 +306,7 @@ export class ReturnController {
   // GET /v1/returns/:id/reward
   getRewardStatus = async (req: Request, res: Response, next: NextFunction) => {
     try {
-      const userId = req.user!.id;
+      const userId = actorId(req);
       const sessionId = req.params.id as string;
       const result = await returnService.getRewardStatus(userId, sessionId);
 

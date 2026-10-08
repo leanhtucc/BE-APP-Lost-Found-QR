@@ -27,9 +27,24 @@ export const getStreamClient = (): StreamChat => {
  * Tạo User Token cho Stream Chat
  * Token này sẽ được gửi về cho client để authenticate
  */
-export const createStreamUserToken = (userId: string): string => {
+export const createStreamUserToken = (
+  userId: string,
+  expiresAt?: number
+): string => {
   const client = getStreamClient();
-  return client.createToken(userId);
+  return client.createToken(userId, expiresAt);
+};
+
+export const deleteItemChannel = async (channelId: string): Promise<void> => {
+  const channel = getStreamClient().channel("messaging", channelId);
+  await channel.delete();
+};
+
+export const deleteStreamUser = async (userId: string): Promise<void> => {
+  await getStreamClient().deleteUser(userId, {
+    hard_delete: true,
+    delete_conversation_channels: true,
+  });
 };
 
 /**
@@ -121,6 +136,18 @@ export const closeItemChannel = async (channelId: string) => {
     disabled: true,
     frozen: true,
   });
+};
+
+export const getItemChannelLastMessageAt = async (
+  channelId: string
+): Promise<Date | null> => {
+  const response = await getStreamClient()
+    .channel("messaging", channelId)
+    .query({});
+  const lastMessageAt = (response as any).channel?.last_message_at;
+  if (!lastMessageAt) return null;
+  const timestamp = new Date(lastMessageAt).getTime();
+  return Number.isFinite(timestamp) ? new Date(timestamp) : null;
 };
 
 /**

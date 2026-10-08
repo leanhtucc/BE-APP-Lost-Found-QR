@@ -3,6 +3,7 @@ import { ENV } from "../../config/env";
 import { logger } from "../../libs/logger";
 import { prisma } from "../../libs/prisma";
 import { AppError } from "../../middlewares/error.middleware";
+import { parseItemChannelId } from "../item/item-channel-id";
 import {
   emitLostItemRemovedToNearbyUsers,
   emitLostItemToNearbyUsers,
@@ -634,13 +635,17 @@ export class ReportService {
     ownerId: string,
     channelId: string
   ): Promise<CompleteTransactionResult | null> {
-    if (!channelId.startsWith("item_")) return null;
-    const [itemId, ...finderParts] = channelId.slice(5).split("_");
-    const finderId = finderParts.join("_");
-    if (!itemId || !finderId) return null;
+    const parsedChannel = parseItemChannelId(channelId);
+    if (!parsedChannel) return null;
+    const { qrCodeId, finderId } = parsedChannel;
+    const item = await prisma.item.findUnique({
+      where: { qrCodeId },
+      select: { id: true },
+    });
+    if (!item) return null;
     const report = await prisma.post.findFirst({
       where: {
-        itemId,
+        itemId: item.id,
         ownerId,
         status: { in: ["ACTIVE", "FOUND", "COMPLETED"] },
       },
@@ -662,7 +667,7 @@ export class ReportService {
           data: { status: "RELEASED" },
         });
       const itemTransition = await tx.item.updateMany({
-        where: { id: itemId, status: "FOUND" },
+        where: { id: item.id, status: "FOUND" },
         data: { status: "RESOLVED" },
       });
       if (itemTransition.count !== 1) {
@@ -676,7 +681,7 @@ export class ReportService {
 
     try {
       const resolvedItem = await prisma.item.findUnique({
-        where: { id: itemId },
+        where: { id: item.id },
         select: {
           itemId: true,
           lostLat: true,

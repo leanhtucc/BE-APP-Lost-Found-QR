@@ -1,6 +1,7 @@
 import { Router } from "express";
 import { authMiddleware } from "../../middlewares/auth.middleware";
 import { validate } from "../../middlewares/validate.middleware";
+import { rateLimit } from "../../middlewares/rate-limit.middleware";
 import { ItemController } from "./item.controller";
 import {
   createItemSchema,
@@ -27,6 +28,11 @@ router.get("/scan/:itemId", validate(scanQRSchema), itemController.scanQRCode);
 // POST /api/scan/guest-init - Khởi tạo chat ẩn danh (Guest Flow B+)
 router.post(
   "/scan/guest-init",
+  rateLimit({
+    windowMs: 60_000,
+    max: 5,
+    keyGenerator: (req) => req.ip || req.socket.remoteAddress || "unknown",
+  }),
   validate(initGuestChatSchema),
   itemController.initGuestChat
 );

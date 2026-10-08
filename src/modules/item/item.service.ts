@@ -5,8 +5,11 @@ import { prisma } from "../../libs/prisma";
 import {
   createItemChannel,
   createStreamUserToken,
+  deleteItemChannel,
+  deleteStreamUser,
   upsertStreamUser,
 } from "../../libs/stream-chat";
+import { issueGuestToken } from "../../libs/guest-jwt";
 import { AppError } from "../../middlewares/error.middleware";
 import {
   emitLostItemRemovedToNearbyUsers,
@@ -469,16 +472,10 @@ export class ItemService {
       throw new AppError("Item is not currently lost", 400);
     }
 
-    // Lookup or Create Guest User
-    // We will search for a user by phoneNumber. If not exists, create a guest user.
-    let guestUser = await prisma.user.findFirst({
-      where: { phoneNumber },
-    });
-
-    if (!guestUser) {
-      const shortPhone = phoneNumber.substring(phoneNumber.length - 4);
-      const guestUid = `guest_${nanoid(10)}`;
-      guestUser = await prisma.user.create({
+    const shortPhone = phoneNumber.substring(phoneNumber.length - 4);
+    const guestUid = `guest_${nanoid(10)}`;
+    const claim = await prisma.$transaction(async (tx) => {
+      const guestUser = await tx.user.create({
         data: {
           uid: guestUid,
           email: `${guestUid}@guest.findback.app`,
@@ -487,131 +484,168 @@ export class ItemService {
           role: "guest",
         },
       });
-    }
-
-    // Register guest in StreamChat
-    const guestDisplayName =
-      guestUser.displayName || `Guest (*${phoneNumber.slice(-4)})`;
-    await upsertStreamUser({
-      id: guestUser.id,
-      name: guestDisplayName,
-    });
-
-    // Create StreamChat token
-    const chatToken = createStreamUserToken(guestUser.id);
-
-    // Ensure Owner is on StreamChat
-    await upsertStreamUser({
-      id: item.owner.id,
-      name: item.owner.displayName,
-    });
-
-    // Create item channel
-    const { channelId } = await createItemChannel(
-      qrCodeId,
-      item.name,
-      item.owner.id,
-      guestUser.id
-    );
-
-    const claimed = await prisma.$transaction(async (tx) => {
       const itemTransition = await tx.item.updateMany({
         where: { id: item.id, status: "LOST" },
         data: { status: "FOUND" },
       });
 
-      if (itemTransition.count !== 1) return false;
+      if (itemTransition.count !== 1) {
+        throw new AppError(
+          "Another finder has already claimed this item",
+          409,
+          true,
+          "ITEM_ALREADY_FOUND"
+        );
+      }
 
       await tx.post.updateMany({
         where: { itemId: item.id, status: "ACTIVE" },
         data: { status: "FOUND" },
       });
-      return true;
+      const returnSession = await tx.returnSession.create({
+        data: {
+          channelId: `item_${item.qrCodeId}_${guestUser.id}`,
+          itemId: item.id,
+          ownerId: item.owner.id,
+          finderId: guestUser.id,
+        },
+      });
+      return { guestUser, returnSession };
     });
 
-    if (!claimed) {
-      throw new AppError(
-        "Another finder has already claimed this item",
-        409,
-        true,
-        "ITEM_ALREADY_FOUND"
+    const { guestUser, returnSession } = claim;
+    const channelId = returnSession.channelId;
+    const guestDisplayName =
+      guestUser.displayName || `Guest (*${phoneNumber.slice(-4)})`;
+    let guestStreamUserCreated = false;
+    try {
+      await upsertStreamUser({ id: guestUser.id, name: guestDisplayName });
+      guestStreamUserCreated = true;
+      await upsertStreamUser({
+        id: item.owner.id,
+        name: item.owner.displayName,
+      });
+      await createItemChannel(
+        item.qrCodeId,
+        item.name,
+        item.owner.id,
+        guestUser.id
       );
-    }
-
-    await this.emitLostRemoval(item, "FOUND");
-
-    // Persist notification records for app inbox + in-app realtime emit.
-    const notificationTasks: Promise<unknown>[] = [
-      notificationService.notifyStatusUpdate({
-        receiverId: item.owner.id,
-        category: "ITEM",
-        type: "QR_SCANNED",
-        title: "Có người quét mã QR",
-        content: `${guestDisplayName} đã quét QR của món đồ ${item.name}`,
-        metadata: {
-          item_id: qrCodeId,
-          room_id: channelId,
-          finder_id: guestUser.id,
-        },
-      }),
-      notificationService.notifyNewChat({
-        receiverId: item.owner.id,
-        senderAvatar: guestUser.photoURL || "",
-        roomId: channelId,
-        messagePreview: `${guestDisplayName} vừa bắt đầu cuộc trò chuyện về ${item.name}`,
-        itemId: qrCodeId,
-      }),
-    ];
-
-    if (
-      Number.isFinite(lat) &&
-      Number.isFinite(lng) &&
-      item.lostLat != null &&
-      item.lostLng != null
-    ) {
-      const distanceMeters = Math.round(
-        haversineDistanceMeters(
-          lat as number,
-          lng as number,
-          item.lostLat,
-          item.lostLng
-        )
+      const guestAccess = issueGuestToken(guestUser.id, returnSession.id);
+      const chatToken = createStreamUserToken(
+        guestUser.id,
+        Math.floor(Date.now() / 1000) + 60 * 60
       );
 
-      if (distanceMeters <= 2000) {
-        notificationTasks.push(
-          notificationService.notifyMatchFound({
-            receiverId: item.owner.id,
-            distanceMeters,
-            postId: item.id,
-            itemName: item.name,
-          })
-        );
-      }
+      await this.emitLostRemoval(item, "FOUND");
 
-      if (distanceMeters <= 100) {
-        notificationTasks.push(
-          notificationService.notifyProximityAlert({
-            receiverId: item.owner.id,
-            distanceMeters,
-            postId: item.id,
-          })
+      // Persist notification records for app inbox + in-app realtime emit.
+      const notificationTasks: Promise<unknown>[] = [
+        notificationService.notifyStatusUpdate({
+          receiverId: item.owner.id,
+          category: "ITEM",
+          type: "QR_SCANNED",
+          title: "Có người quét mã QR",
+          content: `${guestDisplayName} đã quét QR của món đồ ${item.name}`,
+          metadata: {
+            item_id: item.qrCodeId,
+            room_id: channelId,
+            finder_id: guestUser.id,
+          },
+        }),
+        notificationService.notifyNewChat({
+          receiverId: item.owner.id,
+          senderAvatar: guestUser.photoURL || "",
+          roomId: channelId,
+          messagePreview: `${guestDisplayName} vừa bắt đầu cuộc trò chuyện về ${item.name}`,
+          itemId: item.qrCodeId,
+        }),
+      ];
+      if (
+        Number.isFinite(lat) &&
+        Number.isFinite(lng) &&
+        item.lostLat != null &&
+        item.lostLng != null
+      ) {
+        const distanceMeters = Math.round(
+          haversineDistanceMeters(
+            lat as number,
+            lng as number,
+            item.lostLat,
+            item.lostLng
+          )
+        );
+        if (distanceMeters <= 2000)
+          notificationTasks.push(
+            notificationService.notifyMatchFound({
+              receiverId: item.owner.id,
+              distanceMeters,
+              postId: item.id,
+              itemName: item.name,
+            })
+          );
+        if (distanceMeters <= 100)
+          notificationTasks.push(
+            notificationService.notifyProximityAlert({
+              receiverId: item.owner.id,
+              distanceMeters,
+              postId: item.id,
+            })
+          );
+      }
+      await Promise.allSettled(notificationTasks);
+      return {
+        success: true,
+        chatToken,
+        guestId: guestUser.id,
+        channelId,
+        guestInfo: { id: guestUser.id, displayName: guestDisplayName },
+        returnSessionId: returnSession.id,
+        guestAccessToken: guestAccess.token,
+        guestAccessExpiresAt: guestAccess.expiresAt,
+      };
+    } catch (error) {
+      try {
+        await deleteItemChannel(channelId);
+      } catch (cleanupError) {
+        logger.error(
+          "Failed to remove guest Stream channel after init failure",
+          cleanupError
         );
       }
+      if (guestStreamUserCreated) {
+        try {
+          await deleteStreamUser(guestUser.id);
+        } catch (cleanupError) {
+          logger.error(
+            "Failed to remove guest Stream user after init failure",
+            cleanupError
+          );
+        }
+      }
+      try {
+        await prisma.$transaction(async (tx) => {
+          await tx.returnSession.deleteMany({
+            where: { id: returnSession.id },
+          });
+          await tx.item.updateMany({
+            where: { id: item.id, status: "FOUND" },
+            data: { status: "LOST" },
+          });
+          await tx.post.updateMany({
+            where: { itemId: item.id, status: "FOUND" },
+            data: { status: "ACTIVE" },
+          });
+          await tx.user.deleteMany({ where: { id: guestUser.id } });
+        });
+      } catch (cleanupError) {
+        logger.error(
+          "Failed to compensate guest init database state",
+          cleanupError
+        );
+      }
+      throw error;
     }
-
-    await Promise.allSettled(notificationTasks);
-
-    return {
-      success: true,
-      chatToken,
-      guestId: guestUser.id,
-      channelId,
-      guestInfo: {
-        id: guestUser.id,
-        displayName: guestDisplayName,
-      },
-    };
   }
 
   /**

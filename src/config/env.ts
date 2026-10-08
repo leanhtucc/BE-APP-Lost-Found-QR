@@ -1,5 +1,12 @@
 import "dotenv/config";
+import { randomBytes } from "crypto";
 import { z } from "zod";
+
+const optionalSecret = z.preprocess(
+  (value) =>
+    typeof value === "string" && value.trim() === "" ? undefined : value,
+  z.string().min(32).optional()
+);
 
 const rawEnv = z
   .object({
@@ -14,6 +21,17 @@ const rawEnv = z
     JWT_REFRESH_SECRET: z.string().min(16),
     JWT_EXPIRES_IN: z.string().default("1d"),
     JWT_REFRESH_EXPIRES_IN: z.string().default("30d"),
+    GUEST_JWT_SECRET: optionalSecret,
+    GUEST_JWT_TTL: z
+      .string()
+      .regex(/^\d+[smhd]$/)
+      .default("6h"),
+    GUEST_JWT_MAX_AGE: z
+      .string()
+      .regex(/^\d+[smhd]$/)
+      .default("72h"),
+    TRUST_PROXY_HOPS: z.coerce.number().int().min(0).optional(),
+    GUEST_CLAIM_INACTIVE_HOURS: z.coerce.number().int().positive().default(48),
     REDIS_URL: z.string().optional(),
     UPSTASH_REDIS_REST_URL: z.string().url().optional(),
     UPSTASH_REDIS_REST_TOKEN: z.string().optional(),
@@ -68,6 +86,18 @@ const rawEnv = z
   })
   .parse(process.env);
 
+if (rawEnv.NODE_ENV === "production" && !rawEnv.GUEST_JWT_SECRET) {
+  throw new Error("GUEST_JWT_SECRET is required in production");
+}
+if (
+  rawEnv.GUEST_JWT_SECRET &&
+  [rawEnv.JWT_SECRET, rawEnv.JWT_REFRESH_SECRET].includes(
+    rawEnv.GUEST_JWT_SECRET
+  )
+) {
+  throw new Error("GUEST_JWT_SECRET must be distinct from user JWT secrets");
+}
+
 export const ENV = {
   NODE_ENV: rawEnv.NODE_ENV,
   PORT: rawEnv.PORT,
@@ -83,6 +113,12 @@ export const ENV = {
   JWT_EXPIRES_IN: rawEnv.JWT_EXPIRES_IN,
   JWT_REFRESH_SECRET: rawEnv.JWT_REFRESH_SECRET,
   JWT_REFRESH_EXPIRES_IN: rawEnv.JWT_REFRESH_EXPIRES_IN,
+  GUEST_JWT_SECRET: rawEnv.GUEST_JWT_SECRET || randomBytes(32).toString("hex"),
+  GUEST_JWT_TTL: rawEnv.GUEST_JWT_TTL,
+  GUEST_JWT_MAX_AGE: rawEnv.GUEST_JWT_MAX_AGE,
+  TRUST_PROXY_HOPS:
+    rawEnv.TRUST_PROXY_HOPS ?? (rawEnv.NODE_ENV === "production" ? 1 : 0),
+  GUEST_CLAIM_INACTIVE_HOURS: rawEnv.GUEST_CLAIM_INACTIVE_HOURS,
 
   // Redis (optional)
   REDIS_URL: rawEnv.REDIS_URL || "",

@@ -12,7 +12,7 @@ import { ENV } from "./config/env";
  */
 
 const app: Express = express();
-app.set("trust proxy", 1);
+app.set("trust proxy", ENV.TRUST_PROXY_HOPS);
 
 // Security & Basic Middleware
 app.use(helmet()); // Security headers

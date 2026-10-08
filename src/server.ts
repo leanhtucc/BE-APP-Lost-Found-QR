@@ -7,6 +7,7 @@ import { assertNonProductionDatabaseSafety } from "./config/database-safety";
 import { startDailyNotificationJob } from "./jobs/daily-notification.job";
 import { startRefundJob } from "./jobs/refund.job";
 import { startAccountDeletionJob } from "./jobs/account-deletion.job";
+import { startGuestClaimExpiryJob } from "./jobs/guest-claim-expiry.job";
 import { logger } from "./libs/logger";
 import { redis } from "./libs/redis";
 import { notificationService } from "./modules/notification/notification.service";
@@ -48,6 +49,7 @@ async function startServer() {
     startRefundJob();
     startDailyNotificationJob();
     startAccountDeletionJob();
+    startGuestClaimExpiryJob();
 
     const server = httpServer.listen(ENV.PORT, "0.0.0.0", () => {
       logger.success(`Server is running on port ${ENV.PORT}`);

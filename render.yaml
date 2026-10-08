@@ -37,6 +37,16 @@ services:
         generateValue: true
       - key: JWT_EXPIRES_IN
         value: 1d
+      - key: GUEST_JWT_SECRET
+        sync: false
+      - key: GUEST_JWT_TTL
+        value: 6h
+      - key: GUEST_JWT_MAX_AGE
+        value: 72h
+      - key: TRUST_PROXY_HOPS
+        value: 1
+      - key: GUEST_CLAIM_INACTIVE_HOURS
+        value: 48
       - key: JWT_REFRESH_EXPIRES_IN
         value: 30d
       - key: API_PREFIX

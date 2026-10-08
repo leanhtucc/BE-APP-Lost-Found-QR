@@ -1,5 +1,6 @@
 import { Router } from "express";
 import { authMiddleware } from "../../middlewares/auth.middleware";
+import { guestOrUserAuth } from "../../middlewares/guest-auth.middleware";
 import { validate } from "../../middlewares/validate.middleware";
 import { StreamChatController } from "./stream.controller";
 import {
@@ -49,7 +50,7 @@ router.get("/channels", authMiddleware, streamController.getChannels);
  */
 router.put(
   "/channels/:channelId/close",
-  authMiddleware,
+  guestOrUserAuth,
   validate(closeChannelSchema),
   streamController.closeChannel
 );
