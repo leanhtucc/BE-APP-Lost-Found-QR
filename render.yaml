@@ -39,6 +39,10 @@ services:
         value: 1d
       - key: GUEST_JWT_SECRET
         sync: false
+      - key: HANDOVER_CODE_SALT
+        generateValue: true
+      - key: STREAM_TOKEN_TTL_SECONDS
+        value: 3600
       - key: GUEST_JWT_TTL
         value: 6h
       - key: GUEST_JWT_MAX_AGE

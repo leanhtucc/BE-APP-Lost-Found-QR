@@ -2,11 +2,15 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
 
 const { db, stream, notifications } = vi.hoisted(() => ({
   db: {
-    item: { findUnique: vi.fn(), updateMany: vi.fn() },
+    item: { findUnique: vi.fn(), findFirst: vi.fn(), updateMany: vi.fn() },
     user: { findFirst: vi.fn() },
     post: { updateMany: vi.fn() },
     returnSession: { create: vi.fn(), deleteMany: vi.fn() },
     txUser: { create: vi.fn(), deleteMany: vi.fn() },
+    pendingUsers: [] as unknown[],
+    pendingSessions: [] as unknown[],
+    committedUsers: [] as unknown[],
+    committedSessions: [] as unknown[],
   },
   stream: {
     createItemChannel: vi.fn(),
@@ -26,13 +30,25 @@ const { db, stream, notifications } = vi.hoisted(() => ({
 vi.mock("../../libs/prisma", () => ({
   prisma: {
     ...db,
-    $transaction: (callback: (tx: any) => unknown) =>
-      callback({
-        item: db.item,
-        post: db.post,
-        user: db.txUser,
-        returnSession: db.returnSession,
-      }),
+    $transaction: async (callback: (tx: any) => unknown) => {
+      const userStart = db.pendingUsers.length;
+      const sessionStart = db.pendingSessions.length;
+      try {
+        const result = await callback({
+          item: db.item,
+          post: db.post,
+          user: db.txUser,
+          returnSession: db.returnSession,
+        });
+        db.committedUsers.push(...db.pendingUsers.slice(userStart));
+        db.committedSessions.push(...db.pendingSessions.slice(sessionStart));
+        return result;
+      } catch (error) {
+        db.pendingUsers.length = userStart;
+        db.pendingSessions.length = sessionStart;
+        throw error;
+      }
+    },
   },
 }));
 vi.mock("../../libs/stream-chat", () => stream);
@@ -67,16 +83,28 @@ describe("guest claim identity and lookup", () => {
 
   beforeEach(() => {
     vi.clearAllMocks();
+    db.pendingUsers.length = 0;
+    db.pendingSessions.length = 0;
+    db.committedUsers.length = 0;
+    db.committedSessions.length = 0;
     db.item.findUnique.mockResolvedValue(lostItem);
     db.item.updateMany.mockResolvedValue({ count: 1 });
-    db.txUser.create.mockResolvedValue({
-      id: "new-guest-id",
-      displayName: "Finder",
-      photoURL: null,
+    db.txUser.create.mockImplementation(async () => {
+      const user = {
+        id: "new-guest-id",
+        displayName: "Finder",
+        photoURL: null,
+      };
+      db.pendingUsers.push(user);
+      return user;
     });
-    db.returnSession.create.mockResolvedValue({
-      id: "session-id",
-      channelId: "item_printed-qr-id_new-guest-id",
+    db.returnSession.create.mockImplementation(async () => {
+      const session = {
+        id: "session-id",
+        channelId: "item_printed-qr-id_new-guest-id",
+      };
+      db.pendingSessions.push(session);
+      return session;
     });
     stream.upsertStreamUser.mockResolvedValue(undefined);
     stream.createItemChannel.mockResolvedValue(undefined);
@@ -108,6 +136,7 @@ describe("guest claim identity and lookup", () => {
 
   it("does not resolve the internal Item.id as a public QR lookup", async () => {
     db.item.findUnique.mockResolvedValue(null);
+    db.item.findFirst.mockResolvedValue(lostItem);
     await expect(
       service.initGuestChat("internal-item-id", "0901234567")
     ).rejects.toMatchObject({
@@ -116,16 +145,19 @@ describe("guest claim identity and lookup", () => {
     expect(db.item.findUnique).toHaveBeenCalledWith(
       expect.objectContaining({ where: { qrCodeId: "internal-item-id" } })
     );
+    expect(db.item.findFirst).not.toHaveBeenCalled();
     expect(db.txUser.create).not.toHaveBeenCalled();
     expect(stream.createItemChannel).not.toHaveBeenCalled();
   });
 
-  it("leaves no session or Stream channel when the atomic LOST claim fails", async () => {
+  it("claim failure leaves no user, session, or Stream channel", async () => {
     db.item.updateMany.mockResolvedValueOnce({ count: 0 });
     await expect(
       service.initGuestChat("printed-qr-id", "0901234567")
     ).rejects.toMatchObject({ statusCode: 409 });
     expect(db.returnSession.create).not.toHaveBeenCalled();
+    expect(db.committedUsers).toHaveLength(0);
+    expect(db.committedSessions).toHaveLength(0);
     expect(stream.createItemChannel).not.toHaveBeenCalled();
   });
 

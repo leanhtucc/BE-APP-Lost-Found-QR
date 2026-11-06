@@ -2,18 +2,22 @@
 set -e
 
 echo ">>> [SYSTEM] Starting Entrypoint Script..."
-
-# Print environment info (masking secrets)
 echo ">>> [SYSTEM] NODE_ENV: $NODE_ENV"
 echo ">>> [SYSTEM] PORT: $PORT"
 
-echo ">>> [SYSTEM] Running Database Migrations..."
-npx prisma migrate deploy
+# Migrations are opt-in so a restart or a scale-out never touches the schema by
+# surprise. Set RUN_MIGRATIONS=true on the first deploy (or run
+# `npx prisma migrate deploy` as a one-off job) and turn it off afterwards.
+if [ "$RUN_MIGRATIONS" = "true" ]; then
+    echo ">>> [SYSTEM] Running Database Migrations..."
+    npx prisma migrate deploy
+else
+    echo ">>> [SYSTEM] Skipping migrations (RUN_MIGRATIONS is not 'true')"
+fi
 
 echo ">>> [SYSTEM] Checking build files..."
 if [ -f "./dist/server.js" ]; then
     echo ">>> [SYSTEM] dist/server.js found. Starting server..."
-    # Chạy node trực tiếp
     exec node dist/server.js
 else
     echo ">>> [ERROR] dist/server.js NOT FOUND!"

@@ -30,5 +30,5 @@ USER node
 # Expose port
 EXPOSE 3000
 
-# Standard start command
-CMD ["npm", "start"]
+# Start through the entrypoint (optional migrations, then node dist/server.js)
+CMD ["sh", "entrypoint.sh"]

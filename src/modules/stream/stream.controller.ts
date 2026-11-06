@@ -7,6 +7,7 @@ import {
   createStreamUserToken,
   flagMessage,
   getFlaggedMessages,
+  getMessageChannelId,
   getUserChannels,
   getUserNotifications,
   logActivity,
@@ -21,6 +22,86 @@ import { ResponseUtil } from "../../utils/response";
 import { reportService } from "../report/report.service";
 import { prisma } from "../../libs/prisma";
 import { createLostItemReturnChannel } from "./stream.service";
+
+const MODERATOR_ROLES = ["admin", "moderator"];
+
+async function isModerator(userId: string): Promise<boolean> {
+  const row = await prisma.user.findUnique({
+    where: { id: userId },
+    select: { role: true },
+  });
+  return !!row && MODERATOR_ROLES.includes(row.role);
+}
+
+/**
+ * The caller must belong to the return session that owns this channel.
+ * Moderators may bypass this only where `allowModerator` is set.
+ * Returns the participants, or null when a moderator bypassed the check.
+ */
+async function requireChannelParticipant(
+  userId: string,
+  channelId: string,
+  options: { allowModerator?: boolean } = {}
+): Promise<{ ownerId: string; finderId: string } | null> {
+  if (options.allowModerator && (await isModerator(userId))) return null;
+  const session = await prisma.returnSession.findUnique({
+    where: { channelId },
+    select: { ownerId: true, finderId: true },
+  });
+  if (!session) {
+    throw new AppError("Channel not found", 404, true, "CHANNEL_NOT_FOUND");
+  }
+  if (userId !== session.ownerId && userId !== session.finderId) {
+    throw new AppError(
+      "You are not a participant in this return",
+      403,
+      true,
+      "RETURN_FORBIDDEN"
+    );
+  }
+  return session;
+}
+
+async function requireModerator(userId: string): Promise<void> {
+  if (!(await isModerator(userId))) {
+    throw new AppError(
+      "Only moderators can perform this action",
+      403,
+      true,
+      "MODERATION_FORBIDDEN"
+    );
+  }
+}
+
+async function requireMessageParticipant(
+  userId: string,
+  messageId: string
+): Promise<void> {
+  const channelId = await getMessageChannelId(messageId);
+  if (!channelId) {
+    throw new AppError("Message not found", 404, true, "MESSAGE_NOT_FOUND");
+  }
+  await requireChannelParticipant(userId, channelId);
+}
+
+function assertValidMuteTarget(
+  callerId: string,
+  targetUserId: string,
+  session: { ownerId: string; finderId: string } | null
+): void {
+  const valid =
+    !!session &&
+    targetUserId !== callerId &&
+    (targetUserId === session.ownerId || targetUserId === session.finderId);
+  if (!valid) {
+    throw new AppError(
+      "You can only moderate the other participant of this return",
+      403,
+      true,
+      "MODERATION_TARGET_INVALID"
+    );
+  }
+}
 
 export class StreamChatController {
   /**
@@ -45,7 +126,10 @@ export class StreamChatController {
       });
 
       // Tạo token
-      const token = createStreamUserToken(userId);
+      // Short-lived token; the client re-requests it (Stream tokenProvider)
+      const expiresAt =
+        Math.floor(Date.now() / 1000) + ENV.STREAM_TOKEN_TTL_SECONDS;
+      const token = createStreamUserToken(userId, expiresAt);
 
       ResponseUtil.success(
         res,
@@ -53,6 +137,7 @@ export class StreamChatController {
           token,
           apiKey: ENV.STREAM_API_KEY,
           userId,
+          expiresAt,
         },
         "Stream token generated successfully"
       );
@@ -200,6 +285,7 @@ export class StreamChatController {
         return;
       }
 
+      await requireMessageParticipant(userId, messageId);
       const result = await flagMessage(messageId, userId);
 
       ResponseUtil.success(res, result, "Message flagged successfully");
@@ -226,6 +312,7 @@ export class StreamChatController {
         return;
       }
 
+      await requireMessageParticipant(userId, messageId);
       const result = await unflagMessage(messageId, userId);
 
       ResponseUtil.success(res, result, "Message unflagged successfully");
@@ -256,6 +343,12 @@ export class StreamChatController {
         return;
       }
 
+      const muteCallerId = req.user!.id;
+      assertValidMuteTarget(
+        muteCallerId,
+        targetUserId,
+        await requireChannelParticipant(muteCallerId, channelId)
+      );
       const result = await muteUserInChannel(
         "messaging",
         channelId,
@@ -289,6 +382,12 @@ export class StreamChatController {
         return;
       }
 
+      const unmuteCallerId = req.user!.id;
+      assertValidMuteTarget(
+        unmuteCallerId,
+        targetUserId,
+        await requireChannelParticipant(unmuteCallerId, channelId)
+      );
       const result = await unmuteUserInChannel(
         "messaging",
         channelId,
@@ -323,6 +422,7 @@ export class StreamChatController {
         return;
       }
 
+      await requireModerator(req.user!.id);
       const result = await banUserFromChannel(
         "messaging",
         channelId,
@@ -357,6 +457,7 @@ export class StreamChatController {
         return;
       }
 
+      await requireModerator(req.user!.id);
       const result = await unbanUserFromChannel(
         "messaging",
         channelId,
@@ -386,6 +487,9 @@ export class StreamChatController {
         return;
       }
 
+      await requireChannelParticipant(req.user!.id, channelId, {
+        allowModerator: true,
+      });
       const messages = await getFlaggedMessages("messaging", channelId);
 
       ResponseUtil.success(

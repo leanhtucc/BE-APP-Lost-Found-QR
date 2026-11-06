@@ -286,7 +286,9 @@ export class ItemRepository {
         where: {
           id,
           ownerId,
-          status: { in: ["LOST", "FOUND", "RESOLVED"] },
+          // Only a LOST item can be taken back to SAFE. FOUND (return in
+          // progress) and RESOLVED (already returned) must not be reverted.
+          status: "LOST",
         },
         data: {
           status: "SAFE",

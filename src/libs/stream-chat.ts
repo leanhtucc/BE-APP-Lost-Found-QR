@@ -1,4 +1,5 @@
 import { StreamChat } from "stream-chat";
+import jwt from "jsonwebtoken";
 import { ENV } from "../config/env";
 
 /**
@@ -8,15 +9,18 @@ import { ENV } from "../config/env";
 
 let streamClient: StreamChat | null = null;
 
+export const isStreamConfigured = (): boolean =>
+  Boolean(ENV.STREAM_API_KEY && ENV.STREAM_API_SECRET);
+
 export const getStreamClient = (): StreamChat => {
   if (!streamClient) {
-    if (!ENV.STREAM_API_KEY || !ENV.STREAM_API_SECRET) {
+    if (!isStreamConfigured()) {
       throw new Error("Stream Chat credentials not configured");
     }
 
     streamClient = StreamChat.getInstance(
-      ENV.STREAM_API_KEY,
-      ENV.STREAM_API_SECRET
+      ENV.STREAM_API_KEY!,
+      ENV.STREAM_API_SECRET!
     );
   }
 
@@ -31,16 +35,30 @@ export const createStreamUserToken = (
   userId: string,
   expiresAt?: number
 ): string => {
+  if (!isStreamConfigured()) {
+    const payload: Record<string, any> = { user_id: userId };
+    const nowSec = Math.floor(Date.now() / 1000);
+    if (expiresAt) {
+      payload.exp = expiresAt;
+      payload.iat = nowSec;
+    }
+    return jwt.sign(
+      payload,
+      ENV.JWT_SECRET || "stream-local-dev-fallback-secret"
+    );
+  }
   const client = getStreamClient();
   return client.createToken(userId, expiresAt);
 };
 
 export const deleteItemChannel = async (channelId: string): Promise<void> => {
+  if (!isStreamConfigured()) return;
   const channel = getStreamClient().channel("messaging", channelId);
   await channel.delete();
 };
 
 export const deleteStreamUser = async (userId: string): Promise<void> => {
+  if (!isStreamConfigured()) return;
   await getStreamClient().deleteUser(userId, {
     hard_delete: true,
     delete_conversation_channels: true,
@@ -57,6 +75,7 @@ export const upsertStreamUser = async (userData: {
   image?: string;
   email?: string;
 }) => {
+  if (!isStreamConfigured()) return;
   const client = getStreamClient();
 
   await client.upsertUser({
@@ -80,9 +99,15 @@ export const createItemChannel = async (
   ownerId: string,
   finderId: string
 ) => {
-  const client = getStreamClient();
-
   const channelId = `item_${itemId}_${finderId}`;
+  if (!isStreamConfigured()) {
+    return {
+      channelId,
+      channelType: "messaging",
+    };
+  }
+
+  const client = getStreamClient();
   const channel = client.channel("messaging", channelId, {
     members: [ownerId, finderId],
     created_by_id: finderId,
@@ -109,6 +134,10 @@ export const createReturnChannel = async (input: {
   ownerId: string;
   finderId: string;
 }) => {
+  if (!isStreamConfigured()) {
+    return { channelId: input.channelId, channelType: "messaging" };
+  }
+
   const client = getStreamClient();
   const channel = client.channel("messaging", input.channelId, {
     members: [input.ownerId, input.finderId],
@@ -129,6 +158,7 @@ export const createReturnChannel = async (input: {
  * Đóng channel khi đã trả đồ xong
  */
 export const closeItemChannel = async (channelId: string) => {
+  if (!isStreamConfigured()) return;
   const client = getStreamClient();
   const channel = client.channel("messaging", channelId);
 
@@ -141,6 +171,7 @@ export const closeItemChannel = async (channelId: string) => {
 export const getItemChannelLastMessageAt = async (
   channelId: string
 ): Promise<Date | null> => {
+  if (!isStreamConfigured()) return null;
   const response = await getStreamClient()
     .channel("messaging", channelId)
     .query({});
@@ -194,6 +225,22 @@ export const flagMessage = async (messageId: string, userId: string) => {
   });
 
   return { success: true, message: "Message flagged successfully" };
+};
+
+/**
+ * Resolve the channel id a message belongs to (null when it does not exist).
+ */
+export const getMessageChannelId = async (
+  messageId: string
+): Promise<string | null> => {
+  const client = getStreamClient();
+  try {
+    const result = await client.getMessage(messageId);
+    const cid = (result as { message?: { cid?: string } })?.message?.cid;
+    return cid ? cid.split(":").slice(1).join(":") : null;
+  } catch {
+    return null;
+  }
 };
 
 /**

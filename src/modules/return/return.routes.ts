@@ -112,14 +112,14 @@ router.post(
  */
 router.post(
   "/:id/handover/confirm",
-  authMiddleware,
+  guestOrUserAuth,
   validate(confirmHandoverSchema),
   returnController.confirmHandover
 );
 
 /**
  * @route   POST /v1/returns/:id/handover/dispute
- * @desc    Khai báo tranh chấp / sự cố bàn giao
+ * @desc    Khai báo tranh chấp / sự cố bàn giao (chỉ chủ đồ registered user)
  */
 router.post(
   "/:id/handover/dispute",

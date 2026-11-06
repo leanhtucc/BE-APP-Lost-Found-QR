@@ -23,7 +23,16 @@ const itemController = new ItemController();
 
 // Public routes
 // GET /api/scan/:itemId - Quét QR code (không cần auth)
-router.get("/scan/:itemId", validate(scanQRSchema), itemController.scanQRCode);
+router.get(
+  "/scan/:itemId",
+  rateLimit({
+    windowMs: 60_000,
+    max: 30,
+    keyGenerator: (req) => req.ip || req.socket.remoteAddress || "unknown",
+  }),
+  validate(scanQRSchema),
+  itemController.scanQRCode
+);
 
 // POST /api/scan/guest-init - Khởi tạo chat ẩn danh (Guest Flow B+)
 router.post(

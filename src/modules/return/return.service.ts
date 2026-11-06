@@ -1,4 +1,5 @@
 import crypto from "crypto";
+import { ENV } from "../../config/env";
 import { prisma } from "../../libs/prisma";
 import { logger } from "../../libs/logger";
 import { redis } from "../../libs/redis";
@@ -35,7 +36,6 @@ import {
 } from "./return.policy";
 import { parseItemChannelId } from "../item/item-channel-id";
 
-const CODE_SALT = "lost_found_handover_salt_2026";
 const HANDOVER_CODE_TTL_SECONDS = 300; // 5 minutes
 const MAX_HANDOVER_ATTEMPTS = 5;
 
@@ -159,8 +159,8 @@ export class ReturnService {
 
   private hashCode(code: string): string {
     return crypto
-      .createHash("sha256")
-      .update(`${code}:${CODE_SALT}`)
+      .createHmac("sha256", ENV.HANDOVER_CODE_SALT)
+      .update(code)
       .digest("hex");
   }
 
@@ -1179,20 +1179,35 @@ export class ReturnService {
       });
     }
 
+    // Record finder confirmation upon handover initialization
+    const finderConfirmation = await prisma.handoverConfirmation.upsert({
+      where: {
+        sessionId_participantId: {
+          sessionId,
+          participantId: userId,
+        },
+      },
+      update: {},
+      create: {
+        sessionId,
+        participantId: userId,
+        role: "FINDER",
+        verificationMethod: "DIRECT",
+      },
+    });
+
     const qrPayload = `handover://${sessionId}?code=${code}`;
 
     const ownerConf = session.handoverConfirmations?.find(
       (c) => c.role === "OWNER"
     );
-    const finderConf = session.handoverConfirmations?.find(
-      (c) => c.role === "FINDER"
-    );
+    const finderConf = Boolean(finderConfirmation);
 
     const handoverDetails: HandoverInitResult = {
       code,
       qrPayload,
       ownerConfirmed: Boolean(ownerConf),
-      finderConfirmed: Boolean(finderConf),
+      finderConfirmed: finderConf,
     };
 
     emitReturnHandoverUpdated(
@@ -1297,7 +1312,12 @@ export class ReturnService {
       }
 
       const hashInput = this.hashCode(req.code.trim());
-      if (hashInput !== challenge.codeHash) {
+      const expected = Buffer.from(challenge.codeHash, "hex");
+      const actual = Buffer.from(hashInput, "hex");
+      const codeMatches =
+        expected.length === actual.length &&
+        crypto.timingSafeEqual(expected, actual);
+      if (!codeMatches) {
         await prisma.handoverChallenge.update({
           where: { id: challenge.id },
           data: { attemptCount: { increment: 1 } },

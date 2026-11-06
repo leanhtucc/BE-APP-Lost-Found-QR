@@ -1,5 +1,5 @@
 import "dotenv/config";
-import { randomBytes } from "crypto";
+import { createHmac, randomBytes } from "crypto";
 import { z } from "zod";
 
 const optionalSecret = z.preprocess(
@@ -22,6 +22,12 @@ const rawEnv = z
     JWT_EXPIRES_IN: z.string().default("1d"),
     JWT_REFRESH_EXPIRES_IN: z.string().default("30d"),
     GUEST_JWT_SECRET: optionalSecret,
+    HANDOVER_CODE_SALT: optionalSecret,
+    STREAM_TOKEN_TTL_SECONDS: z.preprocess(
+      (value) =>
+        typeof value === "string" && value.trim() === "" ? undefined : value,
+      z.coerce.number().int().min(300).max(86400).default(3600)
+    ),
     GUEST_JWT_TTL: z
       .string()
       .regex(/^\d+[smhd]$/)
@@ -98,6 +104,20 @@ if (
   throw new Error("GUEST_JWT_SECRET must be distinct from user JWT secrets");
 }
 
+if (rawEnv.NODE_ENV === "production" && !rawEnv.HANDOVER_CODE_SALT) {
+  throw new Error("HANDOVER_CODE_SALT is required in production");
+}
+if (
+  rawEnv.HANDOVER_CODE_SALT &&
+  [
+    rawEnv.JWT_SECRET,
+    rawEnv.JWT_REFRESH_SECRET,
+    rawEnv.GUEST_JWT_SECRET,
+  ].includes(rawEnv.HANDOVER_CODE_SALT)
+) {
+  throw new Error("HANDOVER_CODE_SALT must be distinct from JWT secrets");
+}
+
 export const ENV = {
   NODE_ENV: rawEnv.NODE_ENV,
   PORT: rawEnv.PORT,
@@ -114,6 +134,15 @@ export const ENV = {
   JWT_REFRESH_SECRET: rawEnv.JWT_REFRESH_SECRET,
   JWT_REFRESH_EXPIRES_IN: rawEnv.JWT_REFRESH_EXPIRES_IN,
   GUEST_JWT_SECRET: rawEnv.GUEST_JWT_SECRET || randomBytes(32).toString("hex"),
+  // Secret key for hashing handover codes. Production must set it explicitly;
+  // outside production it is derived from JWT_SECRET so it is stable across
+  // restarts without being hardcoded in source.
+  HANDOVER_CODE_SALT:
+    rawEnv.HANDOVER_CODE_SALT ||
+    createHmac("sha256", rawEnv.JWT_SECRET)
+      .update("handover-code-salt:v1")
+      .digest("hex"),
+  STREAM_TOKEN_TTL_SECONDS: rawEnv.STREAM_TOKEN_TTL_SECONDS,
   GUEST_JWT_TTL: rawEnv.GUEST_JWT_TTL,
   GUEST_JWT_MAX_AGE: rawEnv.GUEST_JWT_MAX_AGE,
   TRUST_PROXY_HOPS:

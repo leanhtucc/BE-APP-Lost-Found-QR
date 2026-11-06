@@ -108,4 +108,16 @@ describe("guest claim lifecycle", () => {
       expect.objectContaining({ data: { status: "LOST" } })
     );
   });
+
+  it("does not allow claim rejection after handover has started", async () => {
+    sessionDb.findUnique.mockResolvedValue({
+      ...session,
+      status: "HANDOVER_PENDING",
+    });
+    await expect(
+      guestClaimLifecycleService.rejectByOwner("owner1", session.id)
+    ).rejects.toMatchObject({ statusCode: 409 });
+    expect(closeChannel).not.toHaveBeenCalled();
+    expect(sessionDb.updateMany).not.toHaveBeenCalled();
+  });
 });
