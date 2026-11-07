@@ -4,6 +4,7 @@ import {
   optionalAuth,
 } from "../../middlewares/auth.middleware";
 import { validate } from "../../middlewares/validate.middleware";
+import { rateLimit } from "../../middlewares/rate-limit.middleware";
 import {
   createFoundReportSchema,
   createFoundReportClaimSchema,
@@ -24,9 +25,22 @@ import { lostFeedSchema } from "../home/home.schema";
 import { LostFeedQuery } from "../home/home.types";
 
 const router = Router();
+
+const HOUR_MS = 60 * 60 * 1000;
+// Authenticated limiters key on the user id (set by authMiddleware), falling back to IP.
+const createReportLimiter = rateLimit({ windowMs: HOUR_MS, max: 10 });
+const createClaimLimiter = rateLimit({ windowMs: HOUR_MS, max: 10 });
+// Public feed: per IP, to make bulk scraping harder.
+const feedLimiter = rateLimit({
+  windowMs: 60_000,
+  max: 60,
+  keyGenerator: (req) => req.ip || req.socket.remoteAddress || "unknown",
+});
+
 router.post(
   "/:id/claims",
   authMiddleware,
+  createClaimLimiter,
   validate(createFoundReportClaimSchema),
   async (req, res, next) => {
     try {
@@ -104,6 +118,7 @@ router.post(
 router.post(
   "/",
   authMiddleware,
+  createReportLimiter,
   validate(createFoundReportSchema),
   async (req, res, next) => {
     try {
@@ -117,6 +132,7 @@ router.post(
 
 router.get(
   "/feed",
+  feedLimiter,
   optionalAuth,
   validate(lostFeedSchema),
   async (req, res, next) => {
