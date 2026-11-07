@@ -883,6 +883,20 @@ export class ItemService {
       );
     }
 
+    // Deleting cascades to return sessions (and any held reward), so block it
+    // while a finder is involved or a return session is still unfinished.
+    const openSessions = await prisma.returnSession.count({
+      where: { itemId: item.id, status: { not: "COMPLETED" } },
+    });
+    if (item.status === "FOUND" || openSessions > 0) {
+      throw new AppError(
+        "This item has an active return in progress and cannot be deleted. Complete or cancel the return first.",
+        409,
+        true,
+        "ITEM_HAS_ACTIVE_RETURN"
+      );
+    }
+
     await itemRepository.deleteItem(item.id);
 
     if (item.status === "LOST") {
