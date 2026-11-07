@@ -1,3 +1,4 @@
+import { ENV } from "../../config/env";
 import { prisma } from "../../libs/prisma";
 import { issueGuestToken } from "../../libs/guest-jwt";
 import {
@@ -41,6 +42,8 @@ export class GuestService {
     });
     return {
       token: createStreamUserToken(guest.id, expiresAt),
+      // Public client key (not the secret); the app needs it to connect.
+      apiKey: ENV.STREAM_API_KEY,
       expiresAt,
       userId: guest.id,
     };
