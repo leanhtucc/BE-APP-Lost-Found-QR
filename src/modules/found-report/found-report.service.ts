@@ -7,6 +7,7 @@ import {
   haversineDistanceMeters,
 } from "../../utils/geospatial";
 import { HOME_LOST_RADIUS_METERS } from "../../utils/constants";
+import { blurReportLocation } from "../../utils/location-privacy";
 import { AppError } from "../../middlewares/error.middleware";
 import { nanoid } from "nanoid";
 import { createReturnChannel, upsertStreamUser } from "../../libs/stream-chat";
@@ -67,7 +68,8 @@ export async function getFoundReport(id: string, userId?: string) {
     });
     if (!report) return null;
     const { finderId, ...safe } = report;
-    return { ...safe, isOwn: finderId === userId };
+    const isOwn = finderId === userId;
+    return { ...(isOwn ? safe : blurReportLocation(safe)), isOwn };
   }
 
   const report = await prisma.foundReport.findUnique({
@@ -75,7 +77,7 @@ export async function getFoundReport(id: string, userId?: string) {
     select: publicSelect,
   });
   if (!report) return null;
-  return { ...report, isOwn: false };
+  return { ...blurReportLocation(report), isOwn: false };
 }
 
 export async function getFoundFeed(
@@ -132,7 +134,12 @@ export async function getFoundFeed(
     }),
   ]);
 
-  const cards: LostFeedCard[] = [...own, ...nearby].map((report) => {
+  const cards: LostFeedCard[] = [...own, ...nearby].map((rawReport) => {
+    // Other people's reports are shown with a blurred location, and the
+    // distance is computed from the blurred point so it cannot be used to
+    // triangulate the exact spot.
+    const isOwn = rawReport.finderId === userId;
+    const report = isOwn ? rawReport : blurReportLocation(rawReport);
     const distance = Math.round(
       haversineDistanceMeters(query.lat, query.lng, report.lat, report.lng)
     );
