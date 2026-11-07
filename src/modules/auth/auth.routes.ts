@@ -26,20 +26,38 @@ import { updatePreferenceSchema } from "../notification/notification.schema";
  */
 
 const router = Router();
+
+// Per-IP limiters for unauthenticated endpoints (brute-force / abuse protection).
+// Each call creates its own bucket; the app-wide limiter still applies on top.
+const authLimiter = (max: number, windowMs = 15 * 60 * 1000) =>
+  rateLimit({
+    windowMs,
+    max,
+    keyGenerator: (req) => req.ip || req.socket.remoteAddress || "unknown",
+  });
+
 const authController = new AuthController();
 
 // Public routes
 router.post(
   "/register",
+  authLimiter(10),
   queryToBody,
   validate(registerSchema),
   authController.register
 );
 
-router.post("/login", queryToBody, validate(loginSchema), authController.login);
+router.post(
+  "/login",
+  authLimiter(10),
+  queryToBody,
+  validate(loginSchema),
+  authController.login
+);
 
 router.post(
   "/refresh",
+  authLimiter(60),
   queryToBody,
   validate(refreshTokenSchema),
   authController.refreshToken
@@ -47,6 +65,7 @@ router.post(
 
 router.post(
   "/verify-otp",
+  authLimiter(10),
   queryToBody,
   validate(verifyOtpSchema),
   authController.verifyOtp
@@ -54,6 +73,7 @@ router.post(
 
 router.post(
   "/resend-otp",
+  authLimiter(5),
   queryToBody,
   validate(resendOtpSchema),
   authController.resendOtp
@@ -67,6 +87,7 @@ router.get("/google/callback", authController.googleCallback);
 // For mobile app flow (ID token-based)
 router.post(
   "/google",
+  authLimiter(20),
   validate(googleAuthSchema),
   authController.googleAuthWithIdToken
 );
@@ -74,6 +95,7 @@ router.post(
 // For Firebase auth flow (mobile)
 router.post(
   "/firebase-verify",
+  authLimiter(20),
   validate(firebaseVerifySchema),
   authController.verifyFirebaseUser
 );
@@ -81,12 +103,14 @@ router.post(
 // Password reset routes
 router.post(
   "/forgot-password",
+  authLimiter(5),
   validate(forgotPasswordSchema),
   authController.forgotPassword
 );
 
 router.post(
   "/reset-password",
+  authLimiter(10),
   validate(resetPasswordSchema),
   authController.resetPassword
 );
