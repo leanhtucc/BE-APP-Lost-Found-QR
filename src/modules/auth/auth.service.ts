@@ -266,14 +266,23 @@ export class AuthService {
     const verificationCode = this.generateVerificationCode();
     const expiresAt = this.getCodeExpiry();
 
-    await tempStorage.set(email, {
-      email,
-      password: hashedPassword,
-      displayName: data.displayName,
-      verificationCode,
-      verificationAttempts: 0,
-      expiresAt: expiresAt.toISOString(),
-    });
+    try {
+      await tempStorage.set(email, {
+        email,
+        password: hashedPassword,
+        displayName: data.displayName,
+        verificationCode,
+        verificationAttempts: 0,
+        expiresAt: expiresAt.toISOString(),
+      });
+    } catch (error) {
+      // Do not send an OTP email for a code that cannot be verified later.
+      logger.error("Could not store pending registration", error);
+      throw new AppError(
+        "Verification service is temporarily unavailable. Please try again later.",
+        503
+      );
+    }
 
     const emailSent = await emailService.sendVerificationEmail(
       email,
@@ -641,7 +650,8 @@ export class AuthService {
     await redis.set(
       `otp:account-deletion:${userId}`,
       { otpHash, attempts: 0, expiresAt },
-      10 * 60
+      10 * 60,
+      { strict: true }
     );
     await authRepository.createAuditLog(
       userId,

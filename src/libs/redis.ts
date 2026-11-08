@@ -158,7 +158,17 @@ export class RedisClient {
     return raw ? (JSON.parse(raw) as T) : null;
   }
 
-  async set(key: string, value: unknown, ttlSeconds?: number) {
+  /**
+   * @param options.strict Throw when the write fails. Use it for data that must
+   *   not be lost silently (pending registrations, OTPs, handover codes).
+   *   Caches keep the default fail-soft behaviour.
+   */
+  async set(
+    key: string,
+    value: unknown,
+    ttlSeconds?: number,
+    options?: { strict?: boolean }
+  ) {
     const serialized = JSON.stringify(value);
 
     // 1. Upstash REST
@@ -172,6 +182,7 @@ export class RedisClient {
         return;
       } catch (err) {
         logger.error("Upstash SET error", err);
+        if (options?.strict) throw err;
         return;
       }
     }

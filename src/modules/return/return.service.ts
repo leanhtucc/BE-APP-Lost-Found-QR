@@ -1162,7 +1162,8 @@ export class ReturnService {
     await redis.set(
       `return:code:${sessionId}`,
       code,
-      HANDOVER_CODE_TTL_SECONDS
+      HANDOVER_CODE_TTL_SECONDS,
+      { strict: true }
     );
 
     // Update status to HANDOVER_PENDING if not already

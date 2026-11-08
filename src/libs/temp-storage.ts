@@ -39,7 +39,11 @@ class TempStorage {
       expiresAt: data.expiresAt, // already ISO string
       createdAt: new Date().toISOString(),
     };
-    await redis.set(this.key(identifier), payload, OTP_TTL_SECONDS);
+    // strict: a silent failure here means the OTP email goes out but the code
+    // can never be verified.
+    await redis.set(this.key(identifier), payload, OTP_TTL_SECONDS, {
+      strict: true,
+    });
   }
 
   /**
