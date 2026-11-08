@@ -11,7 +11,7 @@
 
 ```bash
 # Copy environment template
-cp .env.docker .env
+cp .env.example .env
 
 # Edit .env with your values
 ```
